@@ -196,10 +196,15 @@ def inverse_warp_fft(img, pose, rotation_mode='euler', padding_mode='zeros'):
 
     # batch_size, img_height, img_width = img.size()
 
+    # Convert 6 DoF pose to 4x4 transformation matrix
     pose_mat = tgm.rtvec_to_pose(pose)  # T*R in homogenous coordinates [B,4,4]
+    # Transform points
     tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(xy_hom)) # [B,4,N]
+    # Convert from homogenous coordinates
     tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,3,N]
-    tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column 
+    # tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column 
+    # Replace 0-valued augmented z column with dB values of source img 
+    tformed_xy[:,2,:] = torch.flatten(img, start_dim=1) # [B,3,N] N points with x,y and db values
 
     # TODO calculate mask values for each tformed_xy coordinates to match the target xy
     valid_points 
