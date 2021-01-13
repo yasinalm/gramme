@@ -25,8 +25,8 @@ class SequenceFolder(data.Dataset):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
-        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
+        scene_list_path = os.path.join(self.root,'train.txt') if train else os.path.join(self.root,'val.txt')
+        self.scenes = [os.path.join(self.root,folder[:-1]) for folder in open(scene_list_path)]
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
@@ -39,20 +39,21 @@ class SequenceFolder(data.Dataset):
         shifts = list(range(-demi_length * self.k, demi_length * self.k + 1, self.k))
         shifts.pop(demi_length)
         for scene in self.scenes:
-            intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            imgs = sorted(scene.files('*.jpg'))
+            # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
+            imgs = sorted(scene.files('*.csv'))
 
             if len(imgs) < sequence_length:
                 continue
             for i in range(demi_length * self.k, len(imgs)-demi_length * self.k):
-                sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': []}
+                # sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': []}
+                sample = {'tgt': imgs[i], 'ref_imgs': []}
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
                 sequence_set.append(sample)
         random.shuffle(sequence_set)
         self.samples = sequence_set
 
-    def __getitem__(self, index):
+    """ def __getitem__(self, index):
         sample = self.samples[index]
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
@@ -62,7 +63,15 @@ class SequenceFolder(data.Dataset):
             ref_imgs = imgs[1:]
         else:
             intrinsics = np.copy(sample['intrinsics'])
-        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics)
+        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics) """
+    
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        tgt_img = load_as_float(sample['tgt'])
+        ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
+
+        return tgt_img, ref_imgs
+    
 
     def __len__(self):
         return len(self.samples)
