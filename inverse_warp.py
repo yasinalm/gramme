@@ -2,6 +2,9 @@ from __future__ import division
 import torch
 import torch.nn.functional as F
 
+import conversions as tgm
+
+
 pixel_coords = None
 
 
@@ -142,7 +145,7 @@ def pose_vec2mat(vec, rotation_mode='euler'):
     Args:s
         vec: 6DoF parameters in the order of tx, ty, tz, rx, ry, rz -- [B, 6]
     Returns:
-        A transformation matrix -- [B, 3, 4]
+        A transformation matrix T*R -- [B, 3, 4]
     """
     translation = vec[:, :3].unsqueeze(-1)  # [B, 3, 1]
     rot = vec[:, 3:]
@@ -152,6 +155,56 @@ def pose_vec2mat(vec, rotation_mode='euler'):
         rot_mat = quat2mat(rot)  # [B, 3, 3]
     transform_mat = torch.cat([rot_mat, translation], dim=2)  # [B, 3, 4]
     return transform_mat
+
+
+def cart2pol(x, y):
+    rho = torch.sqrt(x**2 + y**2)
+    phi = torch.arctan2(y, x)
+    return phi, rho
+
+def pol2cart(phi, rho):
+    x = rho * torch.cos(phi)
+    y = rho * torch.sin(phi)
+    return x, y
+
+
+azimuths = [] # TODO: copy from MATLAB
+ranges = [] # TODO: copy from MATLAB    
+
+az_grid, range_grid = torch.meshgrid(azimuths, ranges)
+y, x = pol2cart(torch.deg2rad(az_grid), range_grid)
+x=torch.flatten(x)
+y=torch.flatten(y)
+
+xy = torch.vstack((x, y, torch.zeros_like(x)))  # Nx3 Augment with zero z column
+xy_hom = tgm.convert_points_to_homogeneous(input)  # Nx4
+
+def inverse_warp_fft(img, pose, rotation_mode='euler', padding_mode='zeros'):
+    """
+    Inverse warp a source image to the target image plane.
+    H: Number of ADC samples (or Doppler bins)
+    W: Number of angle bins
+    Args:
+        img: the source image (where to sample pixels) -- [B, H, W]
+        pose: 6DoF pose parameters from target to source -- [B, 6]
+    Returns:
+        projected_img: Source image warped to the target image plane
+        valid_points: Boolean array indicating point validity
+    """
+    check_sizes(img, 'img', 'BHW')
+    check_sizes(pose, 'pose', 'B6')
+
+    # batch_size, img_height, img_width = img.size()
+
+    pose_mat = tgm.rtvec_to_pose(pose)  # T*R in homogenous coordinates [B,4,4]
+    tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(xy_hom)) # [B,4,N]
+    tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,3,N]
+    tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column 
+
+    # TODO calculate mask values for each tformed_xy coordinates to match the target xy
+    valid_points 
+
+    return tformed_xy, valid_points
 
 
 def inverse_warp(img, depth, pose, intrinsics, rotation_mode='euler', padding_mode='zeros'):
