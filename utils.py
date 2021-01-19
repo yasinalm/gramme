@@ -2,7 +2,7 @@ from __future__ import division
 import shutil
 import numpy as np
 import torch
-from path import Path
+# from pathlib import Path
 import datetime
 from collections import OrderedDict
 from matplotlib import cm

@@ -1,2 +1,8 @@
 # VS Code settings
 .vscode
+
+# checkpoints
+checkpoints
+
+# python cache
+__pycache__

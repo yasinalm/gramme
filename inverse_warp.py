@@ -29,7 +29,7 @@ class Warper(object):
         azimuths = torch.arange(num_angle_bins)
         azimuths = (azimuths - (num_angle_bins / 2))
         ranges = torch.arange(numRangeBins)
-        ranges *= rangeResolutionsInMeter
+        ranges = ranges*rangeResolutionsInMeter
 
         az_grid, range_grid = torch.meshgrid(azimuths, ranges)
         x, y = pol2cart(torch.deg2rad(az_grid), range_grid)

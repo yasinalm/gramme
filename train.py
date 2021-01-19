@@ -2,7 +2,7 @@ import argparse
 import time
 import csv
 import datetime
-from path import Path
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -15,7 +15,7 @@ import models
 import custom_transforms
 from utils import tensor2array, save_checkpoint
 from datasets.sequence_folders import SequenceFolder
-from datasets.pair_folders import PairFolder
+# from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
@@ -78,7 +78,7 @@ def main():
     save_path = Path(args.name)
     args.save_path = 'checkpoints'/save_path/timestamp
     print('=> will save everything to {}'.format(args.save_path))
-    args.save_path.makedirs_p()
+    args.save_path.mkdir(parents=True)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -111,16 +111,16 @@ def main():
             # transform=train_transform,
             seed=args.seed,
             train=True,
-            sequence_length=args.sequence_length,
-            dataset=args.dataset
+            sequence_length=args.sequence_length
+            # dataset=args.dataset
         )
-    else:
-        train_set = PairFolder(
-            args.data,
-            seed=args.seed,
-            train=True,
-            transform=train_transform
-        )
+    # else:
+    #     train_set = PairFolder(
+    #         args.data,
+    #         seed=args.seed,
+    #         train=True,
+    #         transform=train_transform
+    #     )
 
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -137,8 +137,8 @@ def main():
             # transform=valid_transform,
             seed=args.seed,
             train=False,
-            sequence_length=args.sequence_length,
-            dataset=args.dataset
+            sequence_length=args.sequence_length
+            # dataset=args.dataset
         )
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -209,7 +209,7 @@ def main():
         if args.with_gt:
             errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
         else:
-            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, output_writers)
+            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, warper, output_writers)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
@@ -307,7 +307,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
 
 
 @torch.no_grad()
-def validate_without_gt(args, val_loader, pose_net, epoch, logger, output_writers=[], warper):
+def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=1, precision=4)
@@ -319,7 +319,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, output_writer
 
     end = time.time()
     logger.valid_bar.update(0)
-    for i, (tgt_img, ref_imgs in enumerate(val_loader):
+    for i, (tgt_img, ref_imgs) in enumerate(val_loader):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)

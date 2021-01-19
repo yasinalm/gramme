@@ -1,13 +1,14 @@
 import torch.utils.data as data
 import numpy as np
-from imageio import imread
-from path import Path
+# from skimage import io
+from pathlib import Path
 import random
 import os
 
 
 def load_as_float(path):
-    return imread(path).astype(np.float32)
+    # return io.imread(path).astype(np.float32)
+    return np.genfromtxt(path, delimiter=',')
 
 
 class SequenceFolder(data.Dataset):
@@ -21,14 +22,14 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, seed=None, train=True, sequence_length=3, transform=None, skip_frames=1, dataset='kitti'):
+    def __init__(self, root, seed=None, train=True, sequence_length=3, transform=None, skip_frames=1):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
-        scene_list_path = os.path.join(self.root,'train.txt') if train else os.path.join(self.root,'val.txt')
-        self.scenes = [os.path.join(self.root,folder[:-1]) for folder in open(scene_list_path)]
+        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+        self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
         self.transform = transform
-        self.dataset = dataset
+        # self.dataset = dataset
         self.k = skip_frames
         self.crawl_folders(sequence_length)
 
@@ -40,7 +41,7 @@ class SequenceFolder(data.Dataset):
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            imgs = sorted(scene.files('*.csv'))
+            imgs = sorted(list(scene.glob('*.csv')))
 
             if len(imgs) < sequence_length:
                 continue
@@ -50,6 +51,7 @@ class SequenceFolder(data.Dataset):
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
                 sequence_set.append(sample)
+            
         random.shuffle(sequence_set)
         self.samples = sequence_set
 
