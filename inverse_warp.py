@@ -121,7 +121,7 @@ class Warper(object):
         for ref_img, pose, pose_inv in zip(ref_imgs, poses, poses_inv):
 
             db_loss1 = self.compute_pairwise_loss(tgt_img, ref_img, pose)
-            db_loss2 = self.ompute_pairwise_loss(ref_img, tgt_img, pose_inv)
+            db_loss2 = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
 
             db_loss += (db_loss1 + db_loss2)
 
