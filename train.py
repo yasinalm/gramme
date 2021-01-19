@@ -16,7 +16,8 @@ import custom_transforms
 from utils import tensor2array, save_checkpoint
 from datasets.sequence_folders import SequenceFolder
 from datasets.pair_folders import PairFolder
-from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
+from inverse_warp import Warper
+# from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -59,7 +60,9 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
                          ' border will only null gradients of the coordinate outside (x or y)')
 parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
-
+parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
+parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
+parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
 best_error = -1
 n_iter = 0
@@ -150,6 +153,10 @@ def main():
         args.epoch_size = len(train_loader)
 
     # create model
+    print("=> creating loss object")
+    warper = Warper(args.range_res, args.num_range_bins, args.num_angle_bins, args.with_auto_mask, args.padding_mode)
+
+    # create model
     print("=> creating model")
     disp_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
     pose_net = models.PoseResNet(18, args.with_pretrain).to(device)
@@ -193,7 +200,7 @@ def main():
 
         # train for one epoch
         logger.reset_train_bar()
-        train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.epoch_size, logger, training_writer)
+        train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.epoch_size, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -232,7 +239,7 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger, train_writer):
+def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger, train_writer, warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -259,18 +266,16 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
-                                                         poses, poses_inv, args.num_scales, args.with_ssim,
-                                                         args.with_mask, args.with_auto_mask, args.padding_mode)
+        loss = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
-        loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
-
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        # loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
+        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3
 
         if log_losses:
-            train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
-            train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
-            train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
+            # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
+            # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
+            # train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
             train_writer.add_scalar('total_loss', loss.item(), n_iter)
 
         # record loss and EPE
@@ -287,7 +292,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
-            writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
+            # writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
+            writer.writerow([loss.item()])
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
