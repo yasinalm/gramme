@@ -156,6 +156,34 @@ def pose_vec2mat(vec, rotation_mode='euler'):
     transform_mat = torch.cat([rot_mat, translation], dim=2)  # [B, 3, 4]
     return transform_mat
 
+# Şimdilik dursun bu. düz yaz aşağıda sonra fonksiyona çevir
+def radar2pixel(cam_coords, pose_mat, padding_mode):
+    """Transform coordinates in the camera frame to the pixel frame.
+    Args:
+        cam_coords: pixel coordinates defined in the first camera coordinates system -- [B, 4, H, W]
+        proj_c2p_rot: rotation matrix of cameras -- [B, 3, 4]
+        proj_c2p_tr: translation vectors of cameras -- [B, 3, 1]
+    Returns:
+        array of [-1,1] coordinates -- [B, 2, H, W]
+    """
+    # Transform points
+    tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(xy_hom)) # [B,4,N]
+    # Convert from homogenous coordinates
+    tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,3,N]
+    # Convert back from cartesian to polar
+    theta_tformed_rad, rho_tformed = cart2pol(tformed_xy[0,:], tformed_xy[1,:])
+    theta_tformed = torch.rad2deg(theta_tformed_rad)
+
+    X = theta_tformed
+    Y = rho_tformed
+    Z = pcoords[:, 2].clamp(min=1e-3)
+
+    # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    X_norm = 2*(X / Z)/(w-1) - 1
+    Y_norm = 2*(Y / Z)/(h-1) - 1  # Idem [B, H*W]
+
+    pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
+    return pixel_coords.reshape(b, h, w, 2)
 
 def cart2pol(x, y):
     rho = torch.sqrt(x**2 + y**2)
@@ -168,11 +196,20 @@ def pol2cart(phi, rho):
     return x, y
 
 
-azimuths = [] # TODO: copy from MATLAB
-ranges = [] # TODO: copy from MATLAB    
+# RF params
+rangeResolutionsInMeter = 0.0977
+# dopplerResolutionMps = 0.0951
+numRangeBins = 256
+numDopplerBins = 128
+num_angle_bins = 64 # our choice
+
+azimuths = np.arange(num_angle_bins)
+azimuths = (azimuths - (num_angle_bins / 2))
+ranges = np.arange(numRangeBins)
+ranges *= rangeResolutionsInMeter
 
 az_grid, range_grid = torch.meshgrid(azimuths, ranges)
-y, x = pol2cart(torch.deg2rad(az_grid), range_grid)
+x, y = pol2cart(torch.deg2rad(az_grid), range_grid)
 x=torch.flatten(x)
 y=torch.flatten(y)
 
@@ -194,22 +231,44 @@ def inverse_warp_fft(img, pose, rotation_mode='euler', padding_mode='zeros'):
     check_sizes(img, 'img', 'BHW')
     check_sizes(pose, 'pose', 'B6')
 
-    # batch_size, img_height, img_width = img.size()
+    b, h, w = img.size()
 
     # Convert 6 DoF pose to 4x4 transformation matrix
     pose_mat = tgm.rtvec_to_pose(pose)  # T*R in homogenous coordinates [B,4,4]
+
     # Transform points
     tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(xy_hom)) # [B,4,N]
     # Convert from homogenous coordinates
     tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,3,N]
-    # tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column 
+    # Convert back from cartesian to polar
+    theta_tformed_rad, rho_tformed = cart2pol(tformed_xy[:,0,:], tformed_xy[:,1,:])
+    theta_tformed = torch.rad2deg(theta_tformed_rad) # [B,N]
+
+    # tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column [B,2,N]
     # Replace 0-valued augmented z column with dB values of source img 
-    tformed_xy[:,2,:] = torch.flatten(img, start_dim=1) # [B,3,N] N points with x,y and db values
+    # tformed_xy[:,2,:] = torch.flatten(img, start_dim=1) # [B,3,N] N points with x,y and db values
 
-    # TODO calculate mask values for each tformed_xy coordinates to match the target xy
-    valid_points 
+    X = theta_tformed # [B,N]
+    Y = rho_tformed # [B,N]
+    # w = num_angle_bins
+    # h = numRangeBins
 
-    return tformed_xy, valid_points
+    # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
+    X_norm = 2*X/(w-1) - 1
+    Y_norm = 2*Y/(h-1) - 1  # Idem [B, H*W]
+
+    pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
+    src_pixel_coords = pixel_coords.reshape(b, h, w, 2)
+
+    # src_pixel_coords = radar2pixel(pose_mat, padding_mode)  # [B,H,W,2]
+
+    projected_img = F.grid_sample(
+        img, src_pixel_coords, padding_mode=padding_mode)
+
+    # calculate mask values for each tformed_xy coordinates to match the target xy
+    valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1 
+
+    return projected_img, valid_points
 
 
 def inverse_warp(img, depth, pose, intrinsics, rotation_mode='euler', padding_mode='zeros'):
