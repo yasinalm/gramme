@@ -173,7 +173,7 @@ def main():
     #     pose_net.load_state_dict(weights['state_dict'], strict=False)
 
     # disp_net = torch.nn.DataParallel(disp_net)
-    pose_net = torch.nn.DataParallel(pose_net)
+    # pose_net = torch.nn.DataParallel(pose_net)
 
     print('=> setting adam solver')
     optim_params = [
@@ -209,7 +209,7 @@ def main():
         if args.with_gt:
             errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
         else:
-            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, warper, output_writers)
+            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
@@ -226,9 +226,9 @@ def main():
         best_error = min(best_error, decisive_error)
         save_checkpoint(
             args.save_path, {
-                'epoch': epoch + 1,
-                'state_dict': disp_net.module.state_dict()
-            }, {
+            #     'epoch': epoch + 1,
+            #     'state_dict': disp_net.module.state_dict()
+            # }, {
                 'epoch': epoch + 1,
                 'state_dict': pose_net.module.state_dict()
             },

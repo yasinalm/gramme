@@ -22,7 +22,7 @@ class ResNetMultiImageInput(models.ResNet):
         super(ResNetMultiImageInput, self).__init__(block, layers)
         self.inplanes = 64
         self.conv1 = nn.Conv2d(
-            num_input_images * 3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            num_input_images * 1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -51,11 +51,11 @@ def resnet_multiimage_input(num_layers, pretrained=False, num_input_images=1):
     block_type = {18: models.resnet.BasicBlock, 50: models.resnet.Bottleneck}[num_layers]
     model = ResNetMultiImageInput(block_type, blocks, num_input_images=num_input_images)
 
-    if pretrained:
-        loaded = model_zoo.load_url(models.resnet.model_urls['resnet{}'.format(num_layers)])
-        loaded['conv1.weight'] = torch.cat(
-            [loaded['conv1.weight']] * num_input_images, 1) / num_input_images
-        model.load_state_dict(loaded)
+    # if pretrained:
+    #     loaded = model_zoo.load_url(models.resnet.model_urls['resnet{}'.format(num_layers)])
+    #     loaded['conv1.weight'] = torch.cat(
+    #         [loaded['conv1.weight']] * num_input_images, 1) / num_input_images
+    #     model.load_state_dict(loaded)
     return model
 
 

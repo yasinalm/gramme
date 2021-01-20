@@ -53,7 +53,7 @@ class PoseDecoder(nn.Module):
 
 class PoseResNet(nn.Module):
 
-    def __init__(self, num_layers = 18, pretrained = True):
+    def __init__(self, num_layers = 18, pretrained = False):
         super(PoseResNet, self).__init__()
         self.encoder = ResnetEncoder(num_layers = num_layers, pretrained = pretrained, num_input_images=2)
         self.decoder = PoseDecoder(self.encoder.num_ch_enc)
@@ -74,8 +74,8 @@ if __name__ == "__main__":
     model = PoseResNet().cuda()
     model.train()
 
-    tgt_img = torch.randn(4, 3, 256, 832).cuda()
-    ref_imgs = [torch.randn(4, 3, 256, 832).cuda() for i in range(2)]
+    tgt_img = torch.randn(4, 1, 256, 64).cuda()
+    ref_imgs = [torch.randn(4, 1, 256, 64).cuda() for i in range(2)]
 
     pose = model(tgt_img, ref_imgs[0])
 
