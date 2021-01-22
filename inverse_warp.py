@@ -36,8 +36,9 @@ class Warper(object):
         x=torch.flatten(x)
         y=torch.flatten(y)
 
-        xy = torch.vstack((x, y, torch.zeros_like(x)))  # Nx3 Augment with zero z column
-        self.xy_hom = tgm.convert_points_to_homogeneous(xy)  # Nx4
+        xy = torch.vstack((x, y, torch.zeros_like(x)))  # [3,N] Augment with zero z column
+        xy = torch.transpose(xy, 0,1) # [N,3]
+        self.xy_hom = tgm.convert_points_to_homogeneous(xy).to(device) # [N,4]
 
     
     def radar2pixel(self, pose_mat):
@@ -50,11 +51,12 @@ class Warper(object):
             array of [-1,1] coordinates -- [B, 2, H, W]
         """
         # Transform points
-        tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(self.xy_hom)) # [B,4,N]
+        tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(self.xy_hom, 0,1)) # [B,4,N]
+        tformed_xy_hom = torch.transpose(tformed_xy_hom, 1,2) # [B,N,4]
         # Convert from homogenous coordinates
-        tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,3,N]
+        tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,N,3]
         # Convert back from cartesian to polar
-        theta_tformed_rad, rho_tformed = cart2pol(tformed_xy[:,0,:], tformed_xy[:,1,:])
+        theta_tformed_rad, rho_tformed = cart2pol(tformed_xy[:,:,0], tformed_xy[:,:,1]) # [B,N], [B,N]
         theta_tformed = torch.rad2deg(theta_tformed_rad) # [B,N]
 
         # tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column [B,2,N]
@@ -87,10 +89,10 @@ class Warper(object):
             projected_img: Source image warped to the target image plane
             valid_points: Boolean array indicating point validity
         """
-        check_sizes(img, 'img', 'BHW')
+        check_sizes(img, 'img', 'B1HW')
         check_sizes(pose, 'pose', 'B6')
 
-        self.b, self.h, self.w = img.size()
+        self.b, self.c, self.h, self.w = img.size()
 
         assert self.w == self.num_angle_bins
         assert self.h == self.numRangeBins
@@ -108,7 +110,8 @@ class Warper(object):
             img, src_pixel_coords, padding_mode=self.padding_mode)
 
         # calculate mask values for each tformed_xy coordinates to match the target xy
-        valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1 
+        valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1 # [B,H,W]
+        valid_points = torch.unsqueeze(valid_points, 1) # [B,1,H,W]
 
         return projected_img, valid_points
 
@@ -135,8 +138,8 @@ class Warper(object):
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
 
         if self.with_auto_mask == True:
-            auto_mask = (diff_img.mean(dim=1, keepdim=True) < (tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float() * valid_mask
-            valid_mask = auto_mask
+            auto_mask = (diff_img < (tgt_img - ref_img).abs()).float() # [B,1,H,W]
+            valid_mask = auto_mask * valid_mask # element-wise # [B,1,H,W]
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
@@ -192,7 +195,7 @@ def check_sizes(input, input_name, expected):
 
 def cart2pol(x, y):
     rho = torch.sqrt(x**2 + y**2)
-    phi = torch.arctan2(y, x)
+    phi = torch.atan2(y, x)
     return phi, rho
 
 def pol2cart(phi, rho):

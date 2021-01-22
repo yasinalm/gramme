@@ -8,7 +8,7 @@ import os
 
 def load_as_float(path):
     # return io.imread(path).astype(np.float32)
-    img = np.genfromtxt(path, delimiter=',') # [H, W]
+    img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
     img = img[np.newaxis,:,:] # [1, H, W] single channel image
     return img
 
