@@ -115,20 +115,22 @@ class Warper(object):
 
         return projected_img, valid_points
 
-    #TODO: num_scales, mask eklenebilir buraya.
+    #TODO: num_scales eklenebilir buraya.
     # decibels loss
     def compute_db_loss(self, tgt_img, ref_imgs, poses, poses_inv):
 
         db_loss = 0
+        projected_imgs = ref_imgs
 
-        for ref_img, pose, pose_inv in zip(ref_imgs, poses, poses_inv):
+        for i, (ref_img, pose, pose_inv) in enumerate(zip(ref_imgs, poses, poses_inv)):
 
-            db_loss1 = self.compute_pairwise_loss(tgt_img, ref_img, pose)
-            db_loss2 = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
+            db_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, pose)
+            db_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
 
             db_loss += (db_loss1 + db_loss2)
+            projected_imgs[i] = projected_img
 
-        return db_loss
+        return db_loss, projected_imgs
 
 
     def compute_pairwise_loss(self, tgt_img, ref_img, pose):
@@ -144,7 +146,7 @@ class Warper(object):
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
 
-        return reconstruction_loss
+        return reconstruction_loss, ref_img_warped
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):

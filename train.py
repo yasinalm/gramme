@@ -88,6 +88,7 @@ def main():
     training_writer = SummaryWriter(args.save_path)
     output_writers = []
     if args.log_output:
+        # Keep n different writers to save n images. Could be written better
         for i in range(3):
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
@@ -267,7 +268,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
         # tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        loss = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
@@ -284,7 +285,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
 
         # compute gradient and do Adam step
         optimizer.zero_grad()
-        loss.backward()
+        # loss.backward()
         optimizer.step()
 
         # measure elapsed time
@@ -328,15 +329,15 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
         # compute output
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        loss, projected_img = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
-        # if log_outputs and i < len(output_writers):
-        #     if epoch == 0:
-        #         output_writers[i].add_image('val Input', tensor2array(tgt_img[0]), 0)
+        if log_outputs and i < len(output_writers):
+            # if epoch == 0:
+            output_writers[i].add_image('val Input', tensor2array(tgt_img[0]), epoch)
 
-        #     output_writers[i].add_image('val Projected Image',
-        #                                 tensor2array(projected_img[0][0], max_value=None, colormap='magma'),
-        #                                 epoch)
+            output_writers[i].add_image('val Projected Image',
+                                        tensor2array(projected_imgs[0][0], max_value=None, colormap='magma'),
+                                        epoch)
 
         loss = loss.item()
         losses.update([loss])
