@@ -30,6 +30,7 @@ class SequenceFolder(data.Dataset):
         self.root = Path(root)
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
+        # self.scenes = self.scenes[:1] # Sub-sample the scenes during development
         self.transform = transform
         # self.dataset = dataset
         self.k = skip_frames
@@ -73,6 +74,10 @@ class SequenceFolder(data.Dataset):
         sample = self.samples[index]
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
+
+        if self.transform:
+            tgt_img = self.transform(tgt_img)
+            ref_imgs = [self.transform(ref_img) for ref_img in ref_imgs]
 
         return tgt_img, ref_imgs
     

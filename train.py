@@ -9,6 +9,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
+from torchvision import transforms
 
 import models
 
@@ -93,8 +94,8 @@ def main():
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
     # Data loading code
-    # normalize = custom_transforms.Normalize(mean=[0.45, 0.45, 0.45],
-    #                                         std=[0.225, 0.225, 0.225])
+    mean, std = 135, 27 # TODO: To be calculated over all dataset
+    normalize = custom_transforms.Normalize(mean=mean, std=std)
 
     # train_transform = custom_transforms.Compose([
     #     custom_transforms.RandomHorizontalFlip(),
@@ -103,13 +104,15 @@ def main():
     #     normalize
     # ])
 
-    # valid_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+
+    
 
     print("=> fetching scenes in '{}'".format(args.data))
     if args.folder_type == 'sequence':
         train_set = SequenceFolder(
             args.data,
-            # transform=train_transform,
+            transform=ds_transform,
             seed=args.seed,
             train=True,
             sequence_length=args.sequence_length
@@ -129,13 +132,13 @@ def main():
         from datasets.validation_folders import ValidationSet
         val_set = ValidationSet(
             args.data,
-            transform=valid_transform,
+            transform=ds_transform,
             dataset=args.dataset
         )
     else:
         val_set = SequenceFolder(
             args.data,
-            # transform=valid_transform,
+            transform=ds_transform,
             seed=args.seed,
             train=False,
             sequence_length=args.sequence_length
