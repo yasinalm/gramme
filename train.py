@@ -9,7 +9,6 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
-from torchvision import transforms
 
 import models
 
@@ -163,7 +162,7 @@ def main():
     # create model
     print("=> creating model")
     # disp_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNet(18, args.with_pretrain).to(device)
+    pose_net = models.PoseResNet(50, args.with_pretrain).to(device)
 
     # load parameters
     # if args.pretrained_disp:
