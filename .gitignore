@@ -6,3 +6,6 @@ checkpoints
 
 # python cache
 __pycache__
+
+# Notebook cache
+notebooks/.ipynb_checkpoints

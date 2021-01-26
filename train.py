@@ -159,7 +159,7 @@ def main():
         args.epoch_size = len(train_loader)
     print('Epoch size: ', args.epoch_size)
     if args.val_size == 0:
-        args.epoch_size = len(val_loader)
+        args.val_size = len(val_loader)
     print('Validation size: ', args.val_size)
 
     # create model
