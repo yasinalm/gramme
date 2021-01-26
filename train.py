@@ -3,6 +3,7 @@ import time
 import csv
 import datetime
 from pathlib import Path
+import warnings
 
 import numpy as np
 import torch
@@ -21,6 +22,7 @@ from inverse_warp import Warper
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
+warnings.filterwarnings("ignore", category=UserWarning) # Supress UserWarning from grid_sample
 
 parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -31,6 +33,7 @@ parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence l
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--epoch-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
+parser.add_argument('--val-size', default=0, type=int, metavar='N', help='manual validation size (will match dataset size if not set)')
 parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
 parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum for sgd, alpha parameter for adam')
@@ -154,6 +157,10 @@ def main():
 
     if args.epoch_size == 0:
         args.epoch_size = len(train_loader)
+    print('Epoch size: ', args.epoch_size)
+    if args.val_size == 0:
+        args.epoch_size = len(val_loader)
+    print('Validation size: ', args.val_size)
 
     # create model
     print("=> creating loss object")
@@ -162,7 +169,7 @@ def main():
     # create model
     print("=> creating model")
     # disp_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNet(50, args.with_pretrain).to(device)
+    pose_net = models.PoseResNet(args.resnet_layers, args.with_pretrain).to(device)
 
     # load parameters
     # if args.pretrained_disp:
@@ -195,7 +202,7 @@ def main():
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'photo_loss', 'smooth_loss', 'geometry_consistency_loss'])
 
-    logger = TermLogger(n_epochs=args.epochs, train_size=min(len(train_loader), args.epoch_size), valid_size=len(val_loader))
+    logger = TermLogger(n_epochs=args.epochs, train_size=args.epoch_size, valid_size=args.val_size)
     logger.epoch_bar.start()
 
     for epoch in range(args.epochs):
@@ -212,7 +219,7 @@ def main():
         if args.with_gt:
             errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
         else:
-            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers)
+            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, args.val_size, logger, warper, output_writers)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
@@ -287,7 +294,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
 
         # compute gradient and do Adam step
         optimizer.zero_grad()
-        # loss.backward()
+        loss.backward()
         optimizer.step()
 
         # measure elapsed time
@@ -310,7 +317,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
 
 
 @torch.no_grad()
-def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers=[]):
+def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=1, precision=4)
@@ -335,10 +342,12 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
 
         if log_outputs and i < len(output_writers):
             # if epoch == 0:
-            output_writers[i].add_image('val Input', tensor2array(tgt_img[0]), epoch)
+            output_writers[i].add_image('val Input', 
+                                        tensor2array(tgt_img[0], colormap='bone'), 
+                                        epoch)
 
             output_writers[i].add_image('val Projected Image',
-                                        tensor2array(projected_imgs[0][0], max_value=None, colormap='magma'),
+                                        tensor2array(projected_imgs[0][0], colormap='bone'),
                                         epoch)
 
         loss = loss.item()
@@ -350,8 +359,10 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
         logger.valid_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
+        if i >= val_size - 1:
+            break
 
-    logger.valid_bar.update(len(val_loader))
+    logger.valid_bar.update(val_size)
     return losses.avg, ['Total loss']
 
 
