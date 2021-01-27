@@ -31,7 +31,7 @@ class Warper(object):
         ranges = torch.arange(numRangeBins)
         ranges = ranges*rangeResolutionsInMeter
 
-        az_grid, range_grid = torch.meshgrid(azimuths, ranges)
+        az_grid, range_grid = torch.meshgrid(azimuths, ranges) # [num_angle_bins, numRangeBins], i.e. [W, H]
         x, y = pol2cart(torch.deg2rad(az_grid), range_grid)
         x=torch.flatten(x)
         y=torch.flatten(y)
@@ -65,16 +65,18 @@ class Warper(object):
 
         X = theta_tformed # [B,N]
         Y = rho_tformed # [B,N]
-        # w = self.num_angle_bins
-        # h = self.numRangeBins
+        w = self.num_angle_bins
+        h = (self.numRangeBins-1)*self.rangeResolutionsInMeter
 
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
-        X_norm = 2*X/(self.w-1) - 1
-        Y_norm = 2*Y/(self.h-1) - 1  # Idem [B, H*W]
+        X_norm = 2*X/w
+        Y_norm = 2*Y/h - 1  # Idem [B, H*W]
 
         pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
+        pixel_coords = pixel_coords.reshape(self.b, self.w, self.h, 2) # [B, W, H, 2]
+        pixel_coords = pixel_coords.transpose(1,2) # [B, H, W, 2]
 
-        return pixel_coords.reshape(self.b, self.h, self.w, 2)
+        return pixel_coords
 
     
     def inverse_warp_fft(self, img, pose, rotation_mode='euler'):
