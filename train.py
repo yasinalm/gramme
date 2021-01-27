@@ -30,6 +30,7 @@ parser = argparse.ArgumentParser(description='Structure from Motion Learner trai
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
+parser.add_argument('--skip-frames', type=int, metavar='N', help='gap between frames', default=5)
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--epoch-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
@@ -96,7 +97,7 @@ def main():
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
     # Data loading code
-    mean, std = 135, 27 # TODO: To be calculated over all dataset
+    mean, std = 120.0077, 6.4791 # Calculated over all dataset
     normalize = custom_transforms.Normalize(mean=mean, std=std)
 
     # train_transform = custom_transforms.Compose([
@@ -117,7 +118,8 @@ def main():
             transform=ds_transform,
             seed=args.seed,
             train=True,
-            sequence_length=args.sequence_length
+            sequence_length=args.sequence_length,
+            skip_frames=args.skip_frames
             # dataset=args.dataset
         )
     # else:
@@ -224,7 +226,7 @@ def main():
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
         for error, name in zip(errors, error_names):
-            training_writer.add_scalar(name, error, epoch)
+            training_writer.add_scalar('val/'+name, error, epoch)
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
         decisive_error = errors[0]
@@ -287,7 +289,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
             # train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
-            train_writer.add_scalar('total_loss', loss.item(), n_iter)
+            train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)
@@ -363,7 +365,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
             break
 
     logger.valid_bar.update(val_size)
-    return losses.avg, ['Total loss']
+    return losses.avg, ['total_loss']
 
 
 @torch.no_grad()
