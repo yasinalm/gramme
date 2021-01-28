@@ -97,7 +97,7 @@ def main():
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
     # Data loading code
-    mean, std = 120.0077, 6.4791 # Calculated over all dataset
+    mean, std = 119.4501, 6.5258 # Calculated over all dataset
     normalize = custom_transforms.Normalize(mean=mean, std=std)
 
     # train_transform = custom_transforms.Compose([
