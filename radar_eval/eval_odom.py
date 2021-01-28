@@ -2,7 +2,7 @@
 
 import argparse
 
-from kitti_odometry import KittiEvalOdom
+from radar_odometry import RadarEvalOdom
 
 parser = argparse.ArgumentParser(description='KITTI evaluation')
 parser.add_argument('--result', type=str, required=True,
@@ -18,7 +18,7 @@ parser.add_argument('--seqs',
                     default=None)
 args = parser.parse_args()
 
-eval_tool = KittiEvalOdom()
+eval_tool = RadarEvalOdom()
 gt_dir = "./kitti_eval/gt_poses/"
 result_dir = args.result
 

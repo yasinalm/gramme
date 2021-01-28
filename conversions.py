@@ -28,7 +28,6 @@ __all__ = [
 pi = torch.Tensor([3.14159265358979323846])
 
 
-
 def rad2deg(tensor):
     r"""Function that converts angles from radians to degrees.
 
@@ -49,8 +48,6 @@ def rad2deg(tensor):
                         .format(type(tensor)))
 
     return 180. * tensor / pi.to(tensor.device).type(tensor.dtype)
-
-
 
 
 def deg2rad(tensor):
@@ -76,8 +73,6 @@ def deg2rad(tensor):
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-
-
 def convert_points_from_homogeneous(points):
     r"""Function that converts points from homogeneous to Euclidean space.
 
@@ -98,8 +93,6 @@ def convert_points_from_homogeneous(points):
     return points[..., :-1] / points[..., -1:]
 
 
-
-
 def convert_points_to_homogeneous(points):
     r"""Function that converts points from Euclidean to homogeneous space.
 
@@ -118,8 +111,6 @@ def convert_points_to_homogeneous(points):
             points.shape))
 
     return nn.functional.pad(points, (0, 1), "constant", 1.0)
-
-
 
 
 def angle_axis_to_rotation_matrix(angle_axis):
@@ -196,8 +187,6 @@ def angle_axis_to_rotation_matrix(angle_axis):
     return rotation_matrix  # Nx4x4
 
 
-
-
 def rtvec_to_pose(rtvec):
     """
     Convert axis-angle rotation and translation vector to 4x4 pose matrix
@@ -222,8 +211,6 @@ def rtvec_to_pose(rtvec):
     return pose
 
 
-
-
 def rotation_matrix_to_angle_axis(rotation_matrix):
     """Convert 3x4 rotation matrix to Rodrigues vector
 
@@ -244,8 +231,6 @@ def rotation_matrix_to_angle_axis(rotation_matrix):
     # todo add check that matrix is a valid rotation matrix
     quaternion = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_angle_axis(quaternion)
-
-
 
 
 def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
@@ -328,8 +313,6 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     return q
 
 
-
-
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
 
@@ -384,7 +367,6 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     """Convert an angle axis to a quaternion.
 
@@ -435,12 +417,28 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     return torch.cat([w, quaternion], dim=-1)
 
 
+def inv_pose(pose):
+    """Calculate inverse of a given rigid body homogenous transformation matrix. Note that a naive inverse would be unnecessarily complicated.
+
+    Args:
+        pose (torch.Tensor): [...,4,4] transformation matrix
+
+    Returns:
+        torch.Tensor: Inverse of the input transformation matrix, [...,4,4]
+    """
+        
+    R = pose[..., :3, :3].transpose(-2, -1)
+    T = -pose[..., :3, 3].transpose(-2, -1)
+    inv_pose = pose.clone()
+    inv_pose[..., :3, :3] = R
+    inv_pose[..., :3, 3] = torch.transpose(R @ T, -2, -1)
+    return inv_pose
+
 # TODO: add below funtionalities
 #  - pose_to_rtvec
 
 
 # layer api
-
 
 
 class RadToDeg(nn.Module):
@@ -465,8 +463,6 @@ class RadToDeg(nn.Module):
         return rad2deg(input)
 
 
-
-
 class DegToRad(nn.Module):
     r"""Function that converts angles from degrees to radians.
 
@@ -487,8 +483,6 @@ class DegToRad(nn.Module):
 
     def forward(self, input):
         return deg2rad(input)
-
-
 
 
 class ConvertPointsFromHomogeneous(nn.Module):
@@ -517,8 +511,6 @@ class ConvertPointsFromHomogeneous(nn.Module):
 
     def forward(self, input):
         return convert_points_from_homogeneous(input)
-
-
 
 
 class ConvertPointsToHomogeneous(nn.Module):

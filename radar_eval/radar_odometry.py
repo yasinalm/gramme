@@ -1,4 +1,6 @@
-# Copyright (C) Huangying Zhan 2019. All rights reserved.
+# Based on https://github.com/JiawangBian/SC-SfMLearner-Release/blob/master/kitti_eval/kitti_odometry.py
+# TODO: All the inverse operations on transformation matrix must be handled cleverly, which are dramatically slow.
+# PyTorch3d could be a more efficient solution.
 
 import copy
 from matplotlib import pyplot as plt
@@ -70,10 +72,10 @@ def umeyama_alignment(x, y, with_scale=False):
     return r, t, c
 
 
-class KittiEvalOdom():
+class RadarEvalOdom():
     """Evaluate odometry result
     Usage example:
-        vo_eval = KittiEvalOdom()
+        vo_eval = RadarEvalOdom()
         vo_eval.eval(gt_pose_txt_dir, result_pose_txt_dir)
     """
 
@@ -108,6 +110,24 @@ class KittiEvalOdom():
             else:
                 frame_idx = cnt
             poses[frame_idx] = P
+        return poses
+
+    def load_poses_from_array(self, poses_pred):
+        """Load poses from txt (KITTI format)
+        Each line in the file should follow one of the following structures
+            (1) idx pose(3x4 matrix in terms of 12 numbers)
+            (2) pose(3x4 matrix in terms of 12 numbers)
+
+        Args:
+            file_name (str): txt file path
+        Returns:
+            poses (dict): {idx: 4x4 array}
+        """
+        poses = {}
+        for cnt, pose in enumerate(poses_pred):
+            P = np.eye(4)
+            P[:3,:] = pose.reshape((3,4))
+            poses[cnt] = P
         return poses
 
     def trajectory_distances(self, poses):
@@ -615,3 +635,80 @@ class KittiEvalOdom():
             # print("{0:.2f}".format(seq_ate[i]))
             # print("{0:.3f}".format(seq_rpe_trans[i]))
             # print("{0:.3f}".format(seq_rpe_rot[i] * 180 / np.pi))
+
+    
+    
+    def eval_online(self, f_gt, preds,
+             alignment=None,
+             seqs=None):
+        """Evaulate required/available sequences
+        Args:
+            gt_dir (str): ground truth poses txt files directory
+            result_dir (str): pose predictions txt files directory
+            alignment (str): if not None, optimize poses by
+                - scale: optimize scale factor for trajectory alignment and evaluation
+                - scale_7dof: optimize 7dof for alignment and use scale for trajectory evaluation
+                - 7dof: optimize 7dof for alignment and evaluation
+                - 6dof: optimize 6dof for alignment and evaluation
+            seqs (list/None):
+                - None: Evalute all available seqs in result_dir
+                - list: list of sequence indexs to be evaluated
+        """
+       
+        # Initialization
+        seq_ate = []
+        seq_rpe_trans = []
+        seq_rpe_rot = []
+
+        # evaluation
+        poses_result = self.load_poses_from_array(preds)
+        poses_gt = self.load_poses_from_txt(f_gt)
+
+        # Pose alignment to first frame
+        pred_0 = poses_result[0]
+        gt_0 = poses_gt[0]
+        for cnt in poses_result:
+            poses_result[cnt] = np.linalg.inv(pred_0) @ poses_result[cnt]
+            poses_gt[cnt] = np.linalg.inv(gt_0) @ poses_gt[cnt]
+
+        if alignment == "scale":
+            poses_result = self.scale_optimization(poses_gt, poses_result)
+        elif alignment == "scale_7dof" or alignment == "7dof" or alignment == "6dof":
+            # get XYZ
+            xyz_gt = []
+            xyz_result = []
+            for cnt in poses_result:
+                xyz_gt.append([poses_gt[cnt][0, 3], poses_gt[cnt][1, 3], poses_gt[cnt][2, 3]])
+                xyz_result.append([poses_result[cnt][0, 3], poses_result[cnt][1, 3], poses_result[cnt][2, 3]])
+            xyz_gt = np.asarray(xyz_gt).transpose(1, 0)
+            xyz_result = np.asarray(xyz_result).transpose(1, 0)
+
+            r, t, scale = umeyama_alignment(xyz_result, xyz_gt, alignment != "6dof")
+
+            align_transformation = np.eye(4)
+            align_transformation[:3:, :3] = r
+            align_transformation[:3, 3] = t
+
+            for cnt in poses_result:
+                poses_result[cnt][:3, 3] *= scale
+                if alignment == "7dof" or alignment == "6dof":
+                    poses_result[cnt] = align_transformation @ poses_result[cnt]
+
+        
+        # Compute ATE
+        ate = self.compute_ATE(poses_gt, poses_result)
+        seq_ate.append(ate)
+        print("ATE (m): ", ate)
+
+        # Compute RPE
+        rpe_trans, rpe_rot = self.compute_RPE(poses_gt, poses_result)
+        seq_rpe_trans.append(rpe_trans)
+        seq_rpe_rot.append(rpe_rot)
+        print("RPE (m): ", rpe_trans)
+        print("RPE (deg): ", rpe_rot * 180 / np.pi)
+
+        return ate, rpe_trans, rpe_rot
+
+        
+
+
