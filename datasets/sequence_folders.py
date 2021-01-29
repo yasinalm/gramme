@@ -28,6 +28,7 @@ class SequenceFolder(data.Dataset):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
+        self.train = train
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
         # self.scenes = self.scenes[:1] # Sub-sample the scenes during development
@@ -54,21 +55,12 @@ class SequenceFolder(data.Dataset):
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
                 sequence_set.append(sample)
-            
-        random.shuffle(sequence_set)
+        
+        # Shuffle training dataset
+        if self.train:    
+            random.shuffle(sequence_set)
         self.samples = sequence_set
 
-    """ def __getitem__(self, index):
-        sample = self.samples[index]
-        tgt_img = load_as_float(sample['tgt'])
-        ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
-        if self.transform is not None:
-            imgs, intrinsics = self.transform([tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
-            tgt_img = imgs[0]
-            ref_imgs = imgs[1:]
-        else:
-            intrinsics = np.copy(sample['intrinsics'])
-        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics) """
     
     def __getitem__(self, index):
         sample = self.samples[index]

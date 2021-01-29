@@ -417,7 +417,7 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     return torch.cat([w, quaternion], dim=-1)
 
 
-def inv_pose(pose):
+def inv_rigid_tform(pose):
     """Calculate inverse of a given rigid body homogenous transformation matrix. Note that a naive inverse would be unnecessarily complicated.
 
     Args:

@@ -18,6 +18,7 @@ from utils import tensor2array, save_checkpoint
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
+from radar_eval.eval_odom import RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
@@ -64,6 +65,7 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
                          ' border will only null gradients of the coordinate outside (x or y)')
 parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
+parser.add_argument('--val-gt', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
@@ -112,15 +114,15 @@ def main():
     
 
     print("=> fetching scenes in '{}'".format(args.data))
-    if args.folder_type == 'sequence':
-        train_set = SequenceFolder(
-            args.data,
-            transform=ds_transform,
-            seed=args.seed,
-            train=True,
-            sequence_length=args.sequence_length,
-            skip_frames=args.skip_frames
-            # dataset=args.dataset
+    # if args.folder_type == 'sequence':
+    train_set = SequenceFolder(
+        args.data,
+        transform=ds_transform,
+        seed=args.seed,
+        train=True,
+        sequence_length=args.sequence_length,
+        skip_frames=args.skip_frames
+        # dataset=args.dataset
         )
     # else:
     #     train_set = PairFolder(
@@ -132,22 +134,20 @@ def main():
 
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
+    val_set = SequenceFolder(
+        args.data,
+        transform=ds_transform,
+        seed=args.seed,
+        train=False,
+        sequence_length=args.sequence_length
+    )
     if args.with_gt:
-        from datasets.validation_folders import ValidationSet
-        val_set = ValidationSet(
-            args.data,
-            transform=ds_transform,
-            dataset=args.dataset
-        )
-    else:
-        val_set = SequenceFolder(
-            args.data,
-            transform=ds_transform,
-            seed=args.seed,
-            train=False,
-            sequence_length=args.sequence_length
-            # dataset=args.dataset
-        )
+        if args.val_gt:
+            vo_eval = RadarEvalOdom(args.val_gt)
+        else:
+            warnings.warn('with-gt is set but no ground truth validation file is provided with val-gt arg! with-gt will be ignored.')
+            args.with_gt = False
+        
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
     train_loader = torch.utils.data.DataLoader(
@@ -219,7 +219,7 @@ def main():
         # evaluate on validation set
         logger.reset_valid_bar()
         if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
+            errors, error_names = validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, args.val_size, logger, warper, output_writers)
         else:
             errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, args.val_size, logger, warper, output_writers)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
@@ -367,6 +367,62 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
     logger.valid_bar.update(val_size)
     return losses.avg, ['total_loss']
 
+
+@torch.no_grad()
+def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logger, warper, output_writers=[]):
+    global device
+    batch_time = AverageMeter()
+    losses = AverageMeter(i=1, precision=4)
+    error_names = ['ate'] #['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
+    errors = AverageMeter(i=len(error_names))
+    log_outputs = len(output_writers) > 0
+
+    # switch to evaluate mode
+    # disp_net.eval()
+    pose_net.eval()
+
+    all_poses = []
+    all_inv_poses = []
+
+    end = time.time()
+    logger.valid_bar.update(0)
+    for i, (tgt_img, ref_imgs) in enumerate(val_loader):
+        tgt_img = tgt_img.to(device)
+        ref_imgs = [img.to(device) for img in ref_imgs]
+        # intrinsics = intrinsics.to(device)
+        # intrinsics_inv = intrinsics_inv.to(device)
+
+        # compute output
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        all_poses.append(poses)
+        all_inv_poses.append(poses_inv)
+
+        loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+
+        if log_outputs and i < len(output_writers):
+            # if epoch == 0:
+            output_writers[i].add_image('val Input', 
+                                        tensor2array(tgt_img[0], colormap='bone'), 
+                                        epoch)
+
+            output_writers[i].add_image('val Projected Image',
+                                        tensor2array(projected_imgs[0][0], colormap='bone'),
+                                        epoch)
+
+        loss = loss.item()
+        losses.update([loss])
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+        logger.valid_bar.update(i+1)
+        if i % args.print_freq == 0:
+            logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
+        if i >= val_size - 1:
+            break
+    ate = vo_eval.eval_ref_poses(all_poses, all_inv_poses)
+    logger.valid_bar.update(val_size)
+    return [losses.avg, ate], ['total_loss', 'ATE']
 
 @torch.no_grad()
 def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[]):

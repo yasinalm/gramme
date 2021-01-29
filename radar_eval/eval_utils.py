@@ -1,8 +1,9 @@
 import warnings
 import torch
-import conversions as tgm
 
 import numpy as np
+
+import conversions as tgm
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -36,15 +37,42 @@ class RadarEvalOdom():
         poses_mat = torch.Tensor(poses_mat).to(device)
         return poses_mat
 
+    def eval_ref_poses(self, all_poses, all_inv_poses, k):
+        pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
+        all_poses_t = torch.cat(all_poses)
+        all_inv_poses_t = torch.cat(all_inv_poses)
         
-    def calculate_ate(self, pred=None):
+        # TODO: loop k times below two blocks
+        # Previous src
+        b_pose = tgm.rtvec_to_pose(all_poses_t[:,0]) # src2tgt
+        b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src
+        b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[:,0]) # inv(src2tgt)
+        b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2
+        idx = torch.arange(k, self.gt.shape[0]-k, k)
+        gt_seq_i = self.gt[idx,:]
+        pred = b_pose[idx-k]
+        ate_b = self.calculate_ate(pred, gt_seq_i)
+
+        # Next src
+        f_pose = tgm.rtvec_to_pose(all_poses_t[:,1]) # tgt2src
+        f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[:,1]) # inv(tgt2src)
+        f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src))
+        f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2
+        idx = torch.arange(2*k, self.gt.shape[0], k)
+        gt_seq_i = self.gt[idx,:]
+        pred = f_pose[idx-2*k]
+        ate_f = self.calculate_ate(pred, gt_seq_i)
+
+        
+    def calculate_ate(self, pred, gt=None):
         # pred [N,4,4]
         # pred_orig = align_to_origin(pred)
-        if pred==None:
-            pred = self.gt+1e-5
+
+        if gt==None:
+            gt=self.gt
 
         # None for batching, batch=1
-        gt_xyz = self.gt[None,:,:3,3]
+        gt_xyz = gt[None,:,:3,3]
         pred_xyz = pred[None,:,:3,3]
         R, T, s = corresponding_points_alignment(gt_xyz, pred_xyz)
 
@@ -87,7 +115,7 @@ def corresponding_points_alignment(
 
     for all batch indexes `i` in the least squares sense.
 
-    The algorithm is also known as Umeyama [1].
+    The algorithm is also known as Umeyama [1]. Code is based on PyTorch3d.
 
     Args:
         **X**: Batch of `d`-dimensional points of shape `(minibatch, num_point, d)`
@@ -214,6 +242,7 @@ def _apply_similarity_transform(
     of shape `(minibatch, d)` and a batch of scaling factors `s`
     of shape `(minibatch,)` to a given `d`-dimensional cloud `X`
     of shape `(minibatch, num_points, d)`
+    Code is based on PyTorch3d.
     """
     X = s[:, None, None] * torch.bmm(X, R) + T[:, None, :]
     return X
