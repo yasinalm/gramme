@@ -15,20 +15,27 @@ class RadarEvalOdom():
     """
 
     def __init__(self, f_gt):
+        """Initialize with ground truth file.
+
+        Args:
+            f_gt (Path): Path to ground truth trajectory file.
+        """
+
         self.gt = self.load_poses_from_txt(f_gt) # [N,4,4]
         # self.gt = align_to_origin(self.gt)
 
     def load_poses_from_txt(self, file_name):
         """Load poses from txt (KITTI format)
-        Each line in the file should follow one of the following structures
-            (1) idx pose(3x4 matrix in terms of 12 numbers)
-            (2) pose(3x4 matrix in terms of 12 numbers)
+        Each line in the file should follow the following structure
+            (1) pose(3x4 matrix in terms of 12 numbers)        
 
         Args:
             file_name (str): txt file path
+
         Returns:
-            poses (dict): {idx: 4x4 array}
+            torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
         """
+
         poses = np.genfromtxt(file_name, delimiter=',')
         poses16 = np.zeros((poses.shape[0],16))
         poses16[:,:12] = poses
@@ -38,38 +45,75 @@ class RadarEvalOdom():
         return poses_mat
 
     def eval_ref_poses(self, all_poses, all_inv_poses, k):
-        pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
+        """Evaluate ATE pose error from the predicted poses. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
+        We form a trajectory from a chained sequence with k skip frames, e.g. [k, 2*k, 3*k, ..., N]. We shift the sequence by {i:i<k} to evaluate 
+        the full prediction.
+
+        Args:
+            all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects.
+            all_inv_poses (list): Predicted relative pose values for each tgt-to-src pair. List of torch.Tensor objects.
+            k (int): Skip frames.
+
+        Returns:
+            torch.Tensor: Mean and std of the calculated ATE for forward and backward pose predictions.
+        """
+
+        # pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
         all_poses_t = torch.cat(all_poses)
         all_inv_poses_t = torch.cat(all_inv_poses)
-        
-        # TODO: loop k times below two blocks
-        # Previous src
-        b_pose = tgm.rtvec_to_pose(all_poses_t[:,0]) # src2tgt
-        b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src
-        b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[:,0]) # inv(src2tgt)
-        b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2
-        idx = torch.arange(k, self.gt.shape[0]-k, k)
-        gt_seq_i = self.gt[idx,:]
-        pred = b_pose[idx-k]
-        ate_b = self.calculate_ate(pred, gt_seq_i)
 
-        # Next src
-        f_pose = tgm.rtvec_to_pose(all_poses_t[:,1]) # tgt2src
-        f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[:,1]) # inv(tgt2src)
-        f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src))
-        f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2
-        idx = torch.arange(2*k, self.gt.shape[0], k)
-        gt_seq_i = self.gt[idx,:]
-        pred = f_pose[idx-2*k]
-        ate_f = self.calculate_ate(pred, gt_seq_i)
+        N = len(all_poses) # number of sequences
+
+        ate_bs = []
+        ate_fs = []        
+        #i=0
+        for i in range(k):
+            idx = torch.arange(i, N, k)
+            
+            # Previous src
+            b_pose = tgm.rtvec_to_pose(all_poses_t[idx,0]) # src2tgt
+            b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src
+            b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[idx,0]) # inv(src2tgt)
+            b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2
+            gt_idx = idx+k #torch.arange(k+i, N+k, k)
+            gt_seq_i = self.gt[gt_idx,:]
+            ate_b = self.calculate_ate(b_pose, gt_seq_i)
+            ate_bs.append(ate_b)
+
+            # Next src
+            f_pose = tgm.rtvec_to_pose(all_poses_t[idx,1]) # tgt2src
+            f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[idx,1]) # inv(tgt2src)
+            f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src))
+            f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2
+            gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
+            gt_seq_i = self.gt[gt_idx,:]
+            ate_f = self.calculate_ate(f_pose, gt_seq_i)
+            ate_fs.append(ate_f)
+
+        ate_bs = torch.cat(ate_bs)
+        ate_fs = torch.cat(ate_fs)
+
+        return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std()
 
         
     def calculate_ate(self, pred, gt=None):
-        # pred [N,4,4]
-        # pred_orig = align_to_origin(pred)
+        """Calculate Absolute Trajectory Error between predicted and ground truth trajectories.
+        Both prediction and gt is absolute trajectories.
+
+        Args:
+            pred (torch.Tensor): Predicted trajectory in the form of homogenous transformation matrix. Shape: [N,4,4]
+            gt (torch.Tensor, optional): Absolute ground truth tracjectory in the form of homogenous transformation matrix Shape: [N,4,4]. Defaults to None.
+
+        Returns:
+            torch.Tensor: Root mean squared error (RMSE) of ATE. Scalar tensor.
+        """
 
         if gt==None:
             gt=self.gt
+
+        # Align both trajectories to the origin
+        pred = align_to_origin(pred)
+        gt = align_to_origin(gt)
 
         # None for batching, batch=1
         gt_xyz = gt[None,:,:3,3]
@@ -86,6 +130,15 @@ class RadarEvalOdom():
 
 
 def align_to_origin(pose):
+    """Aligns a given trajectory to the origin.
+
+    Args:
+        pose (torch.Tensor): Absolute trajectory in the form of homogenous transformation matrix. Shape: [N,4,4]
+
+    Returns:
+        torch.Tensor: Origin-aligned absolute trajectory.
+    """
+
     aligned_pose = pose.clone()
     pose0 = pose[0]
     aligned_pose = torch.matmul(aligned_pose, pose0)
