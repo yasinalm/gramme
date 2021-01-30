@@ -15,16 +15,15 @@ def load_as_float(path):
 
 class SequenceFolder(data.Dataset):
     """A sequence data loader where the files are arranged in this way:
-        root/scene_1/0000000.jpg
-        root/scene_1/0000001.jpg
+        root/scene_1/0000000.csv
+        root/scene_1/0000001.csv
         ..
-        root/scene_1/cam.txt
-        root/scene_2/0000000.jpg
+        root/scene_2/0000000.csv
         .
-        transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
+        transform functions must take in an image
     """
 
-    def __init__(self, root, seed=None, train=True, sequence_length=3, transform=None, skip_frames=1):
+    def __init__(self, root, skip_frames, sequence_length, train, seed=None, transform=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)

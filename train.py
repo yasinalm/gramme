@@ -139,7 +139,8 @@ def main():
         transform=ds_transform,
         seed=args.seed,
         train=False,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        skip_frames=args.skip_frames
     )
     if args.with_gt:
         if args.val_gt:
@@ -420,69 +421,10 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
         if i >= val_size - 1:
             break
-    ate = vo_eval.eval_ref_poses(all_poses, all_inv_poses)
+    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std = vo_eval.eval_ref_poses(all_poses, all_inv_poses, args.skip_frames)
     logger.valid_bar.update(val_size)
-    return [losses.avg, ate], ['total_loss', 'ATE']
-
-@torch.no_grad()
-def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[]):
-    global device
-    batch_time = AverageMeter()
-    error_names = ['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
-    errors = AverageMeter(i=len(error_names))
-    log_outputs = len(output_writers) > 0
-
-    # switch to evaluate mode
-    disp_net.eval()
-
-    end = time.time()
-    logger.valid_bar.update(0)
-    for i, (tgt_img, depth) in enumerate(val_loader):
-        tgt_img = tgt_img.to(device)
-        depth = depth.to(device)
-
-        # check gt
-        if depth.nelement() == 0:
-            continue
-
-        # compute output
-        output_disp = disp_net(tgt_img)
-        output_depth = 1/output_disp[:, 0]
-
-        if log_outputs and i < len(output_writers):
-            if epoch == 0:
-                output_writers[i].add_image('val Input', tensor2array(tgt_img[0]), 0)
-                depth_to_show = depth[0]
-                output_writers[i].add_image('val target Depth',
-                                            tensor2array(depth_to_show, max_value=10),
-                                            epoch)
-                depth_to_show[depth_to_show == 0] = 1000
-                disp_to_show = (1/depth_to_show).clamp(0, 10)
-                output_writers[i].add_image('val target Disparity Normalized',
-                                            tensor2array(disp_to_show, max_value=None, colormap='magma'),
-                                            epoch)
-
-            output_writers[i].add_image('val Dispnet Output Normalized',
-                                        tensor2array(output_disp[0], max_value=None, colormap='magma'),
-                                        epoch)
-            output_writers[i].add_image('val Depth Output',
-                                        tensor2array(output_depth[0], max_value=10),
-                                        epoch)
-
-        if depth.nelement() != output_depth.nelement():
-            b, h, w = depth.size()
-            output_depth = torch.nn.functional.interpolate(output_depth.unsqueeze(1), [h, w]).squeeze(1)
-
-        errors.update(compute_errors(depth, output_depth, args.dataset))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-        logger.valid_bar.update(i+1)
-        if i % args.print_freq == 0:
-            logger.valid_writer.write('valid: Time {} Abs Error {:.4f} ({:.4f})'.format(batch_time, errors.val[0], errors.avg[0]))
-    logger.valid_bar.update(len(val_loader))
-    return errors.avg, error_names
+    return ([losses.avg, ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std], 
+            ['total_loss', 'ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std'])
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
