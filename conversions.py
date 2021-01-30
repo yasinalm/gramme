@@ -426,12 +426,29 @@ def inv_rigid_tform(pose):
     Returns:
         torch.Tensor: Inverse of the input transformation matrix, [...,4,4]
     """
-        
-    R = pose[..., :3, :3].transpose(-2, -1)
-    T = -pose[..., :3, 3].transpose(-2, -1)
+
+    if not torch.is_tensor(pose):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(pose)))
+
+    if pose.dim() < 3:
+        raise ValueError(
+            "Input size must be at least three dimensional tensor. Got dim: {}, shape: {}".format(
+                pose.dim(), pose.shape))
+
+    if not pose.shape[-2:] == (4, 4):
+        raise ValueError(
+            "Input size must be a [..., 4, 4]  tensor. Got {}".format(
+                pose.shape))
+
     inv_pose = pose.clone()
+
+    R = pose[..., :3, :3].transpose(-2, -1) # [..., 3,3]
+    T = -pose[..., :3, 3:4] # [..., 3,1]
+    T = R @ T # [..., 3,1]
+    
     inv_pose[..., :3, :3] = R
-    inv_pose[..., :3, 3] = torch.transpose(R @ T, -2, -1)
+    inv_pose[..., :3, 3:4] = T
     return inv_pose
 
 # TODO: add below funtionalities

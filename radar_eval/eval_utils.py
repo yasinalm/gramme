@@ -50,7 +50,7 @@ class RadarEvalOdom():
         the full prediction.
 
         Args:
-            all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects.
+            all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects size [seq_length, B, 6].
             all_inv_poses (list): Predicted relative pose values for each tgt-to-src pair. List of torch.Tensor objects.
             k (int): Skip frames.
 
@@ -59,10 +59,10 @@ class RadarEvalOdom():
         """
 
         # pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
-        all_poses_t = torch.cat(all_poses)
-        all_inv_poses_t = torch.cat(all_inv_poses)
+        all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
+        all_inv_poses_t = torch.cat(all_inv_poses, 1) # [seq_length, N, 6]
 
-        N = len(all_poses) # number of sequences
+        N = all_poses_t.shape[1] #len(all_poses) # number of sequences
 
         ate_bs = []
         ate_fs = []        
@@ -71,20 +71,20 @@ class RadarEvalOdom():
             idx = torch.arange(i, N, k)
             
             # Previous src
-            b_pose = tgm.rtvec_to_pose(all_poses_t[idx,0]) # src2tgt
-            b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src
-            b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[idx,0]) # inv(src2tgt)
-            b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2
+            b_pose = tgm.rtvec_to_pose(all_poses_t[0, idx]) # src2tgt [n,4,4]
+            b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+            b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]
+            b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2 [n,4,4]
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_b = self.calculate_ate(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
             # Next src
-            f_pose = tgm.rtvec_to_pose(all_poses_t[idx,1]) # tgt2src
-            f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[idx,1]) # inv(tgt2src)
-            f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src))
-            f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2
+            f_pose = tgm.rtvec_to_pose(all_poses_t[1, idx]) # tgt2src [n,4,4]
+            f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[1, idx]) # inv(tgt2src) [n,4,4]
+            f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
+            f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_f = self.calculate_ate(f_pose, gt_seq_i)
