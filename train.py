@@ -18,7 +18,7 @@ from utils import tensor2array, save_checkpoint
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
-from radar_eval.eval_odom import RadarEvalOdom
+from radar_eval.eval_utils import RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
@@ -65,7 +65,7 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
                          ' border will only null gradients of the coordinate outside (x or y)')
 parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
-parser.add_argument('--val-gt', metavar='DIR', help='path to ground truth validation file')
+parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
@@ -143,8 +143,8 @@ def main():
         skip_frames=args.skip_frames
     )
     if args.with_gt:
-        if args.val_gt:
-            vo_eval = RadarEvalOdom(args.val_gt)
+        if args.gt_file:
+            vo_eval = RadarEvalOdom(args.gt_file)
         else:
             warnings.warn('with-gt is set but no ground truth validation file is provided with val-gt arg! with-gt will be ignored.')
             args.with_gt = False
@@ -423,7 +423,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
             break
     ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std = vo_eval.eval_ref_poses(all_poses, all_inv_poses, args.skip_frames)
     logger.valid_bar.update(val_size)
-    return ([losses.avg, ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std], 
+    return ([losses.avg[0], ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()], 
             ['total_loss', 'ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std'])
 
 
@@ -445,7 +445,7 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))
 
-    return poses, poses_inv
+    return torch.stack(poses), torch.stack(poses_inv)
 
 
 if __name__ == '__main__':

@@ -29,8 +29,7 @@ class SequenceFolder(data.Dataset):
         self.root = Path(root)
         self.train = train
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder[:-1] for folder in open(scene_list_path)]
-        # self.scenes = self.scenes[:1] # Sub-sample the scenes during development
+        self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.transform = transform
         # self.dataset = dataset
         self.k = skip_frames

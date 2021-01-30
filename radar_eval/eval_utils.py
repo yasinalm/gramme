@@ -97,7 +97,7 @@ class RadarEvalOdom():
 
         
     def calculate_ate(self, pred, gt=None):
-        """Calculate Absolute Trajectory Error between predicted and ground truth trajectories.
+        """Calculate Absolute Trajectory Error between predicted and ground truth trajectories, using Umeyama alignment.
         Both prediction and gt is absolute trajectories.
 
         Args:
