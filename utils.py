@@ -5,8 +5,12 @@ import torch
 # from pathlib import Path
 import datetime
 from collections import OrderedDict
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+import PIL
 
 
 def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
@@ -53,6 +57,29 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
         array = 0.45 + tensor.numpy()*0.225
     return array
 
+def traj2Img(pred_xyz):
+    """Make an image from the 2D plot of a given trajectory.
+
+    Args:
+        pred_xyz (torch.Tensor): Trajectory to plot. Shape: [N,3]
+
+    Returns:
+        PIL.Image: Image of the trajectory plot
+    """
+
+    pred_xyz = pred_xyz.detach().cpu()
+    pred_x = pred_xyz[:,0].numpy()
+    pred_y = pred_xyz[:,1].numpy()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(pred_x, pred_y)
+    fig.canvas.draw()
+
+    img_plt = PIL.Image.frombytes('RGB', fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+    img_plt = np.asarray(img_plt) # CHW
+    img_plt = img_plt.transpose(2, 0, 1) # HWC
+    return img_plt
 
 # def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
 #     file_prefixes = ['dispnet', 'exp_pose']

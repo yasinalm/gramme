@@ -66,7 +66,7 @@ class RadarEvalOdom():
 
         ate_bs = []
         ate_fs = []
-        f_pose = None        
+        f_pred_xyz = None
         #i=0
         for i in range(k):
             idx = torch.arange(i, N, k)
@@ -79,7 +79,7 @@ class RadarEvalOdom():
             b_pose = rel2abs_traj(b_pose)
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx,:]
-            ate_b = self.calculate_ate(b_pose, gt_seq_i)
+            ate_b, _ = self.calculate_ate(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
             # Next src
@@ -90,13 +90,13 @@ class RadarEvalOdom():
             f_pose = rel2abs_traj(f_pose)
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
-            ate_f = self.calculate_ate(f_pose, gt_seq_i)
+            ate_f, f_pred_xyz = self.calculate_ate(f_pose, gt_seq_i)
             ate_fs.append(ate_f)
 
         ate_bs = torch.cat(ate_bs)
         ate_fs = torch.cat(ate_fs)
 
-        return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std()
+        return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz
 
         
     def calculate_ate(self, pred, gt=None):
@@ -129,7 +129,7 @@ class RadarEvalOdom():
         # compute the root mean squared error
         rmse_ate = ((Xt - gt_xyz) ** 2).mean(1).sqrt()
 
-        return rmse_ate
+        return rmse_ate, pred_xyz
 
 
 def align_to_origin(pose):
@@ -143,7 +143,7 @@ def align_to_origin(pose):
     """
 
     aligned_pose = pose.clone()
-    inv_pose0 = tgm.inv_rigid_tform(pose[0])
+    inv_pose0 = tgm.inv_rigid_tform(pose[0:1])
     aligned_pose = torch.matmul(aligned_pose, inv_pose0)
     return aligned_pose
     

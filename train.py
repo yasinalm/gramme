@@ -14,7 +14,7 @@ import torch.utils.data
 import models
 
 import custom_transforms
-from utils import tensor2array, save_checkpoint
+from utils import tensor2array, save_checkpoint, traj2Img
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
@@ -220,7 +220,9 @@ def main():
         # evaluate on validation set
         logger.reset_valid_bar()
         if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, args.val_size, logger, warper, output_writers)
+            errors, error_names, f_pred_xyz = validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, args.val_size, logger, warper, output_writers)
+            img_plt = traj2Img(f_pred_xyz)
+            output_writers[0].add_image('val/Predicted Traj', img_plt, epoch)
         else:
             errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, args.val_size, logger, warper, output_writers)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
@@ -421,10 +423,12 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
         if i >= val_size - 1:
             break
-    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std = vo_eval.eval_ref_poses(all_poses, all_inv_poses, args.skip_frames)
+    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
+    args.skip_frames)
     logger.valid_bar.update(val_size)
     return ([losses.avg[0], ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()], 
-            ['total_loss', 'ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std'])
+            ['total_loss', 'ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std'],
+            f_pred_xyz)
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
