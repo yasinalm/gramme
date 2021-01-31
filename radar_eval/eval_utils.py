@@ -65,7 +65,8 @@ class RadarEvalOdom():
         N = all_poses_t.shape[1] #len(all_poses) # number of sequences
 
         ate_bs = []
-        ate_fs = []        
+        ate_fs = []
+        f_pose = None        
         #i=0
         for i in range(k):
             idx = torch.arange(i, N, k)
@@ -75,6 +76,7 @@ class RadarEvalOdom():
             b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
             b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]
             b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2 [n,4,4]
+            b_pose = rel2abs_traj(b_pose)
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_b = self.calculate_ate(b_pose, gt_seq_i)
@@ -85,6 +87,7 @@ class RadarEvalOdom():
             f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[1, idx]) # inv(tgt2src) [n,4,4]
             f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
             f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
+            f_pose = rel2abs_traj(f_pose)
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_f = self.calculate_ate(f_pose, gt_seq_i)
@@ -118,13 +121,13 @@ class RadarEvalOdom():
         # None for batching, batch=1
         gt_xyz = gt[None,:,:3,3]
         pred_xyz = pred[None,:,:3,3]
-        R, T, s = corresponding_points_alignment(gt_xyz, pred_xyz)
+        R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
 
         # apply the estimated similarity transform to Xt_init
-        Xt = _apply_similarity_transform(gt_xyz, R, T, s)
+        Xt = _apply_similarity_transform(pred_xyz, R, T, s)
 
         # compute the root mean squared error
-        rmse_ate = ((Xt - pred_xyz) ** 2).mean(1).sqrt()
+        rmse_ate = ((Xt - gt_xyz) ** 2).mean(1).sqrt()
 
         return rmse_ate
 
@@ -140,11 +143,26 @@ def align_to_origin(pose):
     """
 
     aligned_pose = pose.clone()
-    pose0 = pose[0]
-    aligned_pose = torch.matmul(aligned_pose, pose0)
+    inv_pose0 = tgm.inv_rigid_tform(pose[0])
+    aligned_pose = torch.matmul(aligned_pose, inv_pose0)
     return aligned_pose
     
 
+def rel2abs_traj(rel_pose):
+    """Convert a given relative pose sequences to absolute pose sequences.
+
+    Args:
+        rel_pose (torch.Tensor): Relative pose sequence in the form of homogenous transformation matrix. Shape: [N,4,4]
+
+    Returns:
+        torch.Tensor: Absolute pose sequence in the form of homogenous transformation matrix. Shape: [N,4,4]
+    """
+
+    abs_pose = rel_pose.clone()
+    for i in range(1,abs_pose.shape[0]):
+        abs_pose[i] = abs_pose[i] @ abs_pose[i-1]
+
+    return abs_pose
 
 
 # threshold for checking that point crosscorelation
