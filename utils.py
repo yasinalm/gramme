@@ -81,6 +81,27 @@ def traj2Img(pred_xyz):
     img_plt = img_plt.transpose(2, 0, 1) # HWC
     return img_plt
 
+def traj2Fig(pred_xyz):
+    """Make `matplotlib.pyplot.figure` from the 2D plot of a given trajectory.
+
+    Args:
+        pred_xyz (torch.Tensor): Trajectory to plot. Shape: [N,3]
+
+    Returns:
+        matplotlib.pyplot.figure: Figure of the trajectory plot
+    """
+
+    pred_xyz = pred_xyz.detach().cpu()
+    pred_x = pred_xyz[:,0].numpy()
+    pred_y = pred_xyz[:,1].numpy()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(pred_x, pred_y)
+    fig.canvas.draw()
+
+    return fig
+
 # def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
 #     file_prefixes = ['dispnet', 'exp_pose']
 #     states = [dispnet_state, exp_pose_state]

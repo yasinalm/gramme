@@ -50,9 +50,9 @@ class RadarEvalOdom():
         the full prediction.
 
         Args:
-            all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects size [seq_length, B, 6].
+            all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects size [seq_length, B, 6]. rtvec=[rx, ry, rz, tx, ty, tz]
             all_inv_poses (list): Predicted relative pose values for each tgt-to-src pair. List of torch.Tensor objects.
-            k (int): Skip frames.
+            k (int): Skip frames. rtvec=[rx, ry, rz, tx, ty, tz]
 
         Returns:
             torch.Tensor: Mean and std of the calculated ATE for forward and backward pose predictions.
