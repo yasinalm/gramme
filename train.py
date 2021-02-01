@@ -280,16 +280,19 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
         # tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
-        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        loss = rec_loss + fft_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
             # train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
+            train_writer.add_scalar('photometric_error', rec_loss.item(), n_iter)
+            train_writer.add_scalar('fft_loss', fft_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
         # record loss and EPE
@@ -323,7 +326,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
 def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=1, precision=4)
+    losses = AverageMeter(i=3, precision=4)
     log_outputs = len(output_writers) > 0
 
     # switch to evaluate mode
@@ -341,7 +344,9 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
         # compute output
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+
+        loss = rec_loss + fft_loss
 
         if log_outputs and i < len(output_writers):
             # if epoch == 0:
@@ -354,7 +359,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
                                         epoch)
 
         loss = loss.item()
-        losses.update([loss])
+        losses.update([loss, rec_loss.item(), fft_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -366,14 +371,14 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
             break
 
     logger.valid_bar.update(val_size)
-    return losses.avg, ['total_loss']
+    return losses.avg, ['total_loss', 'rec_loss', 'fft_loss']
 
 
 @torch.no_grad()
 def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=1, precision=4)
+    losses = AverageMeter(i=3, precision=4)
     error_names = ['ate'] #['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
     errors = AverageMeter(i=len(error_names))
     log_outputs = len(output_writers) > 0
@@ -398,7 +403,9 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+
+        loss = rec_loss + fft_loss
 
         if log_outputs and i < len(output_writers):
             # if epoch == 0:
@@ -411,7 +418,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
                                         epoch)
 
         loss = loss.item()
-        losses.update([loss])
+        losses.update([loss, rec_loss.item(), fft_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -436,8 +443,10 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
 
 
     logger.valid_bar.update(val_size)
-    return ([losses.avg[0], ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()], 
-            ['total_loss', 'ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std'])
+
+    errors = losses.avg+[ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()]
+    error_names = ['total_loss', 'rec_loss', 'fft_loss']+['ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std']
+    return errors, error_names
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):

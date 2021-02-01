@@ -1,6 +1,7 @@
 from __future__ import division
 import torch
 import torch.nn.functional as F
+import torch.fft
 
 import conversions as tgm
 
@@ -121,18 +122,20 @@ class Warper(object):
     # decibels loss
     def compute_db_loss(self, tgt_img, ref_imgs, poses, poses_inv):
 
-        db_loss = 0
+        rec_loss = 0
+        fft_loss = 0
         projected_imgs = ref_imgs
 
         for i, (ref_img, pose, pose_inv) in enumerate(zip(ref_imgs, poses, poses_inv)):
 
-            db_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, pose)
-            db_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
+            rec_loss1, fft_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, pose)
+            rec_loss2, fft_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
 
-            db_loss += (db_loss1 + db_loss2)
+            rec_loss += (rec_loss1 + rec_loss2)
+            fft_loss += (fft_loss1 + fft_loss2)
             projected_imgs[i] = projected_img
 
-        return db_loss, projected_imgs
+        return rec_loss, fft_loss, projected_imgs
 
 
     def compute_pairwise_loss(self, tgt_img, ref_img, pose):
@@ -147,43 +150,95 @@ class Warper(object):
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
+        fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
 
-        return reconstruction_loss, ref_img_warped
+        return reconstruction_loss, fft_loss, ref_img_warped
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
     mask = valid_mask.expand_as(diff)
-    if mask.sum() > 10000:
-        mean_value = (diff * mask).sum() / mask.sum()
-    else:
-        mean_value = torch.tensor(0).float().to(device)
-    return mean_value
+    # if mask.sum() > 5000:
+    mask_diff = diff * mask
+    l1 = mask_diff.sum() / mask.sum()
+    l2 = mask_diff.square().sum() / mask.sum()
+    # else:
+    #     l1 = torch.tensor(0).float().to(device)
+    #     l2 = torch.tensor(0).float().to(device)
+    l = l1+l2
+    return l
 
 
+def fft_frame(img):
+    """Calculate FFT of a given image.
+
+    Args:
+        img (torch.Tensor): Image tensor. Shape [B,C,H,W]
+
+    Returns:
+        torch.Tensor: Amplitude and phase of FFT result. Shape [B,C,H,W]
+    """
+
+    fft_im = torch.fft.rfftn(img, s=img.shape[-2:], dim=[-2,-1], norm="forward") # [B,C,H,W,2]
+    fft_amp = fft_im[...,0]**2 + fft_im[...,1]**2
+    fft_amp = torch.sqrt(fft_amp) # this is the amplitude [B,C,H,W]
+    fft_pha = torch.atan2( fft_im[...,1], fft_im[...,0] ) # this is the phase [B,C,H,W]
+
+    return fft_amp, fft_pha
 
 
-# # TODO: function could be parametrized
-# def set_radar_grid():
-#     global xy_hom
-#     # RF params
-#     rangeResolutionsInMeter = 0.0977
-#     # dopplerResolutionMps = 0.0951
-#     numRangeBins = 256
-#     # numDopplerBins = 128
-#     num_angle_bins = 64 # our choice
+def fft_rec_loss(tgt, src, mask):
+    """Calculate FFT loss between pair of images. The loss is masked by `mask`. FFT loss is calculated on GPU and, thus, very fast. We calculate phase and amplitude L1 losses.
 
-#     azimuths = np.arange(num_angle_bins)
-#     azimuths = (azimuths - (num_angle_bins / 2))
-#     ranges = np.arange(numRangeBins)
-#     ranges *= rangeResolutionsInMeter
+    Args:
+        tgt (torch.Tensor): Target image. Shape [B,C,H,W]
+        src (torch.Tensor): Source image. Shape [B,C,H,W]
+        mask (torch.Tensor): Boolean mask for valid points
 
-#     az_grid, range_grid = torch.meshgrid(azimuths, ranges)
-#     x, y = pol2cart(torch.deg2rad(az_grid), range_grid)
-#     x=torch.flatten(x)
-#     y=torch.flatten(y)
+    Returns:
+        torch.Tensor: Scalar sum of phase and amplitude losses.
+    """
 
-#     xy = torch.vstack((x, y, torch.zeros_like(x)))  # Nx3 Augment with zero z column
-#     xy_hom = tgm.convert_points_to_homogeneous(input)  # Nx4
+    tgt_amp, tgt_pha = fft_frame(tgt)
+    src_amp, src_pha = fft_frame(src)
+
+    diff_amp = tgt_amp - src_amp
+    # diff_amp = diff_amp*mask
+    l_amp = diff_amp.abs().sum() / mask.sum()
+    diff_pha = tgt_pha - src_pha
+    # diff_pha = diff_pha*mask
+    l_pha = diff_pha.abs().sum() / mask.sum()
+
+    l = l_amp+l_pha
+    return l
+
+def fft_rec_loss2(tgt, src, mask):
+    """Calculate FFT loss between pair of images. The loss is masked by `mask`. FFT loss is calculated on GPU and, thus, very fast. We calculate phase and amplitude L1 losses.
+
+    Args:
+        tgt (torch.Tensor): Target image. Shape [B,C,H,W]
+        src (torch.Tensor): Source image. Shape [B,C,H,W]
+        mask (torch.Tensor): Boolean mask for valid points
+
+    Returns:
+        torch.Tensor: Scalar sum of phase and amplitude losses.
+    """
+
+    # Apply 2D FFT on the last two dimensions, e.g., [H,W] channels.
+    # fft_tgt = torch.fft.rfftn(tgt, s=tgt.shape[-2:], dim=[-2,-1], norm="forward") # [B,C,H,W,2]
+    # fft_src = torch.fft.rfftn(src, s=tgt.shape[-2:], dim=[-2,-1], norm="forward") # [B,C,H,W,2]
+    fft_diff = torch.fft.rfftn(tgt-src, s=tgt.shape[-2:], dim=[-2,-1], norm="ortho") # [B,C,H,W,2]
+    # Convolution over pixels is FFT on frequencies.
+    # We may find a more clever way.
+    # fft_conv = fft_tgt*fft_src
+    # inv_fft_conv = torch.fft.irfftn(fft_conv, s=tgt.shape[-2:], dim=[-2,-1], norm="forward") # [B,C,H,W,2]
+    # mask_diff = fft_diff #fft_tgt-fft_src
+    # print(mask_diff.shape)
+    # print(mask.shape)
+    # mask_diff = mask_diff * mask
+    l = fft_diff.sum().abs()
+    
+    return l
+
 
 
 
