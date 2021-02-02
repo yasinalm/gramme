@@ -72,22 +72,27 @@ class RadarEvalOdom():
             idx = torch.arange(i, N, k)
             
             # Previous src
-            b_pose = tgm.rtvec_to_pose(all_poses_t[0, idx]) # src2tgt [n,4,4]
-            b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
-            b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]
-            b_pose = (b_pose + b_inv_pose)/2 # (tgt2src + inv(src2tgt))/2 [n,4,4]
-            b_pose = rel2abs_traj(b_pose)
+            b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            # b_pose = tgm.rtvec_to_pose(b_pose_avg) # src2tgt [n,4,4]
+            # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+            b_pose = -b_pose # tgt2src [n,6]
+            # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
+            # b_pose = rel2abs_traj(b_pose)
+            b_pose = b_pose.cumsum(dim=0) # [n,6]
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_b, _ = self.calculate_ate(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
             # Next src
-            f_pose = tgm.rtvec_to_pose(all_poses_t[1, idx]) # tgt2src [n,4,4]
-            f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[1, idx]) # inv(tgt2src) [n,4,4]
-            f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
-            f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
-            f_pose = rel2abs_traj(f_pose)
+            # f_pose = tgm.rtvec_to_pose(all_poses_t[1, idx]) # tgt2src [n,4,4]
+            # f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[1, idx]) # inv(tgt2src) [n,4,4]
+            # f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
+            # f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
+            # f_pose = rel2abs_traj(f_pose)
+            f_pose = (all_poses_t[1, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            # f_pose = -f_pose # tgt2src [n,6]
+            f_pose = f_pose.cumsum(dim=0) # [n,6]
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_f, f_pred_xyz = self.calculate_ate(f_pose, gt_seq_i)
@@ -104,7 +109,7 @@ class RadarEvalOdom():
         Both prediction and gt is absolute trajectories.
 
         Args:
-            pred (torch.Tensor): Predicted trajectory in the form of homogenous transformation matrix. Shape: [N,4,4]
+            pred (torch.Tensor): Predicted trajectory in the form of homogenous transformation matrix. Shape: [N,6]
             gt (torch.Tensor, optional): Absolute ground truth tracjectory in the form of homogenous transformation matrix Shape: [N,4,4]. Defaults to None.
 
         Returns:
@@ -115,12 +120,14 @@ class RadarEvalOdom():
             gt=self.gt
 
         # Align both trajectories to the origin
-        pred = align_to_origin(pred)
-        gt = align_to_origin(gt)
+        # pred = align_to_origin(pred)
+        # gt = align_to_origin(gt)
 
         # None for batching, batch=1
         gt_xyz = gt[None,:,:3,3]
-        pred_xyz = pred[None,:,:3,3]
+        pred_xyz = pred[None,:,:3]
+        pred_xyz = pred_xyz - pred_xyz[0]
+        gt_xyz = gt_xyz - gt_xyz[0]
         R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
 
         # apply the estimated similarity transform to Xt_init

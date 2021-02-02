@@ -94,7 +94,7 @@ def main():
     training_writer = SummaryWriter(args.save_path)
     output_writers = []
     if args.log_output:
-        # Keep n different writers to save n images. Could be written better
+        # Keep n different writers to save n images.
         for i in range(3):
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
