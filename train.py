@@ -291,8 +291,8 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
             # train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
-            train_writer.add_scalar('photometric_error', rec_loss.item(), n_iter)
-            train_writer.add_scalar('fft_loss', fft_loss.item(), n_iter)
+            train_writer.add_scalar('train/photometric_error', rec_loss.item(), n_iter)
+            train_writer.add_scalar('train/fft_loss', fft_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
         # record loss and EPE
@@ -333,6 +333,11 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
     # disp_net.eval()
     pose_net.eval()
 
+    # Randomly choose 3 indices to log images
+    rng = np.random.default_rng()
+    log_ind = rng.integers(len(val_loader), size=3)
+    k=0 # writer counter
+    
     end = time.time()
     logger.valid_bar.update(0)
     for i, (tgt_img, ref_imgs) in enumerate(val_loader):
@@ -348,15 +353,16 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
 
         loss = rec_loss + fft_loss
 
-        if log_outputs and i < len(output_writers):
+        if log_outputs and i in log_ind:
             # if epoch == 0:
-            output_writers[i].add_image('val Input', 
+            output_writers[k].add_image('val/img/input', 
                                         tensor2array(tgt_img[0], colormap='bone'), 
                                         epoch)
 
-            output_writers[i].add_image('val Projected Image',
+            output_writers[k].add_image('val/img/warped_input',
                                         tensor2array(projected_imgs[0][0], colormap='bone'),
                                         epoch)
+            k = k+1
 
         loss = loss.item()
         losses.update([loss, rec_loss.item(), fft_loss.item()])
@@ -379,8 +385,6 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=3, precision=4)
-    error_names = ['ate'] #['abs_diff', 'abs_rel', 'sq_rel', 'a1', 'a2', 'a3']
-    errors = AverageMeter(i=len(error_names))
     log_outputs = len(output_writers) > 0
 
     # switch to evaluate mode
@@ -389,6 +393,11 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
 
     all_poses = []
     all_inv_poses = []
+
+    # Randomly choose 3 indices to log images
+    rng = np.random.default_rng()
+    log_ind = rng.integers(len(val_loader), size=3)
+    k=0 # writer counter
 
     end = time.time()
     logger.valid_bar.update(0)
@@ -407,15 +416,16 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
 
         loss = rec_loss + fft_loss
 
-        if log_outputs and i < len(output_writers):
+        if log_outputs and i in log_ind:
             # if epoch == 0:
-            output_writers[i].add_image('val Input', 
+            output_writers[k].add_image('val/img/input', 
                                         tensor2array(tgt_img[0], colormap='bone'), 
                                         epoch)
 
-            output_writers[i].add_image('val Projected Image',
+            output_writers[k].add_image('val/img/warped_input',
                                         tensor2array(projected_imgs[0][0], colormap='bone'),
                                         epoch)
+            k = k+1
 
         loss = loss.item()
         losses.update([loss, rec_loss.item(), fft_loss.item()])
@@ -434,12 +444,16 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
     if log_outputs:
         # Plot and log aligned trajectory
         fig = traj2Fig(f_pred_xyz)
-        output_writers[0].add_figure('val/Predicted Traj', fig, epoch)
+        output_writers[0].add_figure('val/fig/traj_pred', fig, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        output_writers[0].add_histogram('val/Predicted Traj-x', all_poses_t[...,3], epoch)
-        output_writers[1].add_histogram('val/Predicted Traj-y', all_poses_t[...,4], epoch)
-        output_writers[2].add_histogram('val/Predicted Traj-z', all_poses_t[...,5], epoch)
+        output_writers[0].add_histogram('val/traj_pred-x', all_poses_t[...,3], epoch)
+        output_writers[0].add_histogram('val/traj_pred-y', all_poses_t[...,4], epoch)
+        output_writers[0].add_histogram('val/traj_pred-z', all_poses_t[...,5], epoch)
+
+        output_writers[0].add_histogram('val/traj_aligned-x', f_pred_xyz[...,0], epoch)
+        output_writers[0].add_histogram('val/traj_aligned-y', f_pred_xyz[...,1], epoch)
+        output_writers[0].add_histogram('val/traj_aligned-z', f_pred_xyz[...,2], epoch)
 
 
     logger.valid_bar.update(val_size)

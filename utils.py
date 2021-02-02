@@ -54,7 +54,7 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
 
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
-        array = 0.45 + tensor.numpy()*0.225
+        array = 119.4501 + tensor.numpy()*6.5258
     return array
 
 def traj2Img(pred_xyz):
@@ -96,9 +96,9 @@ def traj2Fig(pred_xyz):
     pred_y = pred_xyz[:,1].numpy()
 
     fig = plt.figure()
-    ax = fig.add_subplot(111)
+    ax = plt.gca()
     ax.plot(pred_x, pred_y)
-    fig.canvas.draw()
+    # fig.canvas.draw()
 
     return fig
 

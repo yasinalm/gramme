@@ -143,6 +143,7 @@ class Warper(object):
         ref_img_warped, valid_mask = self.inverse_warp_fft(ref_img, pose)
 
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
+        # diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth)).clamp(0, 1)
 
         if self.with_auto_mask == True:
             auto_mask = (diff_img < (tgt_img - ref_img).abs()).float() # [B,1,H,W]
@@ -150,6 +151,7 @@ class Warper(object):
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
+        # geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)
         fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
 
         return reconstruction_loss, fft_loss, ref_img_warped
@@ -230,8 +232,8 @@ def fft_rec_loss2(tgt, src, mask):
     fft_diff = fft_tgt - fft_src
     
     fft_diff = torch.view_as_real(fft_diff)
-    mag_diff = fft_diff[...,0].sum() #20*torch.log10(fft_diff[...,0]) # mag2db
-    pha_diff = fft_diff[...,1].sum()
+    mag_diff = fft_diff[...,0].abs().sum() #20*torch.log10(fft_diff[...,0]) # mag2db
+    pha_diff = fft_diff[...,1].abs().sum()
     
     # Convolution over pixels is FFT on frequencies.
     # We may find a more clever way.
