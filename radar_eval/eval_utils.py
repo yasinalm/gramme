@@ -72,13 +72,15 @@ class RadarEvalOdom():
             idx = torch.arange(i, N, k)
             
             # Previous src
-            b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            # TODO: Şimdilik forward pose alalım. ileride (forward-backward)/2 olmalı
+            # b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            b_pose = all_poses_t[0, idx]
             # b_pose = tgm.rtvec_to_pose(b_pose_avg) # src2tgt [n,4,4]
             # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
             b_pose = -b_pose # tgt2src [n,6]
             # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
             # b_pose = rel2abs_traj(b_pose)
-            b_pose = b_pose.cumsum(dim=0) # [n,6]
+            b_pose = b_pose.cumsum(dim=0) # [n,6]            
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_b, _ = self.calculate_ate(b_pose, gt_seq_i)
@@ -125,7 +127,7 @@ class RadarEvalOdom():
 
         # None for batching, batch=1
         gt_xyz = gt[None,:,:3,3]
-        pred_xyz = pred[None,:,:3]
+        pred_xyz = pred[None,:,3:]
         pred_xyz = pred_xyz - pred_xyz[0]
         gt_xyz = gt_xyz - gt_xyz[0]
         R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)

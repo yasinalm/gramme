@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from collections import OrderedDict
 from .resnet_encoder import *
 
@@ -26,9 +27,15 @@ class PoseDecoder(nn.Module):
         self.convs[("squeeze")] = nn.Conv2d(self.num_ch_enc[-1], 256, 1)
         self.convs[("pose", 0)] = nn.Conv2d(num_input_features * 256, 256, 3, stride, 1)
         self.convs[("pose", 1)] = nn.Conv2d(256, 256, 3, stride, 1)
-        self.convs[("pose", 2)] = nn.Conv2d(256, 6 * num_frames_to_predict_for, 1)
+        self.convs[("pose", 2)] = nn.Conv2d(256, 256, 3, stride, 1)
 
         self.relu = nn.ReLU()
+        self.dropout1 = nn.Dropout2d(0.25)
+
+        self.fc_t1 = nn.Linear(1024, 128)
+        self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for)
+        self.fc_r1 = nn.Linear(1024, 128)
+        self.fc_r2 = nn.Linear(128, 3 * num_frames_to_predict_for)
 
         self.net = nn.ModuleList(list(self.convs.values()))
 
@@ -38,15 +45,37 @@ class PoseDecoder(nn.Module):
         cat_features = [self.relu(self.convs["squeeze"](f)) for f in last_features]
         cat_features = torch.cat(cat_features, 1)
 
-        out = cat_features
+        x = cat_features
         for i in range(3):
-            out = self.convs[("pose", i)](out)
+            x = self.convs[("pose", i)](x)
             if i != 2:
-                out = self.relu(out)
+                x = self.relu(x)
 
-        out = out.mean(3).mean(2)
+        # Run max pooling over x
+        x = F.max_pool2d(x, 2)
+        # Pass data through dropout1
+        x = self.dropout1(x)
 
-        pose = 0.01 * out.view(-1, 6)
+        # Flatten x with start_dim=1
+        x = torch.flatten(x, 1)
+        
+        # Translation: Pass data through fc1
+        t = self.fc_t1(x)
+        # t = F.relu(t)
+        t = self.dropout1(t)
+        t = self.fc_t2(t)
+
+        # Translation: Pass data through fc1
+        r = self.fc_r1(x)
+        # r = F.relu(r)
+        r = self.dropout1(r)
+        r = self.fc_r2(r)
+
+        # out = out.mean(3).mean(2)
+
+        # pose = 0.01 * out.view(-1, 6)
+
+        pose = torch.cat((r, t), 1) # [B, 6]
 
         return pose
 
