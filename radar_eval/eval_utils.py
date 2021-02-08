@@ -145,7 +145,7 @@ class RadarEvalOdom():
 
         # None for batching, batch=1
         if self.eul:
-            gt_xyz = gt[None,:]
+            gt_xyz = gt[None,:,:]
         else:
             gt_xyz = gt[None,:,:3,3]
         pred_xyz = pred[None,:,3:]

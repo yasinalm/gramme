@@ -34,7 +34,7 @@ parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence l
 parser.add_argument('--skip-frames', type=int, metavar='N', help='gap between frames', default=5)
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--epoch-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
+parser.add_argument('--train-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
 parser.add_argument('--val-size', default=0, type=int, metavar='N', help='manual validation size (will match dataset size if not set)')
 parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
 parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
@@ -160,9 +160,9 @@ def main():
         val_set, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    if args.epoch_size == 0:
-        args.epoch_size = len(train_loader)
-    print('Epoch size: ', args.epoch_size)
+    if args.train_size == 0:
+        args.train_size = len(train_loader)
+    print('Epoch size: ', args.train_size)
     if args.val_size == 0:
         args.val_size = len(val_loader)
     print('Validation size: ', args.val_size)
@@ -207,7 +207,7 @@ def main():
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'photo_loss', 'smooth_loss', 'geometry_consistency_loss'])
 
-    logger = TermLogger(n_epochs=args.epochs, train_size=args.epoch_size, valid_size=args.val_size)
+    logger = TermLogger(n_epochs=args.epochs, train_size=args.train_size, valid_size=args.val_size)
     logger.epoch_bar.start()
 
     for epoch in range(args.epochs):
@@ -215,8 +215,8 @@ def main():
 
         # train for one epoch
         logger.reset_train_bar()
-        # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.epoch_size, logger, training_writer, warper)
-        train_loss = train(args, train_loader, pose_net, optimizer, args.epoch_size, logger, training_writer, warper)
+        # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.train_size, logger, training_writer, warper)
+        train_loss = train(args, train_loader, pose_net, optimizer, args.train_size, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -255,7 +255,7 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_writer, warper):
+def train(args, train_loader, pose_net, optimizer, train_size, logger, train_writer, warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -318,7 +318,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
-        if i >= epoch_size - 1:
+        if i >= train_size - 1:
             break
 
         n_iter += 1
