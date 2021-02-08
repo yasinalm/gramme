@@ -48,7 +48,8 @@ parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH
 parser.add_argument('--log-output', action='store_true', help='will log dispnet outputs at validation step')
 parser.add_argument('--resnet-layers',  type=int, default=18, choices=[18, 50], help='number of ResNet layers for depth estimation.')
 # parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
-# parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
+parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
+parser.add_argument('-f', '--fft-loss-weight', type=float, help='weight for FFT loss', metavar='W', default=3e-4)
 # parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
 # parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
@@ -66,6 +67,7 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
 parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
+parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
@@ -144,7 +146,7 @@ def main():
     )
     if args.with_gt:
         if args.gt_file:
-            vo_eval = RadarEvalOdom(args.gt_file)
+            vo_eval = RadarEvalOdom(args.gt_file, args.gt_type=="xyz")
         else:
             warnings.warn('with-gt is set but no ground truth validation file is provided with val-gt arg! with-gt will be ignored.')
             args.with_gt = False
@@ -258,7 +260,7 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    # w1, w2, w3 = args.photo_loss_weight, args.smooth_loss_weight, args.geometry_consistency_weight
+    w1, w2 = args.photo_loss_weight, args.fft_loss_weight
 
     # switch to train mode
     # disp_net.train()
@@ -285,6 +287,8 @@ def train(args, train_loader, pose_net, optimizer, epoch_size, logger, train_wri
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
+        rec_loss = w1*rec_loss
+        fft_loss = w2*fft_loss
         loss = rec_loss + fft_loss
 
         if log_losses:
@@ -328,6 +332,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
     batch_time = AverageMeter()
     losses = AverageMeter(i=3, precision=4)
     log_outputs = len(output_writers) > 0
+    w1, w2 = args.photo_loss_weight, args.fft_loss_weight
 
     # switch to evaluate mode
     # disp_net.eval()
@@ -351,6 +356,8 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
 
         rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
+        rec_loss = w1*rec_loss
+        fft_loss = w2*fft_loss
         loss = rec_loss + fft_loss
 
         if log_outputs and i in log_ind:
@@ -386,6 +393,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
     batch_time = AverageMeter()
     losses = AverageMeter(i=3, precision=4)
     log_outputs = len(output_writers) > 0
+    w1, w2 = args.photo_loss_weight, args.fft_loss_weight
 
     # switch to evaluate mode
     # disp_net.eval()
@@ -414,6 +422,8 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
 
         rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
+        rec_loss = w1*rec_loss
+        fft_loss = w2*fft_loss
         loss = rec_loss + fft_loss
 
         if log_outputs and i in log_ind:

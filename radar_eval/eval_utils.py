@@ -14,14 +14,18 @@ class RadarEvalOdom():
         vo_eval.eval(gt_pose_txt_dir, result_pose_txt_dir)
     """
 
-    def __init__(self, f_gt):
+    def __init__(self, f_gt, eul):
         """Initialize with ground truth file.
 
         Args:
             f_gt (Path): Path to ground truth trajectory file.
+            eul (boolean): If the gt format is in Euler xyz.
         """
-
-        self.gt = self.load_poses_from_txt(f_gt) # [N,4,4]
+        self.eul = eul
+        if self.eul:
+            self.gt = self.load_xyz_from_txt(f_gt) # [N,3]
+        else:
+            self.gt = self.load_poses_from_txt(f_gt) # [N,4,4]
         # self.gt = align_to_origin(self.gt)
 
     def load_poses_from_txt(self, file_name):
@@ -43,6 +47,20 @@ class RadarEvalOdom():
         poses_mat = poses16.reshape((-1,4,4))
         poses_mat = torch.Tensor(poses_mat).to(device)
         return poses_mat
+
+    def load_xyz_from_txt(self, file_name):
+        """Load xyz poses from txt. Each line is: x,y,x       
+
+        Args:
+            file_name (str): txt file path
+
+        Returns:
+            torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
+        """
+
+        poses = np.genfromtxt(file_name, delimiter=',')
+        poses = torch.Tensor(poses).to(device)
+        return poses
 
     def eval_ref_poses(self, all_poses, all_inv_poses, k):
         """Evaluate ATE pose error from the predicted poses. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
@@ -82,7 +100,7 @@ class RadarEvalOdom():
             # b_pose = rel2abs_traj(b_pose)
             b_pose = b_pose.cumsum(dim=0) # [n,6]            
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
-            gt_seq_i = self.gt[gt_idx,:]
+            gt_seq_i = self.gt[gt_idx]
             ate_b, _ = self.calculate_ate(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
@@ -126,7 +144,10 @@ class RadarEvalOdom():
         # gt = align_to_origin(gt)
 
         # None for batching, batch=1
-        gt_xyz = gt[None,:,:3,3]
+        if self.eul:
+            gt_xyz = gt[None,:]
+        else:
+            gt_xyz = gt[None,:,:3,3]
         pred_xyz = pred[None,:,3:]
         pred_xyz = pred_xyz - pred_xyz[0]
         gt_xyz = gt_xyz - gt_xyz[0]
