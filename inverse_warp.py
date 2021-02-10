@@ -246,10 +246,24 @@ def fft_rec_loss2(tgt, src, mask):
     
     # l = 20*torch.log10(fft_diff.abs()) # mag2db 20*log10(abs(complex))
 
-    pha_diff = torch.abs(fft_tgt.angle() - fft_src.angle())
+    # Derivative for angle is not implemented yet.
+    # pha_diff = torch.abs(fft_tgt.angle() - fft_src.angle())
     mag_diff = torch.abs(fft_tgt.abs() - fft_src.abs())
 
-    l = 1e-3*mag_diff + pha_diff
+    fft_tgt = torch.view_as_real(fft_tgt)
+    fft_src = torch.view_as_real(fft_src)
+    pha_tgt = torch.atan2(fft_tgt[...,1], fft_tgt[...,0])
+    pha_src = torch.atan2(fft_src[...,1], fft_src[...,0])
+    # mag_tgt = torch.sqrt(fft_tgt[...,1]**2 + fft_tgt[...,0]**2)
+    # mag_src = torch.sqrt(fft_src[...,1]**2 + fft_src[...,0]**2)
+
+    pha_diff = torch.abs(pha_tgt-pha_src)
+    # mag_diff = torch.abs(mag_tgt - mag_src)
+
+    # print(pha_diff.sum())
+    # print(mag_diff.sum())
+
+    l = 1e-4*mag_diff.sum() + pha_diff.sum()
     
     return l
 
