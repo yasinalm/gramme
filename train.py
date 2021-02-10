@@ -82,7 +82,7 @@ def main():
     global best_error, n_iter, device
     args = parser.parse_args()
 
-    timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
+    timestamp = datetime.datetime.now().strftime("%m-%d-%H-%M")
     save_path = Path(args.name)
     args.save_path = 'checkpoints'/save_path/timestamp
     print('=> will save everything to {}'.format(args.save_path))

@@ -229,11 +229,11 @@ def fft_rec_loss2(tgt, src, mask):
     fft_tgt = torch.fft.rfftn(tgt, s=tgt.shape[-2:], dim=[-2,-1], norm="forward") # [B,C,H,W,2]
     fft_src = torch.fft.rfftn(src, s=tgt.shape[-2:], dim=[-2,-1], norm="forward") # [B,C,H,W,2]
     # fft_diff = torch.fft.rfftn(tgt-src, s=tgt.shape[-2:], dim=[-2,-1], norm="ortho") # [B,C,H,W,2]
-    fft_diff = fft_tgt - fft_src
+    # fft_diff = fft_tgt - fft_src
     
-    fft_diff = torch.view_as_real(fft_diff)
-    mag_diff = fft_diff[...,0].abs().sum() #20*torch.log10(fft_diff[...,0]) # mag2db
-    pha_diff = fft_diff[...,1].abs().sum()
+    # fft_diff = torch.view_as_real(fft_diff)
+    # mag_diff = fft_diff[...,0].abs().sum() #20*torch.log10(fft_diff[...,0]) # mag2db
+    # pha_diff = fft_diff[...,1].abs().sum()
     
     # Convolution over pixels is FFT on frequencies.
     # We may find a more clever way.
@@ -245,7 +245,11 @@ def fft_rec_loss2(tgt, src, mask):
     # mask_diff = mask_diff * mask
     
     # l = 20*torch.log10(fft_diff.abs()) # mag2db 20*log10(abs(complex))
-    l = mag_diff + pha_diff
+
+    pha_diff = torch.abs(fft_tgt.angle() - fft_src.angle())
+    mag_diff = torch.abs(fft_tgt.abs() - fft_src.abs())
+
+    l = 1e-3*mag_diff + pha_diff
     
     return l
 
