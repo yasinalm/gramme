@@ -32,9 +32,11 @@ class PoseDecoder(nn.Module):
         self.relu = nn.ReLU()
         self.dropout1 = nn.Dropout2d(0.25)
 
-        self.fc_t1 = nn.Linear(1024, 128)
+        num_features = 90624 #1024
+
+        self.fc_t1 = nn.Linear(num_features, 128)
         self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for)
-        self.fc_r1 = nn.Linear(1024, 128)
+        self.fc_r1 = nn.Linear(num_features, 128)
         self.fc_r2 = nn.Linear(128, 3 * num_frames_to_predict_for)
 
         self.net = nn.ModuleList(list(self.convs.values()))
@@ -58,6 +60,8 @@ class PoseDecoder(nn.Module):
 
         # Flatten x with start_dim=1
         x = torch.flatten(x, 1)
+
+        # print(x.shape)
         
         # Translation: Pass data through fc1
         t = self.fc_t1(x)
@@ -96,16 +100,16 @@ class PoseResNet(nn.Module):
         pose = self.decoder([features])
         return pose
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    torch.backends.cudnn.benchmark = True
+#     torch.backends.cudnn.benchmark = True
 
-    model = PoseResNet().cuda()
-    model.train()
+#     model = PoseResNet().cuda()
+#     model.train()
 
-    tgt_img = torch.randn(4, 1, 256, 64).cuda()
-    ref_imgs = [torch.randn(4, 1, 256, 64).cuda() for i in range(2)]
+#     tgt_img = torch.randn(4, 1, 256, 64).cuda()
+#     ref_imgs = [torch.randn(4, 1, 256, 64).cuda() for i in range(2)]
 
-    pose = model(tgt_img, ref_imgs[0])
+#     pose = model(tgt_img, ref_imgs[0])
 
-    print(pose.size())
+#     print(pose.size())

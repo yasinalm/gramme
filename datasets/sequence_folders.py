@@ -1,15 +1,23 @@
 import torch.utils.data as data
 import numpy as np
 # from skimage import io
+from PIL import Image
 from pathlib import Path
 import random
 import os
 
 
-def load_as_float(path):
-    # return io.imread(path).astype(np.float32)
+def load_csv_as_float(path):
     img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
     img = img[np.newaxis,:,:] # [1, H, W] single channel image
+    return img
+
+def load_img_as_float(path):
+    # return io.imread(path).astype(np.float32)
+    img = np.array(Image.open(path), dtype=np.float32) # [H, W]
+    # Skip metadata in the first 10 columns in the Robotcar dataset
+    img = img[:, 11:].transpose()
+    img = img[np.newaxis,:, :] / 255. # [1, H, W] single channel image
     return img
 
 
@@ -23,7 +31,7 @@ class SequenceFolder(data.Dataset):
         transform functions must take in an image
     """
 
-    def __init__(self, root, skip_frames, sequence_length, train, seed=None, transform=None):
+    def __init__(self, root, skip_frames, sequence_length, train, dataset, seed=None, transform=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -31,7 +39,7 @@ class SequenceFolder(data.Dataset):
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.transform = transform
-        # self.dataset = dataset
+        self.dataset = dataset
         self.k = skip_frames
         self.crawl_folders(sequence_length)
 
@@ -43,7 +51,8 @@ class SequenceFolder(data.Dataset):
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            imgs = sorted(list(scene.glob('*.csv')))
+            f_type = '*.csv' if self.dataset == 'hand' else '*.png'
+            imgs = sorted(list(scene.glob(f_type)))
 
             if len(imgs) < sequence_length:
                 continue
@@ -62,6 +71,8 @@ class SequenceFolder(data.Dataset):
     
     def __getitem__(self, index):
         sample = self.samples[index]
+        # Choose the loader function
+        load_as_float = load_csv_as_float if self.dataset=='hand' else load_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 

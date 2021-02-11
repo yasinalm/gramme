@@ -29,7 +29,7 @@ parser = argparse.ArgumentParser(description='Structure from Motion Learner trai
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
-parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
+# parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N', help='gap between frames', default=5)
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
@@ -56,7 +56,7 @@ parser.add_argument('-f', '--fft-loss-weight', type=float, help='weight for FFT 
 # parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
 parser.add_argument('--with-auto-mask', type=int,  default=0, help='with the the mask for stationary points')
 parser.add_argument('--with-pretrain', type=int,  default=0, help='with or without imagenet pretrain for resnet')
-# parser.add_argument('--dataset', type=str, choices=['kitti', 'nyu'], default='kitti', help='the dataset to train')
+parser.add_argument('--dataset', type=str, choices=['hand', 'driving'], default='hand', help='the dataset to train')
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 # parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
@@ -69,6 +69,7 @@ parser.add_argument('--with-gt', action='store_true', help='use ground truth for
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
+parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in degrees', metavar='W', default=1.0)
 parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
@@ -101,17 +102,20 @@ def main():
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
     # Data loading code
-    mean, std = 119.4501, 6.5258 # Calculated over all dataset
-    normalize = custom_transforms.Normalize(mean=mean, std=std)
+    if args.dataset == 'hand':
+        mean, std = 119.4501, 6.5258 # Calculated over all dataset
+        normalize = custom_transforms.Normalize(mean=mean, std=std)
 
-    # train_transform = custom_transforms.Compose([
-    #     custom_transforms.RandomHorizontalFlip(),
-    #     custom_transforms.RandomScaleCrop(),
-    #     custom_transforms.ArrayToTensor(),
-    #     normalize
-    # ])
+        # train_transform = custom_transforms.Compose([
+        #     custom_transforms.RandomHorizontalFlip(),
+        #     custom_transforms.RandomScaleCrop(),
+        #     custom_transforms.ArrayToTensor(),
+        #     normalize
+        # ])
 
-    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+        ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    else:
+        ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor()])
 
     
 
@@ -123,8 +127,8 @@ def main():
         seed=args.seed,
         train=True,
         sequence_length=args.sequence_length,
-        skip_frames=args.skip_frames
-        # dataset=args.dataset
+        skip_frames=args.skip_frames,
+        dataset=args.dataset
         )
     # else:
     #     train_set = PairFolder(
@@ -142,7 +146,8 @@ def main():
         seed=args.seed,
         train=False,
         sequence_length=args.sequence_length,
-        skip_frames=args.skip_frames
+        skip_frames=args.skip_frames,
+        dataset=args.dataset
     )
     if args.with_gt:
         if args.gt_file:
@@ -169,7 +174,7 @@ def main():
 
     # create model
     print("=> creating loss object")
-    warper = Warper(args.range_res, args.num_range_bins, args.num_angle_bins, args.with_auto_mask, args.padding_mode)
+    warper = Warper(args.range_res, args.angle_res, args.num_range_bins, args.num_angle_bins, args.with_auto_mask, args.padding_mode)
 
     # create model
     print("=> creating model")
@@ -338,6 +343,9 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
     # disp_net.eval()
     pose_net.eval()
 
+    all_poses = []
+    all_inv_poses = []
+
     # Randomly choose 3 indices to log images
     rng = np.random.default_rng()
     log_ind = rng.integers(len(val_loader), size=3)
@@ -353,6 +361,8 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
 
         # compute output
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        all_poses.append(poses)
+        all_inv_poses.append(poses_inv)
 
         rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
@@ -383,8 +393,25 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
         if i >= val_size - 1:
             break
 
+    if log_outputs:
+        # Plot and log aligned trajectory
+        # fig = traj2Fig(f_pred_xyz)
+        # output_writers[0].add_figure('val/fig/traj_pred', fig, epoch)
+        # Log predicted relative poses in histograms
+        all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
+        output_writers[0].add_histogram('val/traj_pred-x', all_poses_t[...,3], epoch)
+        output_writers[0].add_histogram('val/traj_pred-y', all_poses_t[...,4], epoch)
+        output_writers[0].add_histogram('val/traj_pred-z', all_poses_t[...,5], epoch)
+
+        # output_writers[0].add_histogram('val/traj_aligned-x', f_pred_xyz[...,0], epoch)
+        # output_writers[0].add_histogram('val/traj_aligned-y', f_pred_xyz[...,1], epoch)
+        # output_writers[0].add_histogram('val/traj_aligned-z', f_pred_xyz[...,2], epoch)
+
     logger.valid_bar.update(val_size)
-    return losses.avg, ['total_loss', 'rec_loss', 'fft_loss']
+
+    errors = losses.avg
+    error_names = ['total_loss', 'rec_loss', 'fft_loss']
+    return errors, error_names
 
 
 @torch.no_grad()

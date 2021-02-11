@@ -13,7 +13,7 @@ class Warper(object):
 
     # xy_hom = None
 
-    def __init__(self, rangeResolutionsInMeter, numRangeBins, num_angle_bins,
+    def __init__(self, rangeResolutionsInMeter, angleResolutionInDeg, numRangeBins, num_angle_bins,
     with_auto_mask, padding_mode='zeros'):
         # RF params
         # rangeResolutionsInMeter = 0.0977
@@ -22,6 +22,7 @@ class Warper(object):
         # # numDopplerBins = 128
         # num_angle_bins = 64 # our choice
         self.rangeResolutionsInMeter=rangeResolutionsInMeter
+        self.angleResolutionInDeg = angleResolutionInDeg
         self.numRangeBins=numRangeBins
         self.num_angle_bins=num_angle_bins
         self.with_auto_mask=with_auto_mask
@@ -29,6 +30,7 @@ class Warper(object):
 
         azimuths = torch.arange(num_angle_bins)
         azimuths = (azimuths - (num_angle_bins / 2))
+        azimuths = azimuths*angleResolutionInDeg
         ranges = torch.arange(numRangeBins)
         ranges = ranges*rangeResolutionsInMeter
 
@@ -66,7 +68,7 @@ class Warper(object):
 
         X = theta_tformed # [B,N]
         Y = rho_tformed # [B,N]
-        w = self.num_angle_bins
+        w = self.num_angle_bins*self.angleResolutionInDeg
         h = (self.numRangeBins-1)*self.rangeResolutionsInMeter
 
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
@@ -152,7 +154,8 @@ class Warper(object):
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
         # geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)
-        fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
+        # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
+        fft_loss = torch.Tensor([0]).to(device) # şimdilik disable
 
         return reconstruction_loss, fft_loss, ref_img_warped
 
