@@ -50,6 +50,7 @@ parser.add_argument('--resnet-layers',  type=int, default=18, choices=[18, 50], 
 # parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-f', '--fft-loss-weight', type=float, help='weight for FFT loss', metavar='W', default=3e-4)
+parser.add_argument('-s', '--ssim-loss-weight', type=float, help='weight for SSIM loss', metavar='W', default=1)
 # parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
 # parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
@@ -104,7 +105,9 @@ def main():
     # Data loading code
     if args.dataset == 'hand':
         mean, std = 119.4501, 6.5258 # Calculated over all dataset
-        normalize = custom_transforms.Normalize(mean=mean, std=std)
+    else:
+        mean, std = 11.49, 16.46 # Calculated over all robotcar dataset
+    normalize = custom_transforms.Normalize(mean=mean, std=std)
 
         # train_transform = custom_transforms.Compose([
         #     custom_transforms.RandomHorizontalFlip(),
@@ -113,9 +116,7 @@ def main():
         #     normalize
         # ])
 
-        ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
-    else:
-        ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor()])
+    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
 
     
 
@@ -265,7 +266,7 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    w1, w2 = args.photo_loss_weight, args.fft_loss_weight
+    w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to train mode
     # disp_net.train()
@@ -287,14 +288,15 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
         # tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, fft_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
         rec_loss = w1*rec_loss
         fft_loss = w2*fft_loss
-        loss = rec_loss + fft_loss
+        ssim_loss = w3*ssim_loss
+        loss = rec_loss + fft_loss + ssim_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -302,6 +304,7 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
             # train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
             train_writer.add_scalar('train/photometric_error', rec_loss.item(), n_iter)
             train_writer.add_scalar('train/fft_loss', fft_loss.item(), n_iter)
+            train_writer.add_scalar('train/ssim_loss', ssim_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
         # record loss and EPE
@@ -335,9 +338,9 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
 def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=3, precision=4)
+    losses = AverageMeter(i=4, precision=4)
     log_outputs = len(output_writers) > 0
-    w1, w2 = args.photo_loss_weight, args.fft_loss_weight
+    w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to evaluate mode
     # disp_net.eval()
@@ -364,11 +367,12 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
         rec_loss = w1*rec_loss
         fft_loss = w2*fft_loss
-        loss = rec_loss + fft_loss
+        ssim_loss = w3*ssim_loss
+        loss = rec_loss + fft_loss + ssim_loss
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
@@ -382,7 +386,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
             k = k+1
 
         loss = loss.item()
-        losses.update([loss, rec_loss.item(), fft_loss.item()])
+        losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -410,7 +414,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
     logger.valid_bar.update(val_size)
 
     errors = losses.avg
-    error_names = ['total_loss', 'rec_loss', 'fft_loss']
+    error_names = ['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']
     return errors, error_names
 
 
@@ -420,7 +424,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
     batch_time = AverageMeter()
     losses = AverageMeter(i=3, precision=4)
     log_outputs = len(output_writers) > 0
-    w1, w2 = args.photo_loss_weight, args.fft_loss_weight
+    w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to evaluate mode
     # disp_net.eval()
@@ -447,11 +451,12 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, fft_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
 
         rec_loss = w1*rec_loss
         fft_loss = w2*fft_loss
-        loss = rec_loss + fft_loss
+        ssim_loss = w3*ssim_loss
+        loss = rec_loss + fft_loss + ssim_loss
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
@@ -465,7 +470,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
             k = k+1
 
         loss = loss.item()
-        losses.update([loss, rec_loss.item(), fft_loss.item()])
+        losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.loss()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -496,7 +501,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
     logger.valid_bar.update(val_size)
 
     errors = losses.avg+[ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()]
-    error_names = ['total_loss', 'rec_loss', 'fft_loss']+['ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std']
+    error_names = ['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']+['ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std']
     return errors, error_names
 
 

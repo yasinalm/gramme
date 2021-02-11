@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.fft
 
 import conversions as tgm
+import loss_ssim
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -126,18 +127,20 @@ class Warper(object):
 
         rec_loss = 0
         fft_loss = 0
+        ssim_loss = 0
         projected_imgs = ref_imgs
 
         for i, (ref_img, pose, pose_inv) in enumerate(zip(ref_imgs, poses, poses_inv)):
 
-            rec_loss1, fft_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, pose)
-            rec_loss2, fft_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
+            rec_loss1, fft_loss1, ssim_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, pose)
+            rec_loss2, fft_loss2, ssim_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
 
             rec_loss += (rec_loss1 + rec_loss2)
             fft_loss += (fft_loss1 + fft_loss2)
+            ssim_loss += (ssim_loss1 + ssim_loss2)
             projected_imgs[i] = projected_img
 
-        return rec_loss, fft_loss, projected_imgs
+        return rec_loss, fft_loss, ssim_loss, projected_imgs
 
 
     def compute_pairwise_loss(self, tgt_img, ref_img, pose):
@@ -157,7 +160,9 @@ class Warper(object):
         # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
         fft_loss = torch.Tensor([0]).to(device) # şimdilik disable
 
-        return reconstruction_loss, fft_loss, ref_img_warped
+        ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
+
+        return reconstruction_loss, fft_loss, ssim_loss, ref_img_warped
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
@@ -165,11 +170,13 @@ def mean_on_mask(diff, valid_mask):
     # if mask.sum() > 5000:
     mask_diff = diff * mask
     l1 = mask_diff.sum() / mask.sum()
-    l2 = mask_diff.square().sum() / mask.sum()
+    # l2 = mask_diff.square().sum() / mask.sum()
+    
     # else:
     #     l1 = torch.tensor(0).float().to(device)
     #     l2 = torch.tensor(0).float().to(device)
-    l = l1+l2
+    
+    l = l1 #+l2
     return l
 
 
