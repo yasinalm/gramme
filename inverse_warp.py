@@ -166,10 +166,20 @@ class Warper(object):
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
+    
     mask = valid_mask.expand_as(diff)
     # if mask.sum() > 5000:
-    mask_diff = diff * mask
-    l1 = mask_diff.sum() / mask.sum()
+    try:
+        mask_diff = diff * mask
+        l1 = mask_diff.sum() / mask.sum()
+    except:
+        print(valid_mask)
+        print(diff)
+        # raise RuntimeError("NaN encountered in mask")
+        print("NaN encountered in mask")
+        l1 = torch.tensor(0).float().to(device)
+
+    
     # l2 = mask_diff.square().sum() / mask.sum()
     
     # else:

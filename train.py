@@ -307,6 +307,10 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
             train_writer.add_scalar('train/ssim_loss', ssim_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
+            train_writer.add_histogram('train/traj_pred-x', poses[...,3], n_iter)
+            train_writer.add_histogram('train/traj_pred-y', poses[...,4], n_iter)
+            train_writer.add_histogram('train/traj_pred-z', poses[...,5], n_iter)
+
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)
 
