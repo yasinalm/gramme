@@ -18,7 +18,7 @@ from utils import tensor2array, save_checkpoint, traj2Fig, traj2Img
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
-from radar_eval.eval_utils import RadarEvalOdom
+from radar_eval.eval_utils import getTraj, RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
@@ -401,10 +401,14 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
         if i >= val_size - 1:
             break
 
+    b_pred_xyz, f_pred_xyz = getTraj(all_poses, all_inv_poses, args.skip_frames)
+
     if log_outputs:
-        # Plot and log aligned trajectory
-        # fig = traj2Fig(f_pred_xyz)
-        # output_writers[0].add_figure('val/fig/traj_pred', fig, epoch)
+        # Plot and log predicted trajectory
+        b_fig = traj2Fig(b_pred_xyz)
+        f_fig = traj2Fig(f_pred_xyz)
+        output_writers[0].add_figure('val/fig/b_traj_pred', b_fig, epoch)
+        output_writers[0].add_figure('val/fig/f_traj_pred', f_fig, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
         output_writers[0].add_histogram('val/traj_pred-x', all_poses_t[...,3], epoch)

@@ -92,13 +92,14 @@ class RadarEvalOdom():
             # Previous src
             # TODO: Şimdilik forward pose alalım. ileride (forward-backward)/2 olmalı
             # b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-            b_pose = all_poses_t[0, idx]
-            # b_pose = tgm.rtvec_to_pose(b_pose_avg) # src2tgt [n,4,4]
-            # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+            b_pose = all_poses_t[0, idx] #src2tgt [n,6]
             b_pose = -b_pose # tgt2src [n,6]
+            b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
+            # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+            
             # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
-            # b_pose = rel2abs_traj(b_pose)
-            b_pose = b_pose.cumsum(dim=0) # [n,6]            
+            b_pose = rel2abs_traj(b_pose) # [n,4,4]
+            # b_pose = b_pose.cumsum(dim=0) # [n,6]            
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx]
             ate_b, _ = self.calculate_ate(b_pose, gt_seq_i)
@@ -110,9 +111,12 @@ class RadarEvalOdom():
             # f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
             # f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
             # f_pose = rel2abs_traj(f_pose)
-            f_pose = (all_poses_t[1, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            # f_pose = (all_poses_t[1, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            f_pose = all_poses_t[1, idx] #src2tgt [n,6]
             # f_pose = -f_pose # tgt2src [n,6]
-            f_pose = f_pose.cumsum(dim=0) # [n,6]
+            # f_pose = f_pose.cumsum(dim=0) # [n,6]
+            f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]
+            f_pose = rel2abs_traj(f_pose) # [n,4,4]
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_f, f_pred_xyz = self.calculate_ate(f_pose, gt_seq_i)
@@ -122,6 +126,8 @@ class RadarEvalOdom():
         ate_fs = torch.cat(ate_fs)
 
         return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz
+
+    
 
         
     def calculate_ate(self, pred, gt=None):
@@ -148,7 +154,8 @@ class RadarEvalOdom():
             gt_xyz = gt[None,:,:]
         else:
             gt_xyz = gt[None,:,:3,3]
-        pred_xyz = pred[None,:,3:]
+        # pred_xyz = pred[None,:,3:]
+        pred_xyz = pred[None,:,:3,3]
         pred_xyz = pred_xyz - pred_xyz[0]
         gt_xyz = gt_xyz - gt_xyz[0]
         R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
@@ -160,6 +167,60 @@ class RadarEvalOdom():
         rmse_ate = ((Xt - gt_xyz) ** 2).mean(1).sqrt()
 
         return rmse_ate, pred_xyz
+
+
+def getTraj(all_poses, all_inv_poses, k):
+    """Convert the predicted poses to absolute trajectory. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
+    We form a trajectory from a chained sequence with k skip frames, e.g. [k, 2*k, 3*k, ..., N]. We shift the sequence by {i:i<k} to evaluate the full prediction.
+
+    Args:
+        all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects size [seq_length, B, 6]. rtvec=[rx, ry, rz, tx, ty, tz]
+        all_inv_poses (list): Predicted relative pose values for each tgt-to-src pair. List of torch.Tensor objects.
+        k (int): Skip frames. rtvec=[rx, ry, rz, tx, ty, tz]
+
+    Returns:
+        torch.Tensor: Backward and forward predicted trajectories
+    """
+
+    # pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
+    all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
+    all_inv_poses_t = torch.cat(all_inv_poses, 1) # [seq_length, N, 6]
+
+    N = all_poses_t.shape[1] #len(all_poses) # number of sequences
+
+    i=0
+    # for i in range(k):
+    idx = torch.arange(i, N, k)
+    
+    # Previous src
+    # TODO: Şimdilik forward pose alalım. ileride (forward-backward)/2 olmalı
+    # b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+    b_pose = all_poses_t[0, idx] #src2tgt [n,6]
+    b_pose = -b_pose # tgt2src [n,6]
+    b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
+    # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+    
+    # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
+    b_pose = rel2abs_traj(b_pose) # [n,4,4]
+    # b_pose = b_pose.cumsum(dim=0) # [n,6] 
+
+    # Next src
+    # f_pose = tgm.rtvec_to_pose(all_poses_t[1, idx]) # tgt2src [n,4,4]
+    # f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[1, idx]) # inv(tgt2src) [n,4,4]
+    # f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
+    # f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
+    # f_pose = rel2abs_traj(f_pose)
+    # f_pose = (all_poses_t[1, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+    f_pose = all_poses_t[1, idx] #src2tgt [n,6]
+    # f_pose = -f_pose # tgt2src [n,6]
+    # f_pose = f_pose.cumsum(dim=0) # [n,6]
+    f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]
+    f_pose = rel2abs_traj(f_pose) # [n,4,4]
+    # end for
+
+    f_xyz = f_pose[:,:3,3]
+    b_xyz = b_pose[:,:3,3]
+    return b_xyz, f_xyz
 
 
 def align_to_origin(pose):
