@@ -235,7 +235,7 @@ def main():
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
         for error, name in zip(errors, error_names):
-            training_writer.add_scalar('val/'+name, error, epoch)
+            training_writer.add_scalar('val/'+name, error, epoch)    
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
         decisive_error = errors[0]
@@ -323,6 +323,17 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
         batch_time.update(time.time() - end)
         end = time.time()
 
+        if i%1000 == 0:
+            save_checkpoint(
+                args.save_path, {
+                #     'epoch': epoch + 1,
+                #     'state_dict': disp_net.module.state_dict()
+                # }, {
+                    'n_iter': n_iter + 1,
+                    'state_dict': pose_net.module.state_dict()
+                },
+                False)
+
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             # writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
@@ -336,10 +347,10 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
         n_iter += 1
 
     return losses.avg[0]
-
+    
 
 @torch.no_grad()
-def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, warper, output_writers=[]):
+def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=4, precision=4)
@@ -398,7 +409,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
         logger.valid_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
-        if i >= val_size - 1:
+        if i >= args.val_size - 1:
             break
 
     b_pred_xyz, f_pred_xyz = getTraj(all_poses, all_inv_poses, args.skip_frames)
@@ -419,7 +430,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
         # output_writers[0].add_histogram('val/traj_aligned-y', f_pred_xyz[...,1], epoch)
         # output_writers[0].add_histogram('val/traj_aligned-z', f_pred_xyz[...,2], epoch)
 
-    logger.valid_bar.update(val_size)
+    logger.valid_bar.update(args.val_size)
 
     errors = losses.avg
     error_names = ['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']
@@ -427,7 +438,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, val_size, logger, war
 
 
 @torch.no_grad()
-def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logger, warper, output_writers=[]):
+def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper, output_writers=[]):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=3, precision=4)
@@ -486,7 +497,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
         logger.valid_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
-        if i >= val_size - 1:
+        if i >= args.val_size - 1:
             break
     ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
     args.skip_frames)
@@ -506,7 +517,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, val_size, logge
         output_writers[0].add_histogram('val/traj_aligned-z', f_pred_xyz[...,2], epoch)
 
 
-    logger.valid_bar.update(val_size)
+    logger.valid_bar.update(args.val_size)
 
     errors = losses.avg+[ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()]
     error_names = ['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']+['ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std']

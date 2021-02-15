@@ -220,7 +220,7 @@ def getTraj(all_poses, all_inv_poses, k):
 
     f_xyz = f_pose[:,:3,3]
     b_xyz = b_pose[:,:3,3]
-    return b_xyz, f_xyz
+    return b_xyz.squeeze(), f_xyz.squeeze()
 
 
 def align_to_origin(pose):
