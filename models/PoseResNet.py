@@ -35,9 +35,11 @@ class PoseDecoder(nn.Module):
         num_features = 90624 #1024
 
         self.fc_t1 = nn.Linear(num_features, 128)
-        self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for)
+        # self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for) # [x,y,z]
+        self.fc_t2 = nn.Linear(128, 2 * num_frames_to_predict_for) # [x,y]
         self.fc_r1 = nn.Linear(num_features, 128)
-        self.fc_r2 = nn.Linear(128, 3 * num_frames_to_predict_for)
+        # self.fc_r2 = nn.Linear(128, 3 * num_frames_to_predict_for) # [rx,ry,rz]
+        self.fc_r2 = nn.Linear(128, 1 * num_frames_to_predict_for) # [rz]
 
         self.net = nn.ModuleList(list(self.convs.values()))
 
@@ -79,7 +81,11 @@ class PoseDecoder(nn.Module):
 
         # pose = 0.01 * out.view(-1, 6)
 
-        pose = torch.cat((r, t), 1) # [B, 6]
+        # SE(2) pose
+        pose = torch.zeros(r.shape[0], 6).to(r.device)
+        pose[:,2:3] = r
+        pose[:,3:5] = t
+        # pose = torch.cat((r, t), 1) # [B, 6]
 
         return pose
 

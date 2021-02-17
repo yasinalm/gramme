@@ -249,9 +249,11 @@ def rel2abs_traj(rel_pose):
         torch.Tensor: Absolute pose sequence in the form of homogenous transformation matrix. Shape: [N,4,4]
     """
 
-    abs_pose = rel_pose.clone()
-    for i in range(1,abs_pose.shape[0]):
-        abs_pose[i] = abs_pose[i] @ abs_pose[i-1]
+    global_pose = torch.eye(4).to(device)
+    abs_pose = torch.zeros_like(rel_pose)    
+    for i in range(rel_pose.shape[0]):
+        global_pose = global_pose @ rel_pose[i]
+        abs_pose[i] = global_pose
 
     return abs_pose
 

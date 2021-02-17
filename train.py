@@ -268,6 +268,8 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
     losses = AverageMeter(precision=4)
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
+    best_error = 9.0e6
+
     # switch to train mode
     # disp_net.train()
     pose_net.train()
@@ -307,9 +309,12 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
             train_writer.add_scalar('train/ssim_loss', ssim_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
-            train_writer.add_histogram('train/traj_pred-x', poses[...,3], n_iter)
-            train_writer.add_histogram('train/traj_pred-y', poses[...,4], n_iter)
-            train_writer.add_histogram('train/traj_pred-z', poses[...,5], n_iter)
+            train_writer.add_histogram('train/rot_pred-x', poses[...,0], n_iter)
+            train_writer.add_histogram('train/rot_pred-y', poses[...,1], n_iter)
+            train_writer.add_histogram('train/rot_pred-z', poses[...,2], n_iter)
+            train_writer.add_histogram('train/trans_pred-x', poses[...,3], n_iter)
+            train_writer.add_histogram('train/trans_pred-y', poses[...,4], n_iter)
+            train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)
@@ -323,7 +328,13 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i%1000 == 0:
+        if i>0 and i%1000 == 0:
+                # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+            decisive_error = loss.item()
+
+            # remember lowest error and save checkpoint
+            is_best = decisive_error < best_error
+            best_error = min(best_error, decisive_error)
             save_checkpoint(
                 args.save_path, {
                 #     'epoch': epoch + 1,
@@ -332,7 +343,7 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
                     'n_iter': n_iter + 1,
                     'state_dict': pose_net.module.state_dict()
                 },
-                False)
+                is_best)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
