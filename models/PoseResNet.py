@@ -81,6 +81,9 @@ class PoseDecoder(nn.Module):
 
         # pose = 0.01 * out.view(-1, 6)
 
+        # t = t.clamp(-30, 30) # [-v_max, +v_max] m/s
+        r = r.clamp(-6.28, 6.28) # [-2pi, 2pi] rad
+
         # SE(2) pose
         pose = torch.zeros(r.shape[0], 6).to(r.device)
         pose[:,2:3] = r

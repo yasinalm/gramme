@@ -70,7 +70,7 @@ parser.add_argument('--with-gt', action='store_true', help='use ground truth for
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
-parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in degrees', metavar='W', default=1.0)
+parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
 parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
@@ -309,12 +309,12 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
             train_writer.add_scalar('train/ssim_loss', ssim_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
-            train_writer.add_histogram('train/rot_pred-x', poses[...,0], n_iter)
-            train_writer.add_histogram('train/rot_pred-y', poses[...,1], n_iter)
+            # train_writer.add_histogram('train/rot_pred-x', poses[...,0], n_iter)
+            # train_writer.add_histogram('train/rot_pred-y', poses[...,1], n_iter)
             train_writer.add_histogram('train/rot_pred-z', poses[...,2], n_iter)
             train_writer.add_histogram('train/trans_pred-x', poses[...,3], n_iter)
             train_writer.add_histogram('train/trans_pred-y', poses[...,4], n_iter)
-            train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
+            # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)

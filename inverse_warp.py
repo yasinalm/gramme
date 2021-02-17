@@ -14,7 +14,7 @@ class Warper(object):
 
     # xy_hom = None
 
-    def __init__(self, rangeResolutionsInMeter, angleResolutionInDeg, numRangeBins, num_angle_bins,
+    def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, numRangeBins, num_angle_bins,
     with_auto_mask, padding_mode='zeros'):
         # RF params
         # rangeResolutionsInMeter = 0.0977
@@ -23,7 +23,7 @@ class Warper(object):
         # # numDopplerBins = 128
         # num_angle_bins = 64 # our choice
         self.rangeResolutionsInMeter=rangeResolutionsInMeter
-        self.angleResolutionInDeg = angleResolutionInDeg
+        self.angleResolutionInRad = angleResolutionInRad
         self.numRangeBins=numRangeBins
         self.num_angle_bins=num_angle_bins
         self.with_auto_mask=with_auto_mask
@@ -31,12 +31,12 @@ class Warper(object):
 
         azimuths = torch.arange(num_angle_bins)
         azimuths = (azimuths - (num_angle_bins / 2))
-        azimuths = azimuths*angleResolutionInDeg
+        azimuths = azimuths*angleResolutionInRad
         ranges = torch.arange(numRangeBins)
         ranges = ranges*rangeResolutionsInMeter
 
         az_grid, range_grid = torch.meshgrid(azimuths, ranges) # [num_angle_bins, numRangeBins], i.e. [W, H]
-        x, y = pol2cart(torch.deg2rad(az_grid), range_grid)
+        x, y = pol2cart(az_grid, range_grid)
         x=torch.flatten(x)
         y=torch.flatten(y)
 
@@ -61,16 +61,16 @@ class Warper(object):
         tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,N,3]
         # Convert back from cartesian to polar
         theta_tformed_rad, rho_tformed = cart2pol(tformed_xy[:,:,0], tformed_xy[:,:,1]) # [B,N], [B,N]
-        theta_tformed = torch.rad2deg(theta_tformed_rad) # [B,N]
+        # theta_tformed = torch.rad2deg(theta_tformed_rad) # [B,N]
 
         # tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column [B,2,N]
         # Replace 0-valued augmented z column with dB values of source img 
         # tformed_xy[:,2,:] = torch.flatten(img, start_dim=1) # [B,3,N] N points with x,y and db values
 
-        X = theta_tformed # [B,N]
+        X = theta_tformed_rad #theta_tformed # [B,N]
         Y = rho_tformed # [B,N]
-        w = self.num_angle_bins*self.angleResolutionInDeg
-        h = (self.numRangeBins-1)*self.rangeResolutionsInMeter
+        w = self.num_angle_bins*self.angleResolutionInRad
+        h = self.numRangeBins*self.rangeResolutionsInMeter
 
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
         X_norm = 2*X/w
@@ -165,26 +165,15 @@ class Warper(object):
         return reconstruction_loss, fft_loss, ssim_loss, ref_img_warped
 
 # compute mean value given a binary mask
-def mean_on_mask(diff, valid_mask):
-    
+def mean_on_mask(diff, valid_mask):    
     mask = valid_mask.expand_as(diff)
-    # if mask.sum() > 5000:
-    try:
+    if mask.sum() > 5000:
         mask_diff = diff * mask
-        l1 = mask_diff.sum() / mask.sum()
-    except:
-        print(valid_mask)
-        print(diff)
-        # raise RuntimeError("NaN encountered in mask")
-        print("NaN encountered in mask")
-        l1 = torch.tensor(0).float().to(device)
-
-    
-    # l2 = mask_diff.square().sum() / mask.sum()
-    
-    # else:
-    #     l1 = torch.tensor(0).float().to(device)
-    #     l2 = torch.tensor(0).float().to(device)
+        l1 = mask_diff.sum() / mask.sum()    
+        # l2 = mask_diff.square().sum() / mask.sum()
+    else:
+        l1 = torch.tensor(1e3).float().to(device)
+        # l2 = torch.tensor(0).float().to(device)
     
     l = l1 #+l2
     return l
