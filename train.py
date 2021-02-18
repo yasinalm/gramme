@@ -317,6 +317,7 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
         # record loss and EPE
+        # TODO: Log losses separately
         losses.update(loss.item(), args.batch_size)
 
         # compute gradient and do Adam step

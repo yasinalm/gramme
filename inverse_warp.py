@@ -160,14 +160,17 @@ class Warper(object):
         # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
         fft_loss = torch.Tensor([0]).to(device) # şimdilik disable
 
-        ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
+        # ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
+        ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
+        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        ssim_loss = ssim_map.mean()
 
         return reconstruction_loss, fft_loss, ssim_loss, ref_img_warped
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):    
     mask = valid_mask.expand_as(diff)
-    if mask.sum() > 5000:
+    if mask.sum() > 1e6*diff.shape[0]:
         mask_diff = diff * mask
         l1 = mask_diff.sum() / mask.sum()    
         # l2 = mask_diff.square().sum() / mask.sum()
