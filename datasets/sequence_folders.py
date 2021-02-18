@@ -5,6 +5,7 @@ from PIL import Image
 from pathlib import Path
 import random
 import os
+import radar
 
 
 def load_csv_as_float(path):
@@ -12,13 +13,25 @@ def load_csv_as_float(path):
     img = img[np.newaxis,:,:] # [1, H, W] single channel image
     return img
 
+# def load_img_as_float(path):
+#     # return io.imread(path).astype(np.float32)
+#     img = np.array(Image.open(path), dtype=np.float32) # [H, W]
+#     # Skip metadata in the first 10 columns in the Robotcar dataset
+#     img = img[:, 11:].transpose()
+#     img = img[np.newaxis,:, :] / 255. # [1, H, W] single channel image
+#     return img
+
 def load_img_as_float(path):
-    # return io.imread(path).astype(np.float32)
-    img = np.array(Image.open(path), dtype=np.float32) # [H, W]
-    # Skip metadata in the first 10 columns in the Robotcar dataset
-    img = img[:, 11:].transpose()
-    img = img[np.newaxis,:, :] / 255. # [1, H, W] single channel image
-    return img
+    # Resolution of the cartesian form of the radar scan in metres per pixel
+    cart_resolution = .25
+    # Cartesian visualisation size (used for both height and width)
+    cart_pixel_width = 501  # pixels
+    interpolate_crossover = True
+
+    timestamps, azimuths, valid, fft_data, radar_resolution = radar.load_radar(path)
+    cart_img = radar.radar_polar_to_cartesian(azimuths, fft_data, radar_resolution, cart_resolution, cart_pixel_width,
+                                        interpolate_crossover)
+    return cart_img
 
 
 class SequenceFolder(data.Dataset):

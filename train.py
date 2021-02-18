@@ -116,7 +116,8 @@ def main():
         #     normalize
         # ])
 
-    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor()])
 
     
 
