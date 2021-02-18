@@ -267,7 +267,7 @@ class Warper(object):
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):    
     mask = valid_mask.expand_as(diff)
-    if mask.sum() > 1e6*diff.shape[0]:
+    if mask.sum() > 1e5*diff.shape[0]:
         mask_diff = diff * mask
         l1 = mask_diff.sum() / mask.sum()    
         # l2 = mask_diff.square().sum() / mask.sum()
