@@ -242,7 +242,7 @@ class Warper(object):
 
     def compute_pairwise_loss(self, tgt_img, ref_img, pose):
 
-        ref_img_warped, valid_mask = self.inverse_warp_fft(ref_img, pose)
+        ref_img_warped, valid_mask = self.inverse_warp_fft_cart(ref_img, pose)
 
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
         # diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth)).clamp(0, 1)

@@ -28,7 +28,7 @@ def load_img_as_float(path):
     cart_pixel_width = 501  # pixels
     interpolate_crossover = True
 
-    timestamps, azimuths, valid, fft_data, radar_resolution = radar.load_radar(path)
+    timestamps, azimuths, valid, fft_data, radar_resolution = radar.load_radar(str(path))
     cart_img = radar.radar_polar_to_cartesian(azimuths, fft_data, radar_resolution, cart_resolution, cart_pixel_width,
                                         interpolate_crossover)
     return cart_img
