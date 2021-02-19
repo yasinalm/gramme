@@ -71,6 +71,8 @@ parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth valid
 parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
+parser.add_argument('--cart-res', type=float, help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
+parser.add_argument('--cart-pixels', type=int, help='Cartesian size in pixels (used for both height and width)', metavar='W', default=501)
 parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
@@ -109,12 +111,12 @@ def main():
         mean, std = 11.49, 16.46 # Calculated over all robotcar dataset
     normalize = custom_transforms.Normalize(mean=mean, std=std)
 
-        # train_transform = custom_transforms.Compose([
-        #     custom_transforms.RandomHorizontalFlip(),
-        #     custom_transforms.RandomScaleCrop(),
-        #     custom_transforms.ArrayToTensor(),
-        #     normalize
-        # ])
+    # train_transform = custom_transforms.Compose([
+    #     custom_transforms.RandomHorizontalFlip(),
+    #     custom_transforms.RandomScaleCrop(),
+    #     custom_transforms.ArrayToTensor(),
+    #     normalize
+    # ])
 
     # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
     ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor()])
@@ -130,7 +132,9 @@ def main():
         train=True,
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
-        dataset=args.dataset
+        dataset=args.dataset,
+        cart_resolution=args.cart_res,
+        cart_pixels = args.cart_pixels
         )
     # else:
     #     train_set = PairFolder(
@@ -149,7 +153,9 @@ def main():
         train=False,
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
-        dataset=args.dataset
+        dataset=args.dataset,
+        cart_resolution=args.cart_res,
+        cart_pixels = args.cart_pixels
     )
     if args.with_gt:
         if args.gt_file:
@@ -176,7 +182,7 @@ def main():
 
     # create model
     print("=> creating loss object")
-    warper = Warper(args.range_res, args.angle_res, args.num_range_bins, args.num_angle_bins, args.with_auto_mask, args.padding_mode)
+    warper = Warper(args.range_res, args.angle_res, args.num_range_bins, args.num_angle_bins, args.with_auto_mask, args.cart_res, args.cart_pixels, args.padding_mode)
 
     # create model
     print("=> creating model")

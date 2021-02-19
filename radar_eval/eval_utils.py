@@ -193,9 +193,8 @@ def getTraj(all_poses, all_inv_poses, k):
     idx = torch.arange(i, N, k)
     
     # Previous src
-    # TODO: Şimdilik forward pose alalım. ileride (forward-backward)/2 olmalı
-    # b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-    b_pose = all_poses_t[0, idx] #src2tgt [n,6]
+    b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+    # b_pose = all_poses_t[0, idx] #src2tgt [n,6]
     b_pose = -b_pose # tgt2src [n,6]
     b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
     # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
@@ -210,8 +209,8 @@ def getTraj(all_poses, all_inv_poses, k):
     # f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
     # f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
     # f_pose = rel2abs_traj(f_pose)
-    # f_pose = (all_poses_t[1, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-    f_pose = all_poses_t[1, idx] #src2tgt [n,6]
+    f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+    # f_pose = all_poses_t[1, idx] #src2tgt [n,6]
     # f_pose = -f_pose # tgt2src [n,6]
     # f_pose = f_pose.cumsum(dim=0) # [n,6]
     f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]

@@ -12,47 +12,16 @@ class Warper(object):
     """Inverse warper class
     """
 
-    # xy_hom = None
-
-    # def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, numRangeBins, num_angle_bins,
-    # with_auto_mask, padding_mode='zeros'):
-    #     # RF params
-    #     # rangeResolutionsInMeter = 0.0977
-    #     # # dopplerResolutionMps = 0.0951
-    #     # numRangeBins = 256
-    #     # # numDopplerBins = 128
-    #     # num_angle_bins = 64 # our choice
-    #     self.rangeResolutionsInMeter=rangeResolutionsInMeter
-    #     self.angleResolutionInRad = angleResolutionInRad
-    #     self.numRangeBins=numRangeBins
-    #     self.num_angle_bins=num_angle_bins
-    #     self.with_auto_mask=with_auto_mask
-    #     self.padding_mode=padding_mode
-
-    #     azimuths = torch.arange(num_angle_bins)
-    #     azimuths = (azimuths - (num_angle_bins / 2))
-    #     azimuths = azimuths*angleResolutionInRad
-    #     ranges = torch.arange(numRangeBins)
-    #     ranges = ranges*rangeResolutionsInMeter
-
-    #     az_grid, range_grid = torch.meshgrid(azimuths, ranges) # [num_angle_bins, numRangeBins], i.e. [W, H]
-    #     x, y = pol2cart(az_grid, range_grid)
-    #     x=torch.flatten(x)
-    #     y=torch.flatten(y)
-
-    #     xy = torch.vstack((x, y, torch.zeros_like(x)))  # [3,N] Augment with zero z column
-    #     xy = torch.transpose(xy, 0,1) # [N,3]
-    #     self.xy_hom = tgm.convert_points_to_homogeneous(xy).to(device) # [N,4]
-
     def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, numRangeBins, num_angle_bins,
-    with_auto_mask, padding_mode='zeros'):
+    with_auto_mask, cart_resolution, cart_pixels, padding_mode='zeros'):
         # RF params
         # rangeResolutionsInMeter = 0.0977
         # # dopplerResolutionMps = 0.0951
         # numRangeBins = 256
         # # numDopplerBins = 128
         # num_angle_bins = 64 # our choice
-        self.cart_resolution = .25
+        self.cart_resolution = cart_resolution
+        self.cart_pixels = cart_pixels
         self.rangeResolutionsInMeter=rangeResolutionsInMeter
         self.angleResolutionInRad = angleResolutionInRad
         self.numRangeBins=numRangeBins
@@ -60,9 +29,9 @@ class Warper(object):
         self.with_auto_mask=with_auto_mask
         self.padding_mode=padding_mode
 
-        ranges_x = torch.arange(-250,251)
+        ranges_x = torch.arange(self.cart_pixels)-self.cart_pixels//2
         ranges_x = ranges_x*self.cart_resolution
-        ranges_y = torch.arange(-250,251)
+        ranges_y = torch.arange(self.cart_pixels)-self.cart_pixels//2
         ranges_y = ranges_y*self.cart_resolution
 
         x, y = torch.meshgrid(ranges_x, ranges_y)
@@ -73,82 +42,6 @@ class Warper(object):
         xy = torch.transpose(xy, 0,1) # [N,3]
         self.xy_hom = tgm.convert_points_to_homogeneous(xy).to(device) # [N,4]
 
-    
-    def radar2pixel(self, pose_mat):
-        """Transform coordinates in the source frame to the target frame.
-        Args:
-            cam_coords: pixel coordinates defined in the first camera coordinates system -- [B, 4, H, W]
-            proj_c2p_rot: rotation matrix of cameras -- [B, 3, 4]
-            proj_c2p_tr: translation vectors of cameras -- [B, 3, 1]
-        Returns:
-            array of [-1,1] coordinates -- [B, 2, H, W]
-        """
-        # Transform points
-        tformed_xy_hom = torch.matmul(pose_mat, torch.transpose(self.xy_hom, 0,1)) # [B,4,N]
-        tformed_xy_hom = torch.transpose(tformed_xy_hom, 1,2) # [B,N,4]
-        # Convert from homogenous coordinates
-        tformed_xy = tgm.convert_points_from_homogeneous(tformed_xy_hom) # [B,N,3]
-        # Convert back from cartesian to polar
-        theta_tformed_rad, rho_tformed = cart2pol(tformed_xy[:,:,0], tformed_xy[:,:,1]) # [B,N], [B,N]
-        # theta_tformed = torch.rad2deg(theta_tformed_rad) # [B,N]
-
-        # tformed_xy = tformed_xy[:,0:2,:] # Drop augmented z column [B,2,N]
-        # Replace 0-valued augmented z column with dB values of source img 
-        # tformed_xy[:,2,:] = torch.flatten(img, start_dim=1) # [B,3,N] N points with x,y and db values
-
-        X = theta_tformed_rad #theta_tformed # [B,N]
-        Y = rho_tformed # [B,N]
-        w = self.num_angle_bins*self.angleResolutionInRad
-        h = self.numRangeBins*self.rangeResolutionsInMeter
-
-        # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
-        X_norm = 2*X/w
-        Y_norm = 2*Y/h - 1  # Idem [B, H*W]
-
-        pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
-        pixel_coords = pixel_coords.reshape(self.b, self.w, self.h, 2) # [B, W, H, 2]
-        pixel_coords = pixel_coords.transpose(1,2) # [B, H, W, 2]
-
-        return pixel_coords
-
-    
-    def inverse_warp_fft(self, img, pose, rotation_mode='euler'):
-        """
-        Inverse warp a source radar frame to the target radar plane.
-        H: Number of ADC samples (or Doppler bins)
-        W: Number of angle bins
-        Args:
-            img: the source radar frame image (where to sample pixels) -- [B, H, W]
-            pose: 6DoF pose parameters from target to source -- [B, 6]
-        Returns:
-            projected_img: Source image warped to the target image plane
-            valid_points: Boolean array indicating point validity
-        """
-        check_sizes(img, 'img', 'B1HW')
-        check_sizes(pose, 'pose', 'B6')
-
-        self.b, self.c, self.h, self.w = img.size()
-
-        assert self.w == self.num_angle_bins
-        assert self.h == self.numRangeBins
-
-        # if (xy_hom is None) or xy_hom.size(1) < 4:
-        #     set_radar_grid()
-
-        # Convert 6 DoF pose to 4x4 transformation matrix
-        pose_mat = tgm.rtvec_to_pose(pose)  # T*R in homogenous coordinates [B,4,4]
-        
-        # src_pixel_coords = pixel_coords.reshape(b, h, w, 2)
-        src_pixel_coords = self.radar2pixel(pose_mat)  # [B,H,W,2]
-
-        projected_img = F.grid_sample(
-            img, src_pixel_coords, padding_mode=self.padding_mode)
-
-        # calculate mask values for each tformed_xy coordinates to match the target xy
-        valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1 # [B,H,W]
-        valid_points = torch.unsqueeze(valid_points, 1) # [B,1,H,W]
-
-        return projected_img, valid_points
 
     def radar2pixel_cart(self, pose_mat):
         """Transform coordinates in the source frame to the target frame.
@@ -167,8 +60,8 @@ class Warper(object):
 
         X = tformed_xy[:,:,0] #theta_tformed # [B,N]
         Y = tformed_xy[:,:,1] # [B,N]
-        w = 250*self.cart_resolution
-        h = 250*self.cart_resolution
+        w = (self.cart_pixels//2)*self.cart_resolution
+        h = (self.cart_pixels//2)*self.cart_resolution
 
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
         X_norm = X/w
@@ -180,7 +73,7 @@ class Warper(object):
 
         return pixel_coords
 
-    def inverse_warp_fft_cart(self, img, pose, rotation_mode='euler'):
+    def inverse_warp_fft_cart(self, img, pose):
         """
         Inverse warp a source radar frame to the target radar plane.
         H: Number of ADC samples (or Doppler bins)
@@ -197,8 +90,8 @@ class Warper(object):
 
         self.b, self.c, self.h, self.w = img.size()
 
-        assert self.w == 501 #self.num_angle_bins
-        assert self.h == 501 #self.numRangeBins
+        assert self.w == self.cart_pixels #self.num_angle_bins
+        assert self.h == self.cart_pixels #self.numRangeBins
 
         # if (xy_hom is None) or xy_hom.size(1) < 4:
         #     set_radar_grid()

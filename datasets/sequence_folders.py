@@ -21,17 +21,6 @@ def load_csv_as_float(path):
 #     img = img[np.newaxis,:, :] / 255. # [1, H, W] single channel image
 #     return img
 
-def load_img_as_float(path):
-    # Resolution of the cartesian form of the radar scan in metres per pixel
-    cart_resolution = .25
-    # Cartesian visualisation size (used for both height and width)
-    cart_pixel_width = 501  # pixels
-    interpolate_crossover = True
-
-    timestamps, azimuths, valid, fft_data, radar_resolution = radar.load_radar(str(path))
-    cart_img = radar.radar_polar_to_cartesian(azimuths, fft_data, radar_resolution, cart_resolution, cart_pixel_width,
-                                        interpolate_crossover)
-    return cart_img
 
 
 class SequenceFolder(data.Dataset):
@@ -44,7 +33,7 @@ class SequenceFolder(data.Dataset):
         transform functions must take in an image
     """
 
-    def __init__(self, root, skip_frames, sequence_length, train, dataset, seed=None, transform=None):
+    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, seed=None, transform=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -54,6 +43,8 @@ class SequenceFolder(data.Dataset):
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
+        self.cart_resolution = cart_resolution
+        self.cart_pixels = cart_pixels
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -81,11 +72,19 @@ class SequenceFolder(data.Dataset):
             random.shuffle(sequence_set)
         self.samples = sequence_set
 
+    def load_img_as_float(self, path):
+        interpolate_crossover = True
+
+        timestamps, azimuths, valid, fft_data, radar_resolution = radar.load_radar(str(path))
+        cart_img = radar.radar_polar_to_cartesian(azimuths, fft_data, radar_resolution, self.cart_resolution, self.cart_pixels,
+                                            interpolate_crossover)
+        return cart_img
+
     
     def __getitem__(self, index):
         sample = self.samples[index]
         # Choose the loader function
-        load_as_float = load_csv_as_float if self.dataset=='hand' else load_img_as_float
+        load_as_float = load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
