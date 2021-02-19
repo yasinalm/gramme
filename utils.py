@@ -97,7 +97,7 @@ def traj2Fig(pred_xyz):
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.scatter(pred_x, pred_y)
+    ax.plot(pred_x, pred_y)
     # fig.canvas.draw()
 
     return fig

@@ -441,13 +441,9 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
         output_writers[0].add_figure('val/fig/f_traj_pred', f_fig, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        output_writers[0].add_histogram('val/traj_pred-x', all_poses_t[...,3], epoch)
-        output_writers[0].add_histogram('val/traj_pred-y', all_poses_t[...,4], epoch)
-        output_writers[0].add_histogram('val/traj_pred-z', all_poses_t[...,5], epoch)
-
-        # output_writers[0].add_histogram('val/traj_aligned-x', f_pred_xyz[...,0], epoch)
-        # output_writers[0].add_histogram('val/traj_aligned-y', f_pred_xyz[...,1], epoch)
-        # output_writers[0].add_histogram('val/traj_aligned-z', f_pred_xyz[...,2], epoch)
+        output_writers[0].add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
+        output_writers[0].add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
+        output_writers[0].add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
 
     logger.valid_bar.update(args.val_size)
 
@@ -527,13 +523,9 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper,
         output_writers[0].add_figure('val/fig/traj_pred', fig, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        output_writers[0].add_histogram('val/traj_pred-x', all_poses_t[...,3], epoch)
-        output_writers[0].add_histogram('val/traj_pred-y', all_poses_t[...,4], epoch)
-        output_writers[0].add_histogram('val/traj_pred-z', all_poses_t[...,5], epoch)
-
-        output_writers[0].add_histogram('val/traj_aligned-x', f_pred_xyz[...,0], epoch)
-        output_writers[0].add_histogram('val/traj_aligned-y', f_pred_xyz[...,1], epoch)
-        output_writers[0].add_histogram('val/traj_aligned-z', f_pred_xyz[...,2], epoch)
+        output_writers[0].add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
+        output_writers[0].add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
+        output_writers[0].add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
 
 
     logger.valid_bar.update(args.val_size)
