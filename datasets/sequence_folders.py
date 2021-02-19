@@ -33,7 +33,7 @@ class SequenceFolder(data.Dataset):
         transform functions must take in an image
     """
 
-    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, seed=None, transform=None):
+    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, rangeResolutionsInMeter, angleResolutionInRad, seed=None, transform=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -45,6 +45,8 @@ class SequenceFolder(data.Dataset):
         self.k = skip_frames
         self.cart_resolution = cart_resolution
         self.cart_pixels = cart_pixels
+        self.rangeResolutionsInMeter=rangeResolutionsInMeter
+        self.angleResolutionInRad = angleResolutionInRad
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -75,9 +77,10 @@ class SequenceFolder(data.Dataset):
     def load_img_as_float(self, path):
         interpolate_crossover = True
 
-        timestamps, azimuths, valid, fft_data, radar_resolution = radar.load_radar(str(path))
-        cart_img = radar.radar_polar_to_cartesian(azimuths, fft_data, radar_resolution, self.cart_resolution, self.cart_pixels,
-                                            interpolate_crossover)
+        # Robotcar dataset has header of length 11 columns
+        fft_data = radar.load_radar(str(path), self.dataset)
+        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter, self.cart_resolution, self.cart_pixels, interpolate_crossover)
+
         return cart_img
 
     

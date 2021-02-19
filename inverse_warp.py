@@ -12,8 +12,7 @@ class Warper(object):
     """Inverse warper class
     """
 
-    def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, numRangeBins, num_angle_bins,
-    with_auto_mask, cart_resolution, cart_pixels, padding_mode='zeros'):
+    def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, with_auto_mask, cart_resolution, cart_pixels, padding_mode='zeros'):
         # RF params
         # rangeResolutionsInMeter = 0.0977
         # # dopplerResolutionMps = 0.0951
@@ -24,8 +23,8 @@ class Warper(object):
         self.cart_pixels = cart_pixels
         self.rangeResolutionsInMeter=rangeResolutionsInMeter
         self.angleResolutionInRad = angleResolutionInRad
-        self.numRangeBins=numRangeBins
-        self.num_angle_bins=num_angle_bins
+        # self.numRangeBins=numRangeBins
+        # self.num_angle_bins=num_angle_bins
         self.with_auto_mask=with_auto_mask
         self.padding_mode=padding_mode
 

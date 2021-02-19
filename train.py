@@ -57,7 +57,7 @@ parser.add_argument('-s', '--ssim-loss-weight', type=float, help='weight for SSI
 # parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
 parser.add_argument('--with-auto-mask', type=int,  default=0, help='with the the mask for stationary points')
 parser.add_argument('--with-pretrain', type=int,  default=0, help='with or without imagenet pretrain for resnet')
-parser.add_argument('--dataset', type=str, choices=['hand', 'driving'], default='hand', help='the dataset to train')
+parser.add_argument('--dataset', type=str, choices=['hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
@@ -73,8 +73,8 @@ parser.add_argument('--range-res', type=float, help='Range resolution of FMCW ra
 parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
 parser.add_argument('--cart-res', type=float, help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
 parser.add_argument('--cart-pixels', type=int, help='Cartesian size in pixels (used for both height and width)', metavar='W', default=501)
-parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
-parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
+# parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
+# parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
 best_error = -1
 n_iter = 0
@@ -105,11 +105,11 @@ def main():
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
 
     # Data loading code
-    if args.dataset == 'hand':
-        mean, std = 119.4501, 6.5258 # Calculated over all dataset
-    else:
-        mean, std = 11.49, 16.46 # Calculated over all robotcar dataset
-    normalize = custom_transforms.Normalize(mean=mean, std=std)
+    # if args.dataset == 'hand':
+    #     mean, std = 119.4501, 6.5258 # Calculated over all dataset
+    # else:
+    #     mean, std = 11.49, 16.46 # Calculated over all robotcar dataset
+    # normalize = custom_transforms.Normalize(mean=mean, std=std)
 
     # train_transform = custom_transforms.Compose([
     #     custom_transforms.RandomHorizontalFlip(),
@@ -134,7 +134,9 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         cart_resolution=args.cart_res,
-        cart_pixels = args.cart_pixels
+        cart_pixels = args.cart_pixels,
+        rangeResolutionsInMeter=args.range_res,
+        angleResolutionInRad = args.angle_res
         )
     # else:
     #     train_set = PairFolder(
@@ -155,7 +157,9 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         cart_resolution=args.cart_res,
-        cart_pixels = args.cart_pixels
+        cart_pixels = args.cart_pixels,
+        rangeResolutionsInMeter=args.range_res,
+        angleResolutionInRad = args.angle_res
     )
     if args.with_gt:
         if args.gt_file:
@@ -182,7 +186,7 @@ def main():
 
     # create model
     print("=> creating loss object")
-    warper = Warper(args.range_res, args.angle_res, args.num_range_bins, args.num_angle_bins, args.with_auto_mask, args.cart_res, args.cart_pixels, args.padding_mode)
+    warper = Warper(args.range_res, args.angle_res, args.with_auto_mask, args.cart_res, args.cart_pixels, args.padding_mode)
 
     # create model
     print("=> creating model")
