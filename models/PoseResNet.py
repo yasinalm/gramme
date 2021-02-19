@@ -32,7 +32,7 @@ class PoseDecoder(nn.Module):
         self.relu = nn.ReLU()
         self.dropout1 = nn.Dropout2d(0.25)
 
-        num_features = 90624 #1024
+        num_features = 16384 #cart-16384 pol-90624 hand-1024
 
         self.fc_t1 = nn.Linear(num_features, 128)
         # self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for) # [x,y,z]
@@ -63,7 +63,7 @@ class PoseDecoder(nn.Module):
         # Flatten x with start_dim=1
         x = torch.flatten(x, 1)
 
-        # print(x.shape)
+        # print(x.shape) # to calculate linear layer input size
         
         # Translation: Pass data through fc1
         t = self.fc_t1(x)

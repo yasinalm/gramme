@@ -59,7 +59,7 @@ parser.add_argument('--with-auto-mask', type=int,  default=0, help='with the the
 parser.add_argument('--with-pretrain', type=int,  default=0, help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=['hand', 'driving'], default='hand', help='the dataset to train')
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
-# parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
+parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
                     help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
@@ -116,7 +116,8 @@ def main():
         #     normalize
         # ])
 
-    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor()])
 
     
 
@@ -188,10 +189,10 @@ def main():
     #     weights = torch.load(args.pretrained_disp)
     #     disp_net.load_state_dict(weights['state_dict'], strict=False)
 
-    # if args.pretrained_pose:
-    #     print("=> using pre-trained weights for PoseResNet")
-    #     weights = torch.load(args.pretrained_pose)
-    #     pose_net.load_state_dict(weights['state_dict'], strict=False)
+    if args.pretrained_pose:
+        print("=> using pre-trained weights for PoseResNet")
+        weights = torch.load(args.pretrained_pose)
+        pose_net.load_state_dict(weights['state_dict'], strict=False)
 
     # disp_net = torch.nn.DataParallel(disp_net)
     pose_net = torch.nn.DataParallel(pose_net)
@@ -228,9 +229,9 @@ def main():
         # evaluate on validation set
         logger.reset_valid_bar()
         if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, args.val_size, logger, warper, output_writers)            
+            errors, error_names = validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper, output_writers)            
         else:
-            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, args.val_size, logger, warper, output_writers)
+            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
