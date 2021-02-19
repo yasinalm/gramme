@@ -1,3 +1,27 @@
+
+from typing import AnyStr, Tuple
+import numpy as np
+import cv2
+
+
+def load_radar(example_path: AnyStr, dataset: AnyStr) -> np.ndarray:
+    """Read radar frame
+    Args:
+        example_path (AnyStr): Path to range-azimuth png
+    Returns:
+        fft_data (np.ndarray): Radar power readings along each azimuth
+    """
+
+    skip_header = 11 if dataset=='robotcar' else 0
+
+    raw_example_data = cv2.imread(example_path, cv2.IMREAD_GRAYSCALE)
+    if dataset == 'radiate':
+        raw_example_data = np.transpose(raw_example_data)
+    fft_data = raw_example_data[:, skip_header:].astype(np.float32)[:, :, np.newaxis] / 255.
+
+    return fft_data
+
+
 ################################################################################
 #
 # Copyright (c) 2017 University of Oxford
@@ -11,41 +35,6 @@
 # Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #
 ###############################################################################
-
-from typing import AnyStr, Tuple
-import numpy as np
-import cv2
-
-
-def load_radar(example_path: AnyStr, dataset: AnyStr) -> np.ndarray:
-    """Decode a single Oxford Radar RobotCar Dataset radar example
-    Args:
-        example_path (AnyStr): Oxford Radar RobotCar Dataset Example png
-    Returns:
-        timestamps (np.ndarray): Timestamp for each azimuth in int64 (UNIX time)
-        azimuths (np.ndarray): Rotation for each polar radar azimuth (radians)
-        valid (np.ndarray) Mask of whether azimuth data is an original sensor reading or interpolated from adjacent
-            azimuths
-        fft_data (np.ndarray): Radar power readings along each azimuth
-        radar_resolution (float): Resolution of the polar radar data (metres per pixel)
-    """
-    # Hard coded configuration to simplify parsing code
-    # radar_resolution = np.array([0.0432], np.float32)
-    # encoder_size = 5600
-
-    skip_header = 11 if dataset=='robotcar' else 0
-
-    raw_example_data = cv2.imread(example_path, cv2.IMREAD_GRAYSCALE)
-    if dataset == 'radiate':
-        raw_example_data = np.transpose(raw_example_data)
-    # timestamps = raw_example_data[:, :8].copy().view(np.int64)
-    # azimuths = (raw_example_data[:, 8:10].copy().view(np.uint16) / float(encoder_size) * 2 * np.pi).astype(np.float32)
-    # valid = raw_example_data[:, 10:11] == 255
-    fft_data = raw_example_data[:, skip_header:].astype(np.float32)[:, :, np.newaxis] / 255.
-
-    return fft_data
-
-
 def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, radar_resolution: float,
                              cart_resolution: float, cart_pixel_width: int, interpolate_crossover=True) -> np.ndarray:
     """Convert a polar radar scan to cartesian.
