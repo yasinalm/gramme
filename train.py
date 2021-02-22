@@ -163,7 +163,7 @@ def main():
     )
     if args.with_gt:
         if args.gt_file:
-            vo_eval = RadarEvalOdom(args.gt_file, args.gt_type=="xyz")
+            vo_eval = RadarEvalOdom(args.gt_file, args.dataset)
         else:
             warnings.warn('with-gt is set but no ground truth validation file is provided with val-gt arg! with-gt will be ignored.')
             args.with_gt = False
@@ -186,7 +186,7 @@ def main():
 
     # create model
     print("=> creating loss object")
-    warper = Warper(args.range_res, args.angle_res, args.with_auto_mask, args.cart_res, args.cart_pixels, args.padding_mode)
+    warper = Warper(args.range_res, args.angle_res, args.with_auto_mask, args.cart_res, args.cart_pixels, args.dataset, args.padding_mode)
 
     # create model
     print("=> creating model")

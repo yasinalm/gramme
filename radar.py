@@ -36,7 +36,7 @@ def load_radar(example_path: AnyStr, dataset: AnyStr) -> np.ndarray:
 #
 ###############################################################################
 def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, radar_resolution: float,
-                             cart_resolution: float, cart_pixel_width: int, interpolate_crossover=True) -> np.ndarray:
+                             cart_resolution: float, cart_pixel_width: int, dataset: AnyStr, interpolate_crossover=True) -> np.ndarray:
     """Convert a polar radar scan to cartesian.
     Args:
         azimuths (np.ndarray): Rotation for each polar radar azimuth (radians)
@@ -107,12 +107,21 @@ def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, 
          <------------------------------>
              cart_pixel_width (pixels)
     """
-    if (cart_pixel_width % 2) == 0:
-        cart_min_range = (cart_pixel_width / 2 - 0.5) * cart_resolution
-    else:
-        cart_min_range = cart_pixel_width // 2 * cart_resolution
-    coords = np.linspace(-cart_min_range, cart_min_range, cart_pixel_width, dtype=np.float32)
-    Y, X = np.meshgrid(coords, -coords)
+    
+    
+    if dataset=='hand': # 90deg FoV
+        cart_min_range = cart_pixel_width * cart_resolution
+
+        coords = np.linspace(0, cart_min_range, cart_pixel_width, dtype=np.float32)
+        Y, X = np.meshgrid(coords, coords)
+    else: # Full FoV
+        if (cart_pixel_width % 2) == 0:
+            cart_min_range = (cart_pixel_width / 2 - 0.5) * cart_resolution
+        else:
+            cart_min_range = cart_pixel_width // 2 * cart_resolution
+        coords = np.linspace(-cart_min_range, cart_min_range, cart_pixel_width, dtype=np.float32)
+        Y, X = np.meshgrid(coords, -coords)
+        
     sample_range = np.sqrt(Y * Y + X * X)
     sample_angle = np.arctan2(Y, X)
     sample_angle += (sample_angle < 0).astype(np.float32) * 2. * np.pi

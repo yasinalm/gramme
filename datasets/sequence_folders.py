@@ -8,10 +8,7 @@ import os
 import radar
 
 
-def load_csv_as_float(path):
-    img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
-    img = img[np.newaxis,:,:] # [1, H, W] single channel image
-    return img
+
 
 # def load_img_as_float(path):
 #     # return io.imread(path).astype(np.float32)
@@ -47,6 +44,7 @@ class SequenceFolder(data.Dataset):
         self.cart_pixels = cart_pixels
         self.rangeResolutionsInMeter=rangeResolutionsInMeter
         self.angleResolutionInRad = angleResolutionInRad
+        self.interpolate_crossover = True
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -75,11 +73,21 @@ class SequenceFolder(data.Dataset):
         self.samples = sequence_set
 
     def load_img_as_float(self, path):
-        interpolate_crossover = True
-
         # Robotcar dataset has header of length 11 columns
         fft_data = radar.load_radar(str(path), self.dataset)
-        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter, self.cart_resolution, self.cart_pixels, interpolate_crossover)
+        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter, self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
+
+        return cart_img
+
+    def load_csv_as_float(self, path):
+        img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
+        img = img[np.newaxis,:,:] # [1, H, W] single channel image
+
+        # Min-max normalization to [0,1]
+        fft_data = img - img.min()
+        fft_data = fft_data/fft_data.max()
+
+        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter, self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
 
         return cart_img
 
@@ -87,7 +95,7 @@ class SequenceFolder(data.Dataset):
     def __getitem__(self, index):
         sample = self.samples[index]
         # Choose the loader function
-        load_as_float = load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
+        load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 

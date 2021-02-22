@@ -14,53 +14,25 @@ class RadarEvalOdom():
         vo_eval.eval(gt_pose_txt_dir, result_pose_txt_dir)
     """
 
-    def __init__(self, f_gt, eul):
+    def __init__(self, f_gt, dataset):
         """Initialize with ground truth file.
 
         Args:
             f_gt (Path): Path to ground truth trajectory file.
             eul (boolean): If the gt format is in Euler xyz.
         """
-        self.eul = eul
-        if self.eul:
+        self.dataset = dataset
+        if self.dataset=='hand':
             self.gt = self.load_xyz_from_txt(f_gt) # [N,3]
+        elif self.dataset=='robotcar':
+            self.gt = self.load_odometry_from_txt(f_gt) # [N,4,4]
+        elif self.dataset=='radiate':
+            self.gt = self.load_odometry_from_txt(f_gt) # [N,4,4]
         else:
-            self.gt = self.load_poses_from_txt(f_gt) # [N,4,4]
+            raise RuntimeError('Unknown dataset name is provded!')
+        
         # self.gt = align_to_origin(self.gt)
 
-    def load_poses_from_txt(self, file_name):
-        """Load poses from txt (KITTI format)
-        Each line in the file should follow the following structure
-            (1) pose(3x4 matrix in terms of 12 numbers)        
-
-        Args:
-            file_name (str): txt file path
-
-        Returns:
-            torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
-        """
-
-        poses = np.genfromtxt(file_name, delimiter=',')
-        poses16 = np.zeros((poses.shape[0],16))
-        poses16[:,:12] = poses
-        poses16[:,-1] = 1.0
-        poses_mat = poses16.reshape((-1,4,4))
-        poses_mat = torch.Tensor(poses_mat).to(device)
-        return poses_mat
-
-    def load_xyz_from_txt(self, file_name):
-        """Load xyz poses from txt. Each line is: x,y,x       
-
-        Args:
-            file_name (str): txt file path
-
-        Returns:
-            torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
-        """
-
-        poses = np.genfromtxt(file_name, delimiter=',')
-        poses = torch.Tensor(poses).to(device)
-        return poses
 
     def eval_ref_poses(self, all_poses, all_inv_poses, k):
         """Evaluate ATE pose error from the predicted poses. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
@@ -88,38 +60,32 @@ class RadarEvalOdom():
         #i=0
         for i in range(k):
             idx = torch.arange(i, N, k)
-            
+
             # Previous src
-            # TODO: Şimdilik forward pose alalım. ileride (forward-backward)/2 olmalı
-            # b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-            b_pose = all_poses_t[0, idx] #src2tgt [n,6]
+            b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            # b_pose = all_poses_t[0, idx] #src2tgt [n,6]
             b_pose = -b_pose # tgt2src [n,6]
             b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
-            # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
-            
+            # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]            
             # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
             b_pose = rel2abs_traj(b_pose) # [n,4,4]
+            # b_pose = b_pose.cumsum(dim=0) # [n,6] 
             # b_pose = b_pose.cumsum(dim=0) # [n,6]            
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx]
-            ate_b, _ = self.calculate_ate(b_pose, gt_seq_i)
+            ate_b, _ = self.calculate_ate_from_hom(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
             # Next src
-            # f_pose = tgm.rtvec_to_pose(all_poses_t[1, idx]) # tgt2src [n,4,4]
-            # f_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[1, idx]) # inv(tgt2src) [n,4,4]
-            # f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
-            # f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
-            # f_pose = rel2abs_traj(f_pose)
-            # f_pose = (all_poses_t[1, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-            f_pose = all_poses_t[1, idx] #src2tgt [n,6]
+            f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+            # f_pose = all_poses_t[1, idx] #src2tgt [n,6]
             # f_pose = -f_pose # tgt2src [n,6]
             # f_pose = f_pose.cumsum(dim=0) # [n,6]
             f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]
             f_pose = rel2abs_traj(f_pose) # [n,4,4]
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
-            ate_f, f_pred_xyz = self.calculate_ate(f_pose, gt_seq_i)
+            ate_f, f_pred_xyz = self.calculate_ate_from_hom(f_pose, gt_seq_i)
             ate_fs.append(ate_f)
 
         ate_bs = torch.cat(ate_bs)
@@ -127,47 +93,110 @@ class RadarEvalOdom():
 
         return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz
 
-    
-
-        
-    def calculate_ate(self, pred, gt=None):
+    def calculate_ate_from_hom(self, pred, gt=None):
         """Calculate Absolute Trajectory Error between predicted and ground truth trajectories, using Umeyama alignment.
         Both prediction and gt is absolute trajectories.
 
         Args:
-            pred (torch.Tensor): Predicted trajectory in the form of homogenous transformation matrix. Shape: [N,6]
+            pred (torch.Tensor): Predicted trajectory in the form of homogenous transformation matrix. Shape: [N,4,4]
             gt (torch.Tensor, optional): Absolute ground truth tracjectory in the form of homogenous transformation matrix Shape: [N,4,4]. Defaults to None.
 
         Returns:
             torch.Tensor: Root mean squared error (RMSE) of ATE. Scalar tensor.
+            torch.Tensor: Aligned pedicted trajectory.
         """
-
         if gt==None:
-            gt=self.gt
+            gt = self.gt
 
-        # Align both trajectories to the origin
-        # pred = align_to_origin(pred)
-        # gt = align_to_origin(gt)
+        gt_xyz = gt[:,:3,3]
+        pred_xyz = pred[:,:3,3]
 
-        # None for batching, batch=1
-        if self.eul:
-            gt_xyz = gt[None,:,:]
-        else:
-            gt_xyz = gt[None,:,:3,3]
-        # pred_xyz = pred[None,:,3:]
-        pred_xyz = pred[None,:,:3,3]
-        pred_xyz = pred_xyz - pred_xyz[0]
-        gt_xyz = gt_xyz - gt_xyz[0]
-        R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
+        rmse_ate, aligned_pred = calculate_ate(pred_xyz, gt_xyz)
 
-        # apply the estimated similarity transform to Xt_init
-        Xt = _apply_similarity_transform(pred_xyz, R, T, s)
+        return rmse_ate, aligned_pred
 
-        # compute the root mean squared error
-        rmse_ate = ((Xt - gt_xyz) ** 2).mean(1).sqrt()
+    
 
-        return rmse_ate, pred_xyz
+        
+def calculate_ate(pred, gt):
+    """Calculate Absolute Trajectory Error between predicted and ground truth trajectories, using Umeyama alignment.
+    Both prediction and gt is absolute trajectories.
 
+    Args:
+        pred (torch.Tensor): Predicted trajectory in the form of homogenous transformation matrix. Shape: [N,3]
+        gt (torch.Tensor, optional): Absolute ground truth tracjectory in the form of homogenous transformation matrix Shape: [N,3.
+
+    Returns:
+        torch.Tensor: Root mean squared error (RMSE) of ATE. Scalar tensor.
+        torch.Tensor: Aligned pedicted trajectory.
+    """
+
+    # None for batching, batch=1
+    gt_xyz = gt[None]
+    pred_xyz = pred[None]
+    R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
+
+    # apply the estimated similarity transform to Xt_init
+    aligned_pred = _apply_similarity_transform(pred_xyz, R, T, s)
+
+    # compute the root mean squared error
+    rmse_ate = ((aligned_pred - gt_xyz) ** 2).mean(1).sqrt()
+
+    return rmse_ate, aligned_pred
+
+
+
+def load_KITTI_poses_from_txt(self, file_name):
+    """Load poses from txt (KITTI format)
+    Each line in the file should follow the following structure
+        (1) pose(3x4 matrix in terms of 12 numbers)        
+
+    Args:
+        file_name (str): txt file path
+
+    Returns:
+        torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
+    """
+
+    poses = np.genfromtxt(file_name, delimiter=',')
+    poses16 = np.zeros((poses.shape[0],16))
+    poses16[:,:12] = poses
+    poses16[:,-1] = 1.0
+    poses_mat = poses16.reshape((-1,4,4))
+    poses_mat = torch.Tensor(poses_mat).to(device)
+    return poses_mat
+
+def load_xyz_from_txt(self, file_name):
+    """Load xyz poses from txt. Each line is: x,y,x       
+
+    Args:
+        file_name (str): txt file path
+
+    Returns:
+        torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
+    """
+
+    poses = np.genfromtxt(file_name, delimiter=',')
+    poses = torch.Tensor(poses).to(device)
+    poses = tgm.rtvec_to_pose(poses) # [n,4,4]
+    return poses
+
+def load_odometry_from_txt(self, file_name):
+    """Load xyz poses from odometry data. Columns [2,3,4,5,6,7] are [x,y,z,rx,ry,rz].      
+
+    Args:
+        file_name (str): txt file path
+
+    Returns:
+        torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
+    """
+    gt = np.genfromtxt(file_name, delimiter=',', usecols=np.arange(2,8), skip_header=True)
+    gt[:,np.arange(6)] = gt[:,[3,4,5,0,1,2]] # [rx,ry,rz,x,y,x] format
+    gt_t = torch.Tensor(gt).to(device) # [n,6]
+    gt_t = tgm.rtvec_to_pose(gt_t) # [n,4,4]
+    gt_t = rel2abs_traj(gt_t) # [n,4,4]
+
+    return gt_t
 
 def getTraj(all_poses, all_inv_poses, k):
     """Convert the predicted poses to absolute trajectory. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
@@ -197,8 +226,7 @@ def getTraj(all_poses, all_inv_poses, k):
     # b_pose = all_poses_t[0, idx] #src2tgt [n,6]
     b_pose = -b_pose # tgt2src [n,6]
     b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
-    # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
-    
+    # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]    
     # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
     b_pose = rel2abs_traj(b_pose) # [n,4,4]
     # b_pose = b_pose.cumsum(dim=0) # [n,6] 

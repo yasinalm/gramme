@@ -12,7 +12,7 @@ class Warper(object):
     """Inverse warper class
     """
 
-    def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, with_auto_mask, cart_resolution, cart_pixels, padding_mode='zeros'):
+    def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, with_auto_mask, cart_resolution, cart_pixels, dataset, padding_mode='zeros'):
         # RF params
         # rangeResolutionsInMeter = 0.0977
         # # dopplerResolutionMps = 0.0951
@@ -27,10 +27,16 @@ class Warper(object):
         # self.num_angle_bins=num_angle_bins
         self.with_auto_mask=with_auto_mask
         self.padding_mode=padding_mode
+        self.dataset=dataset
 
-        ranges_x = torch.arange(self.cart_pixels)-self.cart_pixels//2
+        if self.dataset=='hand':
+            ranges_x = torch.arange(self.cart_pixels)
+            ranges_y = torch.arange(self.cart_pixels)
+        else:
+            ranges_x = torch.arange(self.cart_pixels)-self.cart_pixels//2
+            ranges_y = torch.arange(self.cart_pixels)-self.cart_pixels//2
+        
         ranges_x = ranges_x*self.cart_resolution
-        ranges_y = torch.arange(self.cart_pixels)-self.cart_pixels//2
         ranges_y = ranges_y*self.cart_resolution
 
         x, y = torch.meshgrid(ranges_x, ranges_y)
@@ -59,12 +65,21 @@ class Warper(object):
 
         X = tformed_xy[:,:,0] #theta_tformed # [B,N]
         Y = tformed_xy[:,:,1] # [B,N]
-        w = (self.cart_pixels//2)*self.cart_resolution
-        h = (self.cart_pixels//2)*self.cart_resolution
+        
 
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
-        X_norm = X/w
-        Y_norm = Y/h # Idem [B, H*W]
+        if self.dataset=='hand':
+            # X and Y are in [0, self.cart_pixels*self.cart_resolution] meters.
+            w = self.cart_pixels*self.cart_resolution
+            h = self.cart_pixels*self.cart_resolution
+            X_norm = 2*X/w -1
+            Y_norm = 2*Y/h -1 # [B, H*W]
+        else:
+            # X and Y are in [-(self.cart_pixels//2)*self.cart_resolution, (self.cart_pixels//2)*self.cart_resolution] meters.
+            w = (self.cart_pixels//2)*self.cart_resolution
+            h = (self.cart_pixels//2)*self.cart_resolution
+            X_norm = X/w
+            Y_norm = Y/h # [B, H*W]
 
         pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
         pixel_coords = pixel_coords.reshape(self.b, self.w, self.h, 2) # [B, W, H, 2]
