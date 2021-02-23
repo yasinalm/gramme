@@ -81,7 +81,7 @@ class SequenceFolder(data.Dataset):
 
     def load_csv_as_float(self, path):
         img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
-        img = img[np.newaxis,:,:] # [1, H, W] single channel image
+        # img = img[np.newaxis,:,:] # [1, H, W] single channel image
 
         # Min-max normalization to [0,1]
         fft_data = img - img.min()

@@ -107,18 +107,16 @@ def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, 
          <------------------------------>
              cart_pixel_width (pixels)
     """
+    if (cart_pixel_width % 2) == 0:
+        cart_min_range = (cart_pixel_width / 2 - 0.5) * cart_resolution
+    else:
+        cart_min_range = cart_pixel_width // 2 * cart_resolution
     
-    
-    if dataset=='hand': # 90deg FoV
-        cart_min_range = cart_pixel_width * cart_resolution
-
-        coords = np.linspace(0, cart_min_range, cart_pixel_width, dtype=np.float32)
-        Y, X = np.meshgrid(coords, coords)
-    else: # Full FoV
-        if (cart_pixel_width % 2) == 0:
-            cart_min_range = (cart_pixel_width / 2 - 0.5) * cart_resolution
-        else:
-            cart_min_range = cart_pixel_width // 2 * cart_resolution
+    if dataset=='hand': # 180deg FoV
+        x_coords = np.linspace(0, cart_min_range, cart_pixel_width//2, dtype=np.float32)
+        y_coords = np.linspace(-cart_min_range, cart_min_range, cart_pixel_width, dtype=np.float32)
+        Y, X = np.meshgrid(x_coords, y_coords)
+    else: # Full FoV        
         coords = np.linspace(-cart_min_range, cart_min_range, cart_pixel_width, dtype=np.float32)
         Y, X = np.meshgrid(coords, -coords)
         

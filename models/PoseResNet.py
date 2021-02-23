@@ -13,7 +13,7 @@ from collections import OrderedDict
 from .resnet_encoder import *
 
 class PoseDecoder(nn.Module):
-    def __init__(self, num_ch_enc, num_input_features=1, num_frames_to_predict_for=1, stride=1):
+    def __init__(self, dataset, num_ch_enc, num_input_features=1, num_frames_to_predict_for=1, stride=1):
         super(PoseDecoder, self).__init__()
 
         self.num_ch_enc = num_ch_enc
@@ -32,7 +32,7 @@ class PoseDecoder(nn.Module):
         self.relu = nn.ReLU()
         self.dropout1 = nn.Dropout2d(0.25)
 
-        num_features = 16384 #cart-16384 pol-90624 hand-1024
+        num_features = 8192 if dataset=='hand' else 16384 #cart-16384 pol-90624 hand-8192
 
         self.fc_t1 = nn.Linear(num_features, 128)
         # self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for) # [x,y,z]
@@ -96,10 +96,10 @@ class PoseDecoder(nn.Module):
 
 class PoseResNet(nn.Module):
 
-    def __init__(self, num_layers = 18, pretrained = False):
+    def __init__(self, dataset, num_layers = 18, pretrained = False):
         super(PoseResNet, self).__init__()
         self.encoder = ResnetEncoder(num_layers = num_layers, pretrained = pretrained, num_input_images=2)
-        self.decoder = PoseDecoder(self.encoder.num_ch_enc)
+        self.decoder = PoseDecoder(dataset, self.encoder.num_ch_enc)
 
     def init_weights(self):
         pass

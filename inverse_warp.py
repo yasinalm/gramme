@@ -12,7 +12,7 @@ class Warper(object):
     """Inverse warper class
     """
 
-    def __init__(self, rangeResolutionsInMeter, angleResolutionInRad, with_auto_mask, cart_resolution, cart_pixels, dataset, padding_mode='zeros'):
+    def __init__(self, with_auto_mask, cart_resolution, cart_pixels, dataset, padding_mode='zeros'):
         # RF params
         # rangeResolutionsInMeter = 0.0977
         # # dopplerResolutionMps = 0.0951
@@ -21,8 +21,8 @@ class Warper(object):
         # num_angle_bins = 64 # our choice
         self.cart_resolution = cart_resolution
         self.cart_pixels = cart_pixels
-        self.rangeResolutionsInMeter=rangeResolutionsInMeter
-        self.angleResolutionInRad = angleResolutionInRad
+        # self.rangeResolutionsInMeter=rangeResolutionsInMeter
+        # self.angleResolutionInRad = angleResolutionInRad
         # self.numRangeBins=numRangeBins
         # self.num_angle_bins=num_angle_bins
         self.with_auto_mask=with_auto_mask
@@ -30,8 +30,8 @@ class Warper(object):
         self.dataset=dataset
 
         if self.dataset=='hand':
-            ranges_x = torch.arange(self.cart_pixels)
-            ranges_y = torch.arange(self.cart_pixels)
+            ranges_x = torch.arange(self.cart_pixels//2)
+            ranges_y = torch.arange(self.cart_pixels)-self.cart_pixels//2
         else:
             ranges_x = torch.arange(self.cart_pixels)-self.cart_pixels//2
             ranges_y = torch.arange(self.cart_pixels)-self.cart_pixels//2
@@ -73,7 +73,7 @@ class Warper(object):
             w = self.cart_pixels*self.cart_resolution
             h = self.cart_pixels*self.cart_resolution
             X_norm = 2*X/w -1
-            Y_norm = 2*Y/h -1 # [B, H*W]
+            Y_norm = Y/h # [B, H*W]
         else:
             # X and Y are in [-(self.cart_pixels//2)*self.cart_resolution, (self.cart_pixels//2)*self.cart_resolution] meters.
             w = (self.cart_pixels//2)*self.cart_resolution
@@ -104,8 +104,12 @@ class Warper(object):
 
         self.b, self.c, self.h, self.w = img.size()
 
-        assert self.w == self.cart_pixels #self.num_angle_bins
         assert self.h == self.cart_pixels #self.numRangeBins
+        if self.dataset=='hand':
+            assert self.w == self.cart_pixels//2 #self.num_angle_bins
+        else:
+            assert self.w == self.cart_pixels
+            
 
         # if (xy_hom is None) or xy_hom.size(1) < 4:
         #     set_radar_grid()
@@ -174,7 +178,8 @@ class Warper(object):
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):    
     mask = valid_mask.expand_as(diff)
-    if mask.sum() > 1e5*diff.shape[0]:
+    thr_mask = diff.numel()//3 # at least a third of the input must be valid
+    if mask.sum() > thr_mask:
         mask_diff = diff * mask
         l1 = mask_diff.sum() / mask.sum()    
         # l2 = mask_diff.square().sum() / mask.sum()

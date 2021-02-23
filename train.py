@@ -186,12 +186,12 @@ def main():
 
     # create model
     print("=> creating loss object")
-    warper = Warper(args.range_res, args.angle_res, args.with_auto_mask, args.cart_res, args.cart_pixels, args.dataset, args.padding_mode)
+    warper = Warper(args.with_auto_mask, args.cart_res, args.cart_pixels, args.dataset, args.padding_mode)
 
     # create model
     print("=> creating model")
     # disp_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNet(args.resnet_layers, args.with_pretrain).to(device)
+    pose_net = models.PoseResNet(args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
     # load parameters
     # if args.pretrained_disp:
