@@ -70,8 +70,8 @@ class Warper(object):
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
         if self.dataset=='hand':
             # X and Y are in [0, self.cart_pixels*self.cart_resolution] meters.
-            w = self.cart_pixels*self.cart_resolution
-            h = self.cart_pixels*self.cart_resolution
+            w = (self.cart_pixels//2)*self.cart_resolution
+            h = (self.cart_pixels//2)*self.cart_resolution
             X_norm = 2*X/w -1
             Y_norm = Y/h # [B, H*W]
         else:
@@ -170,7 +170,7 @@ class Warper(object):
 
         # ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
         ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
-        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
         ssim_loss = ssim_map.mean()
 
         return reconstruction_loss, fft_loss, ssim_loss, ref_img_warped
@@ -179,6 +179,7 @@ class Warper(object):
 def mean_on_mask(diff, valid_mask):    
     mask = valid_mask.expand_as(diff)
     thr_mask = diff.numel()//3 # at least a third of the input must be valid
+    # thr_mask = 6e4*diff.shape[0]
     if mask.sum() > thr_mask:
         mask_diff = diff * mask
         l1 = mask_diff.sum() / mask.sum()    
