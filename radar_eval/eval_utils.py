@@ -73,7 +73,7 @@ class RadarEvalOdom():
             # b_pose = b_pose.cumsum(dim=0) # [n,6]            
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx]
-            ate_b, _ = self.calculate_ate_from_hom(b_pose, gt_seq_i)
+            ate_b, b_pred_xyz = self.calculate_ate_from_hom(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
             # Next src

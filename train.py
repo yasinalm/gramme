@@ -161,6 +161,8 @@ def main():
         rangeResolutionsInMeter=args.range_res,
         angleResolutionInRad = args.angle_res
     )
+
+    vo_eval = None
     if args.with_gt:
         if args.gt_file:
             vo_eval = RadarEvalOdom(args.gt_file, args.dataset)
