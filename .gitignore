@@ -8,7 +8,7 @@ checkpoints
 __pycache__
 
 # Notebook cache
-notebooks/.ipynb_checkpoints
-notebooks/000002.png
-notebooks/000001.png
-notebooks/figs
+notebooks/
+
+# Results
+results/

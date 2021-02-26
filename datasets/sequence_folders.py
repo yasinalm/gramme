@@ -30,13 +30,16 @@ class SequenceFolder(data.Dataset):
         transform functions must take in an image
     """
 
-    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, rangeResolutionsInMeter, angleResolutionInRad, seed=None, transform=None):
+    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, rangeResolutionsInMeter, angleResolutionInRad, seed=None, transform=None, sequence=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.train = train
-        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+        if sequence is not None:
+            self.scenes = [self.root/sequence/'radar']
+        else:
+            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
