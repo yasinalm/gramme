@@ -130,18 +130,19 @@ class Warper(object):
         return projected_img, valid_points
 
     #TODO: num_scales eklenebilir buraya.
+    #TODO: ref_masks kullanmiyoruz, kullanmak icin mantikli bir yol koy.
     # decibels loss
-    def compute_db_loss(self, tgt_img, ref_imgs, poses, poses_inv):
+    def compute_db_loss(self, tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv):
 
         rec_loss = 0
         fft_loss = 0
         ssim_loss = 0
         projected_imgs = ref_imgs
 
-        for i, (ref_img, pose, pose_inv) in enumerate(zip(ref_imgs, poses, poses_inv)):
+        for i, (ref_img, ref_mask, pose, pose_inv) in enumerate(zip(ref_imgs, ref_masks, poses, poses_inv)):
 
-            rec_loss1, fft_loss1, ssim_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, pose)
-            rec_loss2, fft_loss2, ssim_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, pose_inv)
+            rec_loss1, fft_loss1, ssim_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, tgt_mask, ref_mask, pose)
+            rec_loss2, fft_loss2, ssim_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, ref_mask, tgt_mask, pose_inv)
 
             rec_loss += (rec_loss1 + rec_loss2)
             fft_loss += (fft_loss1 + fft_loss2)
@@ -151,7 +152,7 @@ class Warper(object):
         return rec_loss, fft_loss, ssim_loss, projected_imgs
 
 
-    def compute_pairwise_loss(self, tgt_img, ref_img, pose):
+    def compute_pairwise_loss(self, tgt_img, ref_img, tgt_mask, ref_mask, pose):
 
         ref_img_warped, valid_mask = self.inverse_warp_fft_cart(ref_img, pose)
 
@@ -161,6 +162,9 @@ class Warper(object):
         if self.with_auto_mask == True:
             auto_mask = (diff_img < (tgt_img - ref_img).abs()).float() # [B,1,H,W]
             valid_mask = auto_mask * valid_mask # element-wise # [B,1,H,W]
+
+        if tgt_mask is not None:
+            valid_mask = valid_mask*tgt_mask
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)

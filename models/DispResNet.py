@@ -50,8 +50,8 @@ class DepthDecoder(nn.Module):
     def __init__(self, num_ch_enc, scales=range(4), num_output_channels=1, use_skips=True):
         super(DepthDecoder, self).__init__()
 
-        self.alpha = 10
-        self.beta = 0.01
+        # self.alpha = 10
+        # self.beta = 0.01
 
         self.num_output_channels = num_output_channels
         self.use_skips = use_skips
@@ -95,7 +95,10 @@ class DepthDecoder(nn.Module):
             x = torch.cat(x, 1)
             x = self.convs[("upconv", i, 1)](x)
             if i in self.scales:
-                self.outputs.append(self.alpha * self.sigmoid(self.convs[("dispconv", i)](x)) + self.beta)
+                # self.outputs.append(self.alpha * self.sigmoid(self.convs[("dispconv", i)](x)) + self.beta)
+                disp = self.sigmoid(self.convs[("dispconv", i)](x))
+                mask = disp > 0.5
+                self.outputs.append(mask)
 
         self.outputs = self.outputs[::-1]
         return self.outputs
@@ -106,7 +109,7 @@ class DispResNet(nn.Module):
     def __init__(self, num_layers = 18, pretrained = True):
         super(DispResNet, self).__init__()
         self.encoder = ResnetEncoder(num_layers = num_layers, pretrained = pretrained, num_input_images=1)
-        self.decoder = DepthDecoder(self.encoder.num_ch_enc)
+        self.decoder = DepthDecoder(self.encoder.num_ch_enc, scales=range(1))
 
     def init_weights(self):
         pass
@@ -115,10 +118,13 @@ class DispResNet(nn.Module):
         features = self.encoder(x)
         outputs = self.decoder(features)
         
-        if self.training:
-            return outputs
-        else:
-            return outputs[0]
+        # if self.training:
+        #     return outputs
+        # else:
+        #     return outputs[0]
+
+        # return single scale
+        return outputs[0]
 
 
 if __name__ == "__main__":
