@@ -16,6 +16,7 @@ import models
 import custom_transforms
 from datasets.sequence_folders import SequenceFolder
 from radar_eval.eval_utils import RadarEvalOdom, getTraj
+from radar_eval.eval_odometry import EvalOdom
 import conversions as tgm
 
 parser = argparse.ArgumentParser(description='Script for visualizing depth map and masks',
@@ -88,7 +89,7 @@ def main():
     pose_net = models.PoseResNet(args.dataset, args.resnet_layers, args.with_pretrain).to(device)
     pose_net.load_state_dict(weights_pose['state_dict'], strict=False)
     pose_net.eval()
-
+    
     all_poses = []
     all_inv_poses = []
 
@@ -109,9 +110,11 @@ def main():
     print('Average time for inference: {:.2f}sec/pair of frames'.format(t_del/(nframes*4))) # this for total of forward and backward poses
 
     if args.with_gt:
-        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
+        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
         args.skip_frames)
         save_traj_plots_with_gt(results_dir, f_pred_xyz, vo_eval.gt)
+        vo_eval = EvalOdom()
+        vo_eval.eval(vo_eval.gt.cpu().numpy(), f_pred.cpu().numpy(), str(results_dir))
     else:
         b_pred_xyz, f_pred_xyz = getTraj(all_poses, all_inv_poses, args.skip_frames)
         save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz)

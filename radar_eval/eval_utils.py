@@ -56,6 +56,7 @@ class RadarEvalOdom():
 
         ate_bs = []
         ate_fs = []
+        f_pred = None
         f_pred_xyz = None
         #i=0
         for i in range(k):
@@ -73,7 +74,7 @@ class RadarEvalOdom():
             # b_pose = b_pose.cumsum(dim=0) # [n,6]            
             gt_idx = idx+k #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx]
-            ate_b, b_pred_xyz = self.calculate_ate_from_hom(b_pose, gt_seq_i)
+            ate_b, b_pred_xyz, b_pred = self.calculate_ate_from_hom(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
 
             # Next src
@@ -85,13 +86,13 @@ class RadarEvalOdom():
             f_pose = rel2abs_traj(f_pose) # [n,4,4]
             gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
-            ate_f, f_pred_xyz = self.calculate_ate_from_hom(f_pose, gt_seq_i)
+            ate_f, f_pred_xyz, f_pred = self.calculate_ate_from_hom(f_pose, gt_seq_i)
             ate_fs.append(ate_f)
 
         ate_bs = torch.cat(ate_bs)
         ate_fs = torch.cat(ate_fs)
 
-        return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz
+        return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz, f_pred
 
     def calculate_ate_from_hom(self, pred, gt=None):
         """Calculate Absolute Trajectory Error between predicted and ground truth trajectories, using Umeyama alignment.
@@ -106,14 +107,11 @@ class RadarEvalOdom():
             torch.Tensor: Aligned pedicted trajectory.
         """
         if gt==None:
-            gt = self.gt
+            gt = self.gt        
 
-        gt_xyz = gt[:,:3,3]
-        pred_xyz = pred[:,:3,3]
+        rmse_ate, aligned_pred_xyz, aligned_pred = calculate_ate(pred, gt)
 
-        rmse_ate, aligned_pred = calculate_ate(pred_xyz, gt_xyz)
-
-        return rmse_ate, aligned_pred
+        return rmse_ate, aligned_pred_xyz, aligned_pred
 
     
 
@@ -131,18 +129,22 @@ def calculate_ate(pred, gt):
         torch.Tensor: Aligned pedicted trajectory.
     """
 
+    gt_xyz = gt[:,:3,3]
+    pred_xyz = pred[:,:3,3]
+
     # None for batching, batch=1
-    gt_xyz = gt[None]
-    pred_xyz = pred[None]
+    gt_xyz = gt_xyz[None]
+    pred_xyz = pred_xyz[None]
     R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
 
     # apply the estimated similarity transform to Xt_init
-    aligned_pred = _apply_similarity_transform(pred_xyz, R, T, s)
+    aligned_pred = _apply_similarity_transform_hom(pred, R, T, s)
+    aligned_pred_xyz = _apply_similarity_transform(pred_xyz, R, T, s)
 
     # compute the root mean squared error
-    rmse_ate = ((aligned_pred - gt_xyz) ** 2).mean(1).sqrt()
+    rmse_ate = ((aligned_pred_xyz - gt_xyz) ** 2).mean(1).sqrt()
 
-    return rmse_ate, aligned_pred
+    return rmse_ate, aligned_pred_xyz, aligned_pred
 
 
 
@@ -437,3 +439,23 @@ def _apply_similarity_transform(
     """
     X = s[:, None, None] * torch.bmm(X, R) + T[:, None, :]
     return X
+
+def _apply_similarity_transform_hom(
+    X: torch.Tensor, R: torch.Tensor, T: torch.Tensor, s: torch.Tensor
+) -> torch.Tensor:
+    """
+    Applies a similarity transformation parametrized with a batch of orthonormal
+    matrices `R` of shape `(minibatch, d, d)`, a batch of translations `T`
+    of shape `(minibatch, d)` and a batch of scaling factors `s`
+    of shape `(minibatch,)` to a given `d`-dimensional poses `X`
+    of shape `(minibatch, num_points, d, d)`
+    Code is based on PyTorch3d.
+    """
+    tform = torch.eye(4)
+    tform = tform[None,:,:]
+    tform = tform.repeat(X.shape[0],1,1)
+    tform[:,:3,:3] = s[:, None, None] * R
+    tform[:,:3,3:4] = T
+    for i in range(X.shape[0]):
+        X[i] = torch.matmul(X[i], tform[i]) # [N,4,4] @ [4,4] = [N,4,4]
+    return X # [B,N,4,4]

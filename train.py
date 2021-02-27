@@ -520,13 +520,15 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper,
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
         if i >= args.val_size - 1:
             break
-    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
+    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
     args.skip_frames)
 
     if log_outputs:
         # Plot and log aligned trajectory
         fig = traj2Fig(f_pred_xyz)
+        fig2= traj2Fig(f_pred[:,:3,3])
         output_writers[0].add_figure('val/fig/traj_pred', fig, epoch)
+        output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
         output_writers[0].add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
