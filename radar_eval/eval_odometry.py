@@ -179,7 +179,7 @@ class EvalOdom():
         else:
             return 0, 0
 
-    def plot_trajectory(self, poses_gt, poses_result, seq):
+    def plot_trajectory(self, poses_gt, poses_result, result_dir):
         """Plot trajectory for both GT and prediction
         Args:
             poses_gt (dict): {idx: 4x4 array}; ground truth poses
@@ -213,9 +213,10 @@ class EvalOdom():
         plt.xlabel('x (m)', fontsize=fontsize_)
         plt.ylabel('z (m)', fontsize=fontsize_)
         fig.set_size_inches(10, 10)
-        png_title = "sequence_{:02}".format(seq)
-        fig_pdf = self.plot_path_dir + "/" + png_title + ".pdf"
+        fig_pdf = result_dir/"trajectory.pdf"
+        fig_png = result_dir/"trajectory.png"
         plt.savefig(fig_pdf, bbox_inches='tight', pad_inches=0)
+        plt.savefig(fig_png, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
 
     # def plot_trajectory(self, pred, gt):
@@ -233,7 +234,7 @@ class EvalOdom():
     #     plt.savefig(str(Path(self.plot_path_dir)/'ro_pred_with_gt.png'), bbox_inches = 'tight', pad_inches = 0)
     #     plt.close(fig)
 
-    def plot_error(self, avg_segment_errs, seq):
+    def plot_error(self, avg_segment_errs, result_dir):
         """Plot per-length error
         Args:
             avg_segment_errs (dict): {100:[avg_t_err, avg_r_err],...}
@@ -255,7 +256,7 @@ class EvalOdom():
         plt.xlabel('Path Length (m)', fontsize=fontsize_)
         plt.legend(loc="upper right", prop={'size': fontsize_})
         fig.set_size_inches(5, 5)
-        fig_pdf = self.plot_error_dir + "/trans_err_{:02}.pdf".format(seq)
+        fig_pdf = result_dir/"trans_err.pdf"
         plt.savefig(fig_pdf, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
 
@@ -275,7 +276,7 @@ class EvalOdom():
         plt.xlabel('Path Length (m)', fontsize=fontsize_)
         plt.legend(loc="upper right", prop={'size': fontsize_})
         fig.set_size_inches(5, 5)
-        fig_pdf = self.plot_error_dir + "/rot_err_{:02}.pdf".format(seq)
+        fig_pdf = result_dir/"rot_err.pdf"
         plt.savefig(fig_pdf, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
 
@@ -393,13 +394,12 @@ class EvalOdom():
             f.writelines(line)
 
     def eval(self, pred, gt, result_dir):
-        """Evaulate required/available sequences
+        """Evaluate the precited trajectory in terms of several metrics and save plots and stats to `result_dir`.
+
         Args:
-            gt_dir (str): ground truth poses txt files directory
-            result_dir (str): pose predictions txt files directory
-            seqs (list/None):
-                - None: Evalute all available seqs in result_dir
-                - list: list of sequence indexs to be evaluated
+            pred (numpy.ndarray): Predicted aligned trajectory in [N,4,4] format.
+            gt (numpy.ndarray): Ground truth trajectory in [N,4,4] format.
+            result_dir (pathlib.Path): Directory to save results.
         """
 
         poses_result = dict(zip(range(pred.shape[0]), pred))
@@ -413,24 +413,25 @@ class EvalOdom():
         seq_rpe_rot = []
 
         # Create result directory
-        error_dir = result_dir + "/errors"
-        self.plot_path_dir = result_dir + "/plot_path"
-        self.plot_error_dir = result_dir + "/plot_error"
-        result_txt = os.path.join(result_dir, "result.txt")
+        # error_dir = result_dir + "/errors"
+        # self.plot_path_dir = result_dir + "/plot_path"
+        # self.plot_error_dir = result_dir + "/plot_error"
+        # result_txt = os.path.join(result_dir, "result.txt")
+        result_txt = result_dir/"result.txt"
         f = open(result_txt, 'w')
 
-        if not os.path.exists(error_dir):
-            os.makedirs(error_dir)
-        if not os.path.exists(self.plot_path_dir):
-            os.makedirs(self.plot_path_dir)
-        if not os.path.exists(self.plot_error_dir):
-            os.makedirs(self.plot_error_dir)
+        # if not os.path.exists(error_dir):
+        #     os.makedirs(error_dir)
+        # if not os.path.exists(self.plot_path_dir):
+        #     os.makedirs(self.plot_path_dir)
+        # if not os.path.exists(self.plot_error_dir):
+        #     os.makedirs(self.plot_error_dir)
 
         # evaluation
         i=0    
         # compute sequence errors
         seq_err = self.calc_sequence_errors(poses_gt, poses_result)
-        self.save_sequence_errors(seq_err, error_dir + "/" + 'sequence_errors.txt')
+        self.save_sequence_errors(seq_err, result_dir/'sequence_errors.txt')
 
         # Compute segment errors
         avg_segment_errs = self.compute_segment_error(seq_err)
@@ -456,8 +457,8 @@ class EvalOdom():
         print("RPE (deg): ", rpe_rot * 180 / np.pi)
 
         # Plotting
-        self.plot_trajectory(poses_gt, poses_result, i)
-        self.plot_error(avg_segment_errs, i)
+        self.plot_trajectory(poses_gt, poses_result, result_dir)
+        self.plot_error(avg_segment_errs, result_dir)
 
         # Save result summary
         self.write_result(f, i, [ave_t_err, ave_r_err, ate, rpe_trans, rpe_rot])

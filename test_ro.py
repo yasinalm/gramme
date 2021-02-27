@@ -2,7 +2,6 @@ import argparse
 import time
 import csv
 from pathlib import Path
-import warnings
 
 import torch
 
@@ -17,7 +16,6 @@ import custom_transforms
 from datasets.sequence_folders import SequenceFolder
 from radar_eval.eval_utils import RadarEvalOdom, getTraj
 from radar_eval.eval_odometry import EvalOdom
-import conversions as tgm
 
 parser = argparse.ArgumentParser(description='Script for visualizing depth map and masks',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -142,8 +140,8 @@ def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz):
 
     # Save fig
     plt.tight_layout()
-    plt.savefig(str(results_dir/'ro_pred.pdf'), bbox_inches = 'tight', pad_inches = 0)
-    plt.savefig(str(results_dir/'ro_pred.png'), bbox_inches = 'tight', pad_inches = 0)
+    plt.savefig(results_dir/'ro_pred.pdf', bbox_inches = 'tight', pad_inches = 0)
+    plt.savefig(results_dir/'ro_pred.png', bbox_inches = 'tight', pad_inches = 0)
 
 def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
     np_pred = pred_xyz[0].cpu().numpy()
@@ -156,8 +154,8 @@ def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
 
     # Save fig
     plt.tight_layout()
-    plt.savefig(str(results_dir/'ro_pred_with_gt.pdf'), bbox_inches = 'tight', pad_inches = 0)
-    plt.savefig(str(results_dir/'ro_pred_with_gt.png'), bbox_inches = 'tight', pad_inches = 0)
+    plt.savefig(results_dir/'ro_pred_with_gt.pdf', bbox_inches = 'tight', pad_inches = 0)
+    plt.savefig(results_dir/'ro_pred_with_gt.png', bbox_inches = 'tight', pad_inches = 0)
 
 if __name__ == '__main__':
     #sns.set(style=\"whitegrid\", rc={\"font.size\":8,\"axes.titlesize\":8,\"axes.labelsize\":5})
