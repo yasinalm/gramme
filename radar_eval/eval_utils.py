@@ -23,11 +23,11 @@ class RadarEvalOdom():
         """
         self.dataset = dataset
         if self.dataset=='hand':
-            self.gt = self.load_xyz_from_txt(f_gt) # [N,3]
+            self.gt = load_xyz_from_txt(f_gt) # [N,3]
         elif self.dataset=='robotcar':
-            self.gt = self.load_odometry_from_txt(f_gt) # [N,4,4]
+            self.gt = load_odometry_from_txt(f_gt) # [N,4,4]
         elif self.dataset=='radiate':
-            self.gt = self.load_odometry_from_txt(f_gt) # [N,4,4]
+            self.gt = load_odometry_from_txt(f_gt) # [N,4,4]
         else:
             raise RuntimeError('Unknown dataset name is provded!')
         
@@ -72,7 +72,7 @@ class RadarEvalOdom():
             b_pose = rel2abs_traj(b_pose) # [n,4,4]
             # b_pose = b_pose.cumsum(dim=0) # [n,6] 
             # b_pose = b_pose.cumsum(dim=0) # [n,6]            
-            gt_idx = idx+k #torch.arange(k+i, N+k, k)
+            gt_idx = idx+i #torch.arange(k+i, N+k, k)
             gt_seq_i = self.gt[gt_idx]
             ate_b, b_pred_xyz, b_pred = self.calculate_ate_from_hom(b_pose, gt_seq_i)
             ate_bs.append(ate_b)
@@ -84,7 +84,7 @@ class RadarEvalOdom():
             # f_pose = f_pose.cumsum(dim=0) # [n,6]
             f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]
             f_pose = rel2abs_traj(f_pose) # [n,4,4]
-            gt_idx = idx+2*k #torch.arange(2*k, N+2*k, k)
+            gt_idx = idx+2*i #torch.arange(2*k, N+2*k, k)
             gt_seq_i = self.gt[gt_idx,:]
             ate_f, f_pred_xyz, f_pred = self.calculate_ate_from_hom(f_pose, gt_seq_i)
             ate_fs.append(ate_f)
@@ -138,8 +138,11 @@ def calculate_ate(pred, gt):
     R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
 
     # apply the estimated similarity transform to Xt_init
-    aligned_pred = _apply_similarity_transform_hom(pred, R, T, s)
     aligned_pred_xyz = _apply_similarity_transform(pred_xyz, R, T, s)
+
+    # TODO: simdilik sadece xyz yi align ediyoruz. _apply_similarity_transform_hom metodunu adam etmek lazim.
+    aligned_pred = pred.clone()
+    aligned_pred[:,:3,3] = aligned_pred_xyz
 
     # compute the root mean squared error
     rmse_ate = ((aligned_pred_xyz - gt_xyz) ** 2).mean(1).sqrt()
@@ -148,7 +151,7 @@ def calculate_ate(pred, gt):
 
 
 
-def load_KITTI_poses_from_txt(self, file_name):
+def load_KITTI_poses_from_txt(file_name):
     """Load poses from txt (KITTI format)
     Each line in the file should follow the following structure
         (1) pose(3x4 matrix in terms of 12 numbers)        
@@ -159,6 +162,7 @@ def load_KITTI_poses_from_txt(self, file_name):
     Returns:
         torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
     """
+    global device
 
     poses = np.genfromtxt(file_name, delimiter=',')
     poses16 = np.zeros((poses.shape[0],16))
@@ -168,7 +172,7 @@ def load_KITTI_poses_from_txt(self, file_name):
     poses_mat = torch.Tensor(poses_mat).to(device)
     return poses_mat
 
-def load_xyz_from_txt(self, file_name):
+def load_xyz_from_txt(file_name):
     """Load xyz poses from txt. Each line is: x,y,x       
 
     Args:
@@ -177,13 +181,14 @@ def load_xyz_from_txt(self, file_name):
     Returns:
         torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
     """
+    global device
 
     poses = np.genfromtxt(file_name, delimiter=',')
     poses = torch.Tensor(poses).to(device)
     poses = tgm.rtvec_to_pose(poses) # [n,4,4]
     return poses
 
-def load_odometry_from_txt(self, file_name):
+def load_odometry_from_txt(file_name):
     """Load xyz poses from odometry data. Columns [2,3,4,5,6,7] are [x,y,z,rx,ry,rz].      
 
     Args:
@@ -192,6 +197,8 @@ def load_odometry_from_txt(self, file_name):
     Returns:
         torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
     """
+    global device
+    
     gt = np.genfromtxt(file_name, delimiter=',', usecols=np.arange(2,8), skip_header=True)
     gt[:,np.arange(6)] = gt[:,[3,4,5,0,1,2]] # [rx,ry,rz,x,y,x] format
     gt_t = torch.Tensor(gt).to(device) # [n,6]
@@ -278,7 +285,7 @@ def rel2abs_traj(rel_pose):
         torch.Tensor: Absolute pose sequence in the form of homogenous transformation matrix. Shape: [N,4,4]
     """
 
-    global_pose = torch.eye(4).to(device)
+    global_pose = torch.eye(4, dtype=rel_pose.dtype, device=rel_pose.device)
     abs_pose = torch.zeros_like(rel_pose)    
     for i in range(rel_pose.shape[0]):
         global_pose = global_pose @ rel_pose[i]
@@ -341,8 +348,12 @@ def corresponding_points_alignment(
 
     Xt = X
     Yt = Y
-    num_points = torch.tensor(Xt.shape[1:-1]).to(device)
-    num_points_Y = torch.tensor(Yt.shape[1:-1]).to(device)
+    num_points = X.shape[1] * torch.ones(  # type: ignore
+            X.shape[0], device=X.device, dtype=torch.int64
+        )
+    num_points_Y = Y.shape[1] * torch.ones(  # type: ignore
+            Y.shape[0], device=Y.device, dtype=torch.int64
+        )
 
 
     if (Xt.shape != Yt.shape) or (num_points != num_points_Y).any():
@@ -451,11 +462,13 @@ def _apply_similarity_transform_hom(
     of shape `(minibatch, num_points, d, d)`
     Code is based on PyTorch3d.
     """
-    tform = torch.eye(4)
+    X_tformed = X.clone()
+
+    tform = torch.eye(4, dtype=X.dtype, device=X.device)
     tform = tform[None,:,:]
-    tform = tform.repeat(X.shape[0],1,1)
+    tform = tform.repeat(X_tformed.shape[0],1,1)
     tform[:,:3,:3] = s[:, None, None] * R
-    tform[:,:3,3:4] = T
-    for i in range(X.shape[0]):
-        X[i] = torch.matmul(X[i], tform[i]) # [N,4,4] @ [4,4] = [N,4,4]
-    return X # [B,N,4,4]
+    tform[:,:3,3] = T
+    for i in range(X_tformed.shape[0]):
+        X_tformed[i] = torch.matmul(X_tformed[i], tform[i]) # [N,4,4] @ [4,4] = [N,4,4]
+    return X_tformed # [B,N,4,4]

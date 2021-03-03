@@ -211,7 +211,7 @@ class EvalOdom():
         plt.xticks(fontsize=fontsize_)
         plt.yticks(fontsize=fontsize_)
         plt.xlabel('x (m)', fontsize=fontsize_)
-        plt.ylabel('z (m)', fontsize=fontsize_)
+        plt.ylabel('y (m)', fontsize=fontsize_)
         fig.set_size_inches(10, 10)
         fig_pdf = result_dir/"trajectory.pdf"
         fig_png = result_dir/"trajectory.png"
@@ -253,7 +253,7 @@ class EvalOdom():
         fig = plt.figure()
         plt.plot(plot_x, plot_y, "bs-", label="Translation Error")
         plt.ylabel('Translation Error (%)', fontsize=fontsize_)
-        plt.xlabel('Path Length (m)', fontsize=fontsize_)
+        plt.xlabel('Sequence Length (m)', fontsize=fontsize_)
         plt.legend(loc="upper right", prop={'size': fontsize_})
         fig.set_size_inches(5, 5)
         fig_pdf = result_dir/"trans_err.pdf"
@@ -273,7 +273,7 @@ class EvalOdom():
         fig = plt.figure()
         plt.plot(plot_x, plot_y, "bs-", label="Rotation Error")
         plt.ylabel('Rotation Error (deg/100m)', fontsize=fontsize_)
-        plt.xlabel('Path Length (m)', fontsize=fontsize_)
+        plt.xlabel('Sequence Length (m)', fontsize=fontsize_)
         plt.legend(loc="upper right", prop={'size': fontsize_})
         fig.set_size_inches(5, 5)
         fig_pdf = result_dir/"rot_err.pdf"

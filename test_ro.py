@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 
 import torch
+from tqdm import tqdm
 
 import numpy as np
 import matplotlib as mpl
@@ -73,10 +74,6 @@ def main():
         val_set, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
-    vo_eval = None
-    if args.with_gt:
-        gt_file = Path(args.data/args.sequence/'gt'/'radar_odometry.csv')
-        vo_eval = RadarEvalOdom(gt_file, args.dataset)
 
     nframes = len(val_set)
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -92,14 +89,16 @@ def main():
     all_inv_poses = []
 
     t_del = 0
-    for i, (tgt_img, ref_imgs) in enumerate(val_loader):
+    for i, (tgt_img, ref_imgs) in tqdm(enumerate(val_loader)):
         #(tgt_img, ref_imgs) = val_it.next()
 
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
 
+        torch.cuda.synchronize()
         inf_t0 = time.time()
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        torch.cuda.synchronize()
         t_del += time.time() - inf_t0
 
         all_poses.append(poses)
@@ -108,11 +107,15 @@ def main():
     print('Average time for inference: {:.2f}sec/pair of frames'.format(t_del/(nframes*4))) # this for total of forward and backward poses
 
     if args.with_gt:
-        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
+        print("=> converting odometry predictions to trajectory")
+        gt_file = Path(args.data,args.sequence,'gt','radar_odometry.csv')
+        ro_eval = RadarEvalOdom(gt_file, args.dataset)
+        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses, 
         args.skip_frames)
-        save_traj_plots_with_gt(results_dir, f_pred_xyz, vo_eval.gt)
-        vo_eval = EvalOdom()
-        vo_eval.eval(vo_eval.gt.cpu().numpy(), f_pred.cpu().numpy(), str(results_dir))
+        save_traj_plots_with_gt(results_dir, f_pred_xyz, ro_eval.gt)
+        print("=> evaluating the trajectory")
+        odom_eval = EvalOdom()
+        odom_eval.eval(f_pred.cpu().numpy(), ro_eval.gt.cpu().numpy(), results_dir)
     else:
         b_pred_xyz, f_pred_xyz = getTraj(all_poses, all_inv_poses, args.skip_frames)
         save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz)
@@ -145,7 +148,7 @@ def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz):
 
 def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
     np_pred = pred_xyz[0].cpu().numpy()
-    gt_xyz = gt[:,:3,3]
+    gt_xyz = gt[:,:3,3].cpu().numpy()
     fig, ax = plt.subplots(figsize=(8,8))
     sn.lineplot(x=np_pred[:,0], y=np_pred[:,1], sort=False, ax=ax, label='Ours')
     sn.lineplot(x=gt_xyz[:,0], y=gt_xyz[:,1], sort=False, ax=ax, label='GT')
