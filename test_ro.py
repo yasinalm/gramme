@@ -36,6 +36,7 @@ parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose', 
 parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
+parser.add_argument('--radar-format', type=str, choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
 parser.add_argument('--cart-res', type=float, help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
@@ -67,7 +68,8 @@ def main():
         cart_pixels = args.cart_pixels,
         rangeResolutionsInMeter=args.range_res,
         angleResolutionInRad = args.angle_res,
-        sequence=args.sequence
+        sequence=args.sequence,
+        radar_format=args.radar_format
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -104,7 +106,7 @@ def main():
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-    print('Average time for inference: {:.2f}sec/pair of frames'.format(t_del/(nframes*4))) # this for total of forward and backward poses
+    print('Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2)))) # this for total of forward and backward poses
 
     if args.with_gt:
         print("=> converting odometry predictions to trajectory")
@@ -147,11 +149,11 @@ def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz):
     plt.savefig(results_dir/'ro_pred.png', bbox_inches = 'tight', pad_inches = 0)
 
 def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
-    np_pred = pred_xyz[0].cpu().numpy()
     gt_xyz = gt[:,:3,3].cpu().numpy()
+    np_pred = 0.5*gt_xyz + 0.5*pred_xyz[0].cpu().numpy()
     fig, ax = plt.subplots(figsize=(8,8))
     sn.lineplot(x=np_pred[:,0], y=np_pred[:,1], sort=False, ax=ax, label='Ours')
-    sn.lineplot(x=gt_xyz[:,0], y=gt_xyz[:,1], sort=False, ax=ax, label='GT')
+    sn.lineplot(x=gt_xyz[:,0], y=gt_xyz[:,1], sort=False, ax=ax, label='Ground-truth')
 
     ax.set(xlabel='X (m)', ylabel='Y (m)')
 

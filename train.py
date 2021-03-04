@@ -69,6 +69,7 @@ parser.add_argument('--with-gt', action='store_true', help='use ground truth for
                     You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
+parser.add_argument('--radar-format', type=str, choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
 parser.add_argument('--cart-res', type=float, help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
@@ -136,7 +137,8 @@ def main():
         cart_resolution=args.cart_res,
         cart_pixels = args.cart_pixels,
         rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad = args.angle_res
+        angleResolutionInRad = args.angle_res,
+        radar_format=args.radar_format
         )
     # else:
     #     train_set = PairFolder(
@@ -159,7 +161,8 @@ def main():
         cart_resolution=args.cart_res,
         cart_pixels = args.cart_pixels,
         rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad = args.angle_res
+        angleResolutionInRad = args.angle_res,
+        radar_format=args.radar_format
     )
 
     vo_eval = None
