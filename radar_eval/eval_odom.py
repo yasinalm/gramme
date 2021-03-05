@@ -1,8 +1,6 @@
-# Copyright (C) Huangying Zhan 2019. All rights reserved.
-
 import argparse
 
-from radar_odometry import RadarEvalOdom
+from radar_eval.eval_utils import RadarEvalOdom
 
 parser = argparse.ArgumentParser(description='KITTI evaluation')
 parser.add_argument('--result', type=str, required=True,

@@ -1,10 +1,11 @@
 import torch.utils.data as data
 import numpy as np
 # from skimage import io
-from PIL import Image
+#from PIL import Image
+import cv2
 from pathlib import Path
 import random
-import os
+#import os
 import radar
 
 
@@ -30,13 +31,18 @@ class SequenceFolder(data.Dataset):
         transform functions must take in an image
     """
 
-    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, rangeResolutionsInMeter, angleResolutionInRad, seed=None, transform=None):
+    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, rangeResolutionsInMeter, angleResolutionInRad, radar_format, seed=None, transform=None, sequence=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.train = train
-        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+        self.isCartesian = radar_format=='cartesian'
+        if sequence is not None:
+            radar_folder = 'radar_cart' if self.isCartesian else 'radar'
+            self.scenes = [self.root/sequence/radar_folder]
+        else:
+            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
@@ -79,6 +85,12 @@ class SequenceFolder(data.Dataset):
 
         return cart_img
 
+    def load_cart_as_float(self, path):
+        raw_data = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        cart_img = raw_data.astype(np.float32)[np.newaxis, :, :] / 255.
+
+        return cart_img
+
     def load_csv_as_float(self, path):
         img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
         img = img.transpose()
@@ -96,7 +108,10 @@ class SequenceFolder(data.Dataset):
     def __getitem__(self, index):
         sample = self.samples[index]
         # Choose the loader function
-        load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
+        if self.isCartesian:
+            load_as_float = self.load_cart_as_float
+        else:
+            load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
