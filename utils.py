@@ -134,9 +134,12 @@ def traj2Fig_withgt(pred_xyz, gt_xyz):
 #             shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
 #                             save_path/'{}_model_best.pth.tar'.format(prefix))
 
-def save_checkpoint(save_path, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(save_path, masknet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
     file_prefixes = ['exp_pose']
     states = [exp_pose_state]
+    if masknet_state is not None:
+        file_prefixes.append('masknet')
+        states.append(masknet_state)
     for (prefix, state) in zip(file_prefixes, states):
         torch.save(state, save_path/'{}_{}'.format(prefix, filename))
 

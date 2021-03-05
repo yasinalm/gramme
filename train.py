@@ -56,9 +56,10 @@ parser.add_argument('-s', '--ssim-loss-weight', type=float, help='weight for SSI
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
 # parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
 parser.add_argument('--with-auto-mask', type=int,  default=0, help='with the the mask for stationary points')
+parser.add_argument('--with-mask-net', type=int,  default=0, help='with the the masknet for multipath and noise')
 parser.add_argument('--with-pretrain', type=int,  default=0, help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=['hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
-# parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
+parser.add_argument('--pretrained-mask', dest='pretrained_mask', default=None, metavar='PATH', help='path to pre-trained masknet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
@@ -188,28 +189,33 @@ def main():
 
     # create model
     print("=> creating model")
-    # disp_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
+    mask_net = None
+    if args.with_masknet:
+        mask_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
     pose_net = models.PoseResNet(args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
     # load parameters
-    # if args.pretrained_disp:
-    #     print("=> using pre-trained weights for DispResNet")
-    #     weights = torch.load(args.pretrained_disp)
-    #     disp_net.load_state_dict(weights['state_dict'], strict=False)
+    if args.with_masknet and args.pretrained_mask:
+        print("=> using pre-trained weights for MaskResNet")
+        weights = torch.load(args.pretrained_mask)
+        mask_net.load_state_dict(weights['state_dict'], strict=False)
 
     if args.pretrained_pose:
         print("=> using pre-trained weights for PoseResNet")
         weights = torch.load(args.pretrained_pose)
         pose_net.load_state_dict(weights['state_dict'], strict=False)
 
-    # disp_net = torch.nn.DataParallel(disp_net)
+    if args.with_masknet:
+        mask_net = torch.nn.DataParallel(mask_net)
     pose_net = torch.nn.DataParallel(pose_net)
 
     print('=> setting adam solver')
     optim_params = [
-        # {'params': disp_net.parameters(), 'lr': args.lr},
         {'params': pose_net.parameters(), 'lr': args.lr}
     ]
+    if args.with_masknet:
+        optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
+
     optimizer = torch.optim.Adam(optim_params,
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
@@ -231,7 +237,7 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.train_size, logger, training_writer, warper)
-        train_loss = train(args, train_loader, pose_net, optimizer, logger, training_writer, warper)
+        train_loss = train(args, train_loader, mask_net, pose_net, optimizer, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -256,9 +262,9 @@ def main():
         best_error = min(best_error, decisive_error)
         utils.save_checkpoint(
             args.save_path, {
-            #     'epoch': epoch + 1,
-            #     'state_dict': disp_net.module.state_dict()
-            # }, {
+                'epoch': epoch + 1,
+                'state_dict': mask_net.module.state_dict()
+            }, {
                 'epoch': epoch + 1,
                 'state_dict': pose_net.module.state_dict()
             },
@@ -270,7 +276,7 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, pose_net, optimizer, logger, train_writer, warper):
+def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_writer, warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -280,7 +286,8 @@ def train(args, train_loader, pose_net, optimizer, logger, train_writer, warper)
     # best_error = 9.0e6
 
     # switch to train mode
-    # disp_net.train()
+    if args.with_masknet:
+        mask_net.train()
     pose_net.train()
 
     end = time.time()
@@ -296,14 +303,16 @@ def train(args, train_loader, pose_net, optimizer, logger, train_writer, warper)
         # intrinsics = intrinsics.to(device)
 
         # compute output
-        # tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
+        tgt_mask, ref_masks = None, [None for i in range(args.sequence_length-1)]
+        if args.with_masknet:
+            tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
-        # loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
+        # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
         rec_loss = w1*rec_loss
         fft_loss = w2*fft_loss
         ssim_loss = w3*ssim_loss
@@ -346,11 +355,14 @@ def train(args, train_loader, pose_net, optimizer, logger, train_writer, warper)
             # is_best = decisive_error < best_error
             # best_error = min(best_error, decisive_error)
             is_best = False # Do not choose the best in the training but in the validation wrt. ATE error
+            mask_ckpt_dict = None
+            if args.with_masknet:
+                mask_ckpt_dict = {
+                    'epoch': n_iter + 1,
+                    'state_dict': mask_net.module.state_dict()
+                }
             utils.save_checkpoint(
-                args.save_path, {
-                #     'epoch': epoch + 1,
-                #     'state_dict': disp_net.module.state_dict()
-                # }, {
+                args.save_path, mask_ckpt_dict, {
                     'n_iter': n_iter + 1,
                     'state_dict': pose_net.module.state_dict()
                 },
@@ -380,7 +392,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_w
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to evaluate mode
-    # disp_net.eval()
+    # mask_net.eval()
     pose_net.eval()
 
     all_poses = []
@@ -462,7 +474,7 @@ def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper,
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to evaluate mode
-    # disp_net.eval()
+    # mask_net.eval()
     pose_net.eval()
 
     all_poses = []
@@ -536,15 +548,17 @@ def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper,
     return errors, error_names
 
 
-def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+def compute_mask(mask_net, tgt_img, ref_imgs):
+    # tgt_mask = [1/disp for disp in mask_net(tgt_img)]
+    tgt_mask = [mask for mask in mask_net(tgt_img)]
 
-    ref_depths = []
+    ref_masks = []
     for ref_img in ref_imgs:
-        ref_depth = [1/disp for disp in disp_net(ref_img)]
-        ref_depths.append(ref_depth)
+        # ref_depth = [1/disp for disp in mask_net(ref_img)]
+        ref_mask = [mask for mask in mask_net(ref_img)]
+        ref_masks.append(ref_mask)
 
-    return tgt_depth, ref_depths
+    return tgt_mask, ref_masks
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
