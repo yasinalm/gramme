@@ -33,8 +33,6 @@ parser.add_argument('--dataset', type=str, choices=['hand', 'robotcar', 'radiate
 parser.add_argument("--sequence", default='2019-01-10-14-36-48-radar-oxford-10k-partial', type=str, help="sequence to test")
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose', metavar='PATH', help='path to pre-trained Pose net model')
-parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
-                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--radar-format', type=str, choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
@@ -108,7 +106,7 @@ def main():
 
     print('Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2)))) # this for total of forward and backward poses
 
-    if args.with_gt:
+    if args.gt_file is not None:
         print("=> converting odometry predictions to trajectory")
         gt_file = Path(args.data,args.sequence,'gt','radar_odometry.csv')
         ro_eval = RadarEvalOdom(gt_file, args.dataset)

@@ -91,13 +91,34 @@ def traj2Fig(pred_xyz):
         matplotlib.pyplot.figure: Figure of the trajectory plot
     """
 
-    pred_xyz = pred_xyz.detach().cpu()
-    pred_x = pred_xyz[:,0].numpy()
-    pred_y = pred_xyz[:,1].numpy()
+    pred_xyz = pred_xyz.cpu()
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.plot(pred_x, pred_y)
+    ax.plot(pred_xyz[:,0], pred_xyz[:,1])
+    # fig.canvas.draw()
+
+    return fig
+
+def traj2Fig_withgt(pred_xyz, gt_xyz):
+    """Make `matplotlib.pyplot.figure` from the 2D plot of a given trajectory.
+
+    Args:
+        pred_xyz (torch.Tensor): Trajectory to plot. Shape: [N,3]
+        gt_xyz (torch.Tensor): Trajectory to plot. Shape: [N,3]
+
+    Returns:
+        matplotlib.pyplot.figure: Figure of the trajectory plot
+    """
+
+    pred_xyz = pred_xyz.cpu()
+    gt_xyz = gt_xyz.cpu()
+
+    fig = plt.figure()
+    ax = plt.gca()
+    ax.plot(pred_xyz[:,0], pred_xyz[:,1], label='Prediction')
+    ax.plot(gt_xyz[:,0], gt_xyz[:,1], label='Ground-truth')
+    ax.legend()
     # fig.canvas.draw()
 
     return fig

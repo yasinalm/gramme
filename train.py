@@ -14,7 +14,7 @@ import torch.utils.data
 import models
 
 import custom_transforms
-from utils import tensor2array, save_checkpoint, traj2Fig, traj2Img
+import utils
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
@@ -31,7 +31,7 @@ parser = argparse.ArgumentParser(description='Structure from Motion Learner trai
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 # parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
-parser.add_argument('--skip-frames', type=int, metavar='N', help='gap between frames', default=5)
+parser.add_argument('--skip-frames', type=int, metavar='N', help='gap between frames', default=1)
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
 parser.add_argument('--train-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
@@ -45,7 +45,7 @@ parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='pri
 parser.add_argument('--seed', default=0, type=int, help='seed for random functions, and network initialization')
 parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH', help='csv where to save per-epoch train and valid stats')
 parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH', help='csv where to save per-gradient descent train stats')
-parser.add_argument('--log-output', action='store_true', help='will log dispnet outputs at validation step')
+parser.add_argument('--log-output', type=int,  default=1, help='will log dispnet outputs at validation step')
 parser.add_argument('--resnet-layers',  type=int, default=18, choices=[18, 50], help='number of ResNet layers for depth estimation.')
 # parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
@@ -65,8 +65,7 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
                     help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
                          ' zeros will null gradients outside target image.'
                          ' border will only null gradients of the coordinate outside (x or y)')
-parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
-                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
+# parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
 parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
 parser.add_argument('--radar-format', type=str, choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
@@ -99,11 +98,9 @@ def main():
     cudnn.benchmark = True
 
     training_writer = SummaryWriter(args.save_path)
-    output_writers = []
+    val_writer = None
     if args.log_output:
-        # Keep n different writers to save n images.
-        for i in range(3):
-            output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
+        val_writer = SummaryWriter(args.save_path/'valid')
 
     # Data loading code
     # if args.dataset == 'hand':
@@ -165,13 +162,9 @@ def main():
         radar_format=args.radar_format
     )
 
-    vo_eval = None
-    if args.with_gt:
-        if args.gt_file:
-            vo_eval = RadarEvalOdom(args.gt_file, args.dataset)
-        else:
-            warnings.warn('with-gt is set but no ground truth validation file is provided with val-gt arg! with-gt will be ignored.')
-            args.with_gt = False
+    ro_eval = None
+    if args.gt_file is not None:
+        ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
         
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -238,20 +231,20 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.train_size, logger, training_writer, warper)
-        train_loss = train(args, train_loader, pose_net, optimizer, args.train_size, logger, training_writer, warper)
+        train_loss = train(args, train_loader, pose_net, optimizer, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
         logger.reset_valid_bar()
-        if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper, output_writers)            
+        if args.gt_file is not None:
+            errors, error_names = validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer)            
         else:
-            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers)
+            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_writer)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
         for error, name in zip(errors, error_names):
-            training_writer.add_scalar('val/'+name, error, epoch)    
+            val_writer.add_scalar('val/'+name, error, epoch)    
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
         decisive_error = errors[0]
@@ -261,7 +254,7 @@ def main():
         # remember lowest error and save checkpoint
         is_best = decisive_error < best_error
         best_error = min(best_error, decisive_error)
-        save_checkpoint(
+        utils.save_checkpoint(
             args.save_path, {
             #     'epoch': epoch + 1,
             #     'state_dict': disp_net.module.state_dict()
@@ -277,14 +270,14 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, pose_net, optimizer, train_size, logger, train_writer, warper):
+def train(args, train_loader, pose_net, optimizer, logger, train_writer, warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
-    best_error = 9.0e6
+    # best_error = 9.0e6
 
     # switch to train mode
     # disp_net.train()
@@ -346,13 +339,14 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
         end = time.time()
 
         if i>0 and i%1000 == 0:
-                # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
-            decisive_error = loss.item()
+            # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+            # decisive_error = loss.item()
 
-            # remember lowest error and save checkpoint
-            is_best = decisive_error < best_error
-            best_error = min(best_error, decisive_error)
-            save_checkpoint(
+            # # remember lowest error and save checkpoint
+            # is_best = decisive_error < best_error
+            # best_error = min(best_error, decisive_error)
+            is_best = False # Do not choose the best in the training but in the validation wrt. ATE error
+            utils.save_checkpoint(
                 args.save_path, {
                 #     'epoch': epoch + 1,
                 #     'state_dict': disp_net.module.state_dict()
@@ -369,7 +363,7 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
-        if i >= train_size - 1:
+        if i >= args.train_size - 1:
             break
 
         n_iter += 1
@@ -378,11 +372,11 @@ def train(args, train_loader, pose_net, optimizer, train_size, logger, train_wri
     
 
 @torch.no_grad()
-def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, output_writers=[]):
+def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=4, precision=4)
-    log_outputs = len(output_writers) > 0
+    log_outputs = val_writer is not None
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to evaluate mode
@@ -394,8 +388,7 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
 
     # Randomly choose 3 indices to log images
     rng = np.random.default_rng()
-    log_ind = rng.integers(len(val_loader), size=3)
-    k=0 # writer counter
+    log_ind = rng.integers(len(val_loader), size=1)
     
     end = time.time()
     logger.valid_bar.update(0)
@@ -419,14 +412,13 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
-            output_writers[k].add_image('val/img/input', 
-                                        tensor2array(tgt_img[0], colormap='bone'), 
+            val_writer.add_image('val/img/input', 
+                                        utils.tensor2array(tgt_img[0], colormap='bone'), 
                                         epoch)
 
-            output_writers[k].add_image('val/img/warped_input',
-                                        tensor2array(projected_imgs[0][0], colormap='bone'),
+            val_writer.add_image('val/img/warped_input',
+                                        utils.tensor2array(projected_imgs[0][0], colormap='bone'),
                                         epoch)
-            k = k+1
 
         loss = loss.item()
         losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
@@ -444,15 +436,15 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
 
     if log_outputs:
         # Plot and log predicted trajectory
-        b_fig = traj2Fig(b_pred_xyz)
-        f_fig = traj2Fig(f_pred_xyz)
-        output_writers[0].add_figure('val/fig/b_traj_pred', b_fig, epoch)
-        output_writers[0].add_figure('val/fig/f_traj_pred', f_fig, epoch)
+        b_fig = utils.traj2Fig(b_pred_xyz)
+        f_fig = utils.traj2Fig(f_pred_xyz)
+        val_writer.add_figure('val/fig/b_traj_pred', b_fig, epoch)
+        val_writer.add_figure('val/fig/f_traj_pred', f_fig, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        output_writers[0].add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
-        output_writers[0].add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
-        output_writers[0].add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
+        val_writer.add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
+        val_writer.add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
+        val_writer.add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
 
     logger.valid_bar.update(args.val_size)
 
@@ -462,11 +454,11 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, outpu
 
 
 @torch.no_grad()
-def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper, output_writers=[]):
+def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=3, precision=4)
-    log_outputs = len(output_writers) > 0
+    losses = AverageMeter(i=4, precision=4)
+    log_outputs = val_writer is not None
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to evaluate mode
@@ -478,8 +470,7 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper,
 
     # Randomly choose 3 indices to log images
     rng = np.random.default_rng()
-    log_ind = rng.integers(len(val_loader), size=3)
-    k=0 # writer counter
+    log_ind = rng.integers(len(val_loader), size=1)
 
     end = time.time()
     logger.valid_bar.update(0)
@@ -503,17 +494,16 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper,
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
-            output_writers[k].add_image('val/img/input', 
-                                        tensor2array(tgt_img[0], colormap='bone'), 
+            val_writer.add_image('val/img/input', 
+                                        utils.tensor2array(tgt_img[0], colormap='bone'), 
                                         epoch)
 
-            output_writers[k].add_image('val/img/warped_input',
-                                        tensor2array(projected_imgs[0][0], colormap='bone'),
+            val_writer.add_image('val/img/warped_input',
+                                        utils.tensor2array(projected_imgs[0][0], colormap='bone'),
                                         epoch)
-            k = k+1
 
         loss = loss.item()
-        losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.loss()])
+        losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -523,26 +513,26 @@ def validate_with_gt(args, val_loader, pose_net, vo_eval, epoch, logger, warper,
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
         if i >= args.val_size - 1:
             break
-    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = vo_eval.eval_ref_poses(all_poses, all_inv_poses, 
+    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses, 
     args.skip_frames)
 
     if log_outputs:
         # Plot and log aligned trajectory
-        fig = traj2Fig(f_pred_xyz)
-        fig2= traj2Fig(f_pred[:,:3,3])
-        output_writers[0].add_figure('val/fig/traj_pred', fig, epoch)
-        output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
+        fig = utils.traj2Fig_withgt(f_pred_xyz.squeeze(), ro_eval.gt[:,:3,3].squeeze())
+        # fig2= utils.traj2Fig(f_pred[:,:3,3])
+        val_writer.add_figure('val/fig/traj_aligned_pred', fig, epoch)
+        # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        output_writers[0].add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
-        output_writers[0].add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
-        output_writers[0].add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
+        val_writer.add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
+        val_writer.add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
+        val_writer.add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
 
 
     logger.valid_bar.update(args.val_size)
 
-    errors = losses.avg+[ate_bs_mean.item(), ate_bs_std.item(), ate_fs_mean.item(), ate_fs_std.item()]
-    error_names = ['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']+['ate_bs_mean', 'ate_bs_std', 'ate_fs_mean', 'ate_fs_std']
+    errors = [ate_fs_mean.item()]+losses.avg
+    error_names = ['ate_fs_mean']+['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']
     return errors, error_names
 
 
