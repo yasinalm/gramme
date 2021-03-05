@@ -18,11 +18,11 @@ class ResNetMultiImageInput(models.ResNet):
     """Constructs a resnet model with varying number of input images.
     Adapted from https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
     """
-    def __init__(self, block, layers, num_classes=1000, num_input_images=1):
+    def __init__(self, block, layers, num_classes=1000, num_input_images=1, n_img_channels=1):
         super(ResNetMultiImageInput, self).__init__(block, layers)
         self.inplanes = 64
         self.conv1 = nn.Conv2d(
-            num_input_images * 1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            num_input_images * n_img_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -51,11 +51,11 @@ def resnet_multiimage_input(num_layers, pretrained=False, num_input_images=1):
     block_type = {18: models.resnet.BasicBlock, 50: models.resnet.Bottleneck}[num_layers]
     model = ResNetMultiImageInput(block_type, blocks, num_input_images=num_input_images)
 
-    # if pretrained:
-    #     loaded = model_zoo.load_url(models.resnet.model_urls['resnet{}'.format(num_layers)])
-    #     loaded['conv1.weight'] = torch.cat(
-    #         [loaded['conv1.weight']] * num_input_images, 1) / num_input_images
-    #     model.load_state_dict(loaded)
+    if pretrained:
+        loaded = model_zoo.load_url(models.resnet.model_urls['resnet{}'.format(num_layers)])
+        loaded['conv1.weight'] = torch.cat(
+            [loaded['conv1.weight']] * num_input_images, 1) / num_input_images
+        model.load_state_dict(loaded)
     return model
 
 
@@ -76,10 +76,13 @@ class ResnetEncoder(nn.Module):
         if num_layers not in resnets:
             raise ValueError("{} is not a valid number of resnet layers".format(num_layers))
 
-        if num_input_images > 1:
-            self.encoder = resnet_multiimage_input(num_layers, pretrained, num_input_images)
-        else:
-            self.encoder = resnets[num_layers](pretrained)
+        # torchvision ResNet does not support single-channel inputs
+        # if num_input_images > 1:
+        #     self.encoder = resnet_multiimage_input(num_layers, pretrained, num_input_images)
+        # else:
+        #     self.encoder = resnets[num_layers](pretrained)
+        
+        self.encoder = resnet_multiimage_input(num_layers, pretrained, num_input_images)
 
         if num_layers > 34:
             self.num_ch_enc[1:] *= 4

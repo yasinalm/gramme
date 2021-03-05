@@ -55,9 +55,9 @@ parser.add_argument('-s', '--ssim-loss-weight', type=float, help='weight for SSI
 # parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
 # parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
-parser.add_argument('--with-auto-mask', type=int,  default=0, help='with the the mask for stationary points')
-parser.add_argument('--with-mask-net', type=int,  default=0, help='with the the masknet for multipath and noise')
-parser.add_argument('--with-pretrain', type=int,  default=0, help='with or without imagenet pretrain for resnet')
+parser.add_argument('--with-auto-mask', action='store_true', help='with the the mask for stationary points')
+parser.add_argument('--with-masknet', action='store_true', help='with the the masknet for multipath and noise')
+parser.add_argument('--with-pretrain', action='store_true', help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=['hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
 parser.add_argument('--pretrained-mask', dest='pretrained_mask', default=None, metavar='PATH', help='path to pre-trained masknet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
@@ -243,9 +243,9 @@ def main():
         # evaluate on validation set
         logger.reset_valid_bar()
         if args.gt_file is not None:
-            errors, error_names = validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer)            
+            errors, error_names = validate_with_gt(args, val_loader, mask_net, pose_net, ro_eval, epoch, logger, warper, val_writer)            
         else:
-            errors, error_names = validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_writer)
+            errors, error_names = validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
@@ -253,6 +253,7 @@ def main():
             val_writer.add_scalar('val/'+name, error, epoch)    
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+        # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
         decisive_error = errors[0]
         if best_error < 0:
             best_error = decisive_error
@@ -260,11 +261,14 @@ def main():
         # remember lowest error and save checkpoint
         is_best = decisive_error < best_error
         best_error = min(best_error, decisive_error)
-        utils.save_checkpoint(
-            args.save_path, {
-                'epoch': epoch + 1,
+        mask_ckpt_dict = None
+        if args.with_masknet:
+            mask_ckpt_dict = {
+                'epoch': n_iter + 1,
                 'state_dict': mask_net.module.state_dict()
-            }, {
+            }
+        utils.save_checkpoint(
+            args.save_path, mask_ckpt_dict, {
                 'epoch': epoch + 1,
                 'state_dict': pose_net.module.state_dict()
             },
@@ -384,16 +388,16 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
     
 
 @torch.no_grad()
-def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_writer):
+def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=4, precision=4)
     log_outputs = val_writer is not None
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
-    # switch to evaluate mode
-    # mask_net.eval()
-    pose_net.eval()
+    # switch to train mode
+    if args.with_masknet:
+        mask_net.train()
 
     all_poses = []
     all_inv_poses = []
@@ -411,11 +415,14 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_w
         # intrinsics_inv = intrinsics_inv.to(device)
 
         # compute output
+        tgt_mask, ref_masks = None, [None for i in range(args.sequence_length-1)]
+        if args.with_masknet:
+            tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
         fft_loss = w2*fft_loss
@@ -424,13 +431,9 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_w
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
-            val_writer.add_image('val/img/input', 
-                                        utils.tensor2array(tgt_img[0], colormap='bone'), 
-                                        epoch)
-
-            val_writer.add_image('val/img/warped_input',
-                                        utils.tensor2array(projected_imgs[0][0], colormap='bone'),
-                                        epoch)
+            val_writer.add_image('val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
+            val_writer.add_image('val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
+            val_writer.add_image('val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         loss = loss.item()
         losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
@@ -466,15 +469,16 @@ def validate_without_gt(args, val_loader, pose_net, epoch, logger, warper, val_w
 
 
 @torch.no_grad()
-def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer):
+def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=4, precision=4)
     log_outputs = val_writer is not None
     w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
-    # switch to evaluate mode
-    # mask_net.eval()
+    # switch to train mode
+    if args.with_masknet:
+        mask_net.train()
     pose_net.eval()
 
     all_poses = []
@@ -493,11 +497,14 @@ def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper,
         # intrinsics_inv = intrinsics_inv.to(device)
 
         # compute output
+        tgt_mask, ref_masks = None, [None for i in range(args.sequence_length-1)]
+        if args.with_masknet:
+            tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
         fft_loss = w2*fft_loss
@@ -506,13 +513,9 @@ def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper,
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
-            val_writer.add_image('val/img/input', 
-                                        utils.tensor2array(tgt_img[0], colormap='bone'), 
-                                        epoch)
-
-            val_writer.add_image('val/img/warped_input',
-                                        utils.tensor2array(projected_imgs[0][0], colormap='bone'),
-                                        epoch)
+            val_writer.add_image('val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
+            val_writer.add_image('val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
+            val_writer.add_image('val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         loss = loss.item()
         losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
@@ -550,12 +553,14 @@ def validate_with_gt(args, val_loader, pose_net, ro_eval, epoch, logger, warper,
 
 def compute_mask(mask_net, tgt_img, ref_imgs):
     # tgt_mask = [1/disp for disp in mask_net(tgt_img)]
-    tgt_mask = [mask for mask in mask_net(tgt_img)]
+    # tgt_mask = [mask for mask in mask_net(tgt_img)] # for multiple scale
+    tgt_mask = mask_net(tgt_img) # for single scale
 
     ref_masks = []
     for ref_img in ref_imgs:
         # ref_depth = [1/disp for disp in mask_net(ref_img)]
-        ref_mask = [mask for mask in mask_net(ref_img)]
+        # ref_mask = [mask for mask in mask_net(ref_img)] # for multiple scale
+        ref_mask = mask_net(ref_img) # for multiple scale
         ref_masks.append(ref_mask)
 
     return tgt_mask, ref_masks

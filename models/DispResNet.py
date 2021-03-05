@@ -97,7 +97,8 @@ class DepthDecoder(nn.Module):
             if i in self.scales:
                 # self.outputs.append(self.alpha * self.sigmoid(self.convs[("dispconv", i)](x)) + self.beta)
                 disp = self.sigmoid(self.convs[("dispconv", i)](x))
-                mask = disp > 0.5
+                # mask = disp > 0.5
+                mask = disp
                 self.outputs.append(mask)
 
         self.outputs = self.outputs[::-1]
@@ -127,20 +128,20 @@ class DispResNet(nn.Module):
         return outputs[0]
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    torch.backends.cudnn.benchmark = True
+#     torch.backends.cudnn.benchmark = True
 
-    model = DispResNet().cuda()
-    model.train()
+#     model = DispResNet().cuda()
+#     model.train()
 
-    B = 12
+#     B = 12
 
-    tgt_img = torch.randn(B, 3, 256, 832).cuda()
-    ref_imgs = [torch.randn(B, 3, 256, 832).cuda() for i in range(2)]
+#     tgt_img = torch.randn(B, 3, 256, 832).cuda()
+#     ref_imgs = [torch.randn(B, 3, 256, 832).cuda() for i in range(2)]
 
-    tgt_depth = model(tgt_img)
+#     tgt_depth = model(tgt_img)
 
-    print(tgt_depth[0].size())
+#     print(tgt_depth[0].size())
 
 
