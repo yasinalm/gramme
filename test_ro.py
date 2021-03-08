@@ -33,7 +33,8 @@ parser.add_argument('--dataset', type=str, choices=['hand', 'robotcar', 'radiate
 parser.add_argument("--sequence", default='2019-01-10-14-36-48-radar-oxford-10k-partial', type=str, help="sequence to test")
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose', metavar='PATH', help='path to pre-trained Pose net model')
-parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
+parser.add_argument('--with-gt', action='store_true', help='with the the mask for stationary points')
+# parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
 parser.add_argument('--radar-format', type=str, choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
 parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
 parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
@@ -106,15 +107,16 @@ def main():
 
     print('Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2)))) # this for total of forward and backward poses
 
-    if args.gt_file is not None:
+    if args.with_gt:
         print("=> converting odometry predictions to trajectory")
         gt_file = Path(args.data,args.sequence,'gt','radar_odometry.csv')
         ro_eval = RadarEvalOdom(gt_file, args.dataset)
         ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses, 
         args.skip_frames)
-        save_traj_plots_with_gt(results_dir, f_pred_xyz, ro_eval.gt)
+        # save_traj_plots_with_gt(results_dir, f_pred_xyz, ro_eval.gt)
         print("=> evaluating the trajectory")
-        odom_eval = EvalOdom()
+        isPartialSequence = 'partial' in args.sequence
+        odom_eval = EvalOdom(isPartial=isPartialSequence)
         odom_eval.eval(f_pred.cpu().numpy(), ro_eval.gt.cpu().numpy(), results_dir)
     else:
         b_pred_xyz, f_pred_xyz = getTraj(all_poses, all_inv_poses, args.skip_frames)
@@ -143,12 +145,13 @@ def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz):
 
     # Save fig
     plt.tight_layout()
-    plt.savefig(results_dir/'ro_pred.pdf', bbox_inches = 'tight', pad_inches = 0)
-    plt.savefig(results_dir/'ro_pred.png', bbox_inches = 'tight', pad_inches = 0)
+    plt.savefig(results_dir/'ro_pred_nogt.pdf', bbox_inches = 'tight', pad_inches = 0)
+    plt.savefig(results_dir/'ro_pred_nogt.png', bbox_inches = 'tight', pad_inches = 0)
 
 def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
     gt_xyz = gt[:,:3,3].cpu().numpy()
-    np_pred = 0.5*gt_xyz + 0.5*pred_xyz[0].cpu().numpy()
+    # np_pred = 0.5*gt_xyz + 0.5*pred_xyz[0].cpu().numpy()
+    np_pred = pred_xyz[0].cpu()
     fig, ax = plt.subplots(figsize=(8,8))
     sn.lineplot(x=np_pred[:,0], y=np_pred[:,1], sort=False, ax=ax, label='Ours')
     sn.lineplot(x=gt_xyz[:,0], y=gt_xyz[:,1], sort=False, ax=ax, label='Ground-truth')

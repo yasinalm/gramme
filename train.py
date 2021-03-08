@@ -337,6 +337,9 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             train_writer.add_histogram('train/trans_pred-x', poses[...,3], n_iter)
             train_writer.add_histogram('train/trans_pred-y', poses[...,4], n_iter)
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
+            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
+
+            # train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
 
         # record loss and EPE
         # TODO: Log losses separately
@@ -371,6 +374,8 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                     'state_dict': pose_net.module.state_dict()
                 },
                 is_best)
+
+            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')

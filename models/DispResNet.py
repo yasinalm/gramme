@@ -97,8 +97,8 @@ class DepthDecoder(nn.Module):
             if i in self.scales:
                 # self.outputs.append(self.alpha * self.sigmoid(self.convs[("dispconv", i)](x)) + self.beta)
                 disp = self.sigmoid(self.convs[("dispconv", i)](x))
-                # mask = disp > 0.5
-                mask = disp
+                mask = (disp > 0.5).double()
+                # mask = disp + 1e-3
                 self.outputs.append(mask)
 
         self.outputs = self.outputs[::-1]

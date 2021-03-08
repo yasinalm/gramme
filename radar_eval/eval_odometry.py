@@ -21,8 +21,12 @@ class EvalOdom():
         vo_eval.eval(gt_pose, pred_pose, result_pose_txt_dir)
     """
 
-    def __init__(self):
-        self.lengths = [100, 200, 300, 400, 500, 600, 700, 800]
+    def __init__(self, isPartial=False):
+        # partial sequences in the robotcar dataset are around 3km and the regular sequences are 9km
+        if isPartial:
+            self.lengths = [500, 1000, 1500, 2000, 2500, 3000]
+        else:
+            self.lengths = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]
         self.num_lengths = len(self.lengths)
     
 
@@ -103,7 +107,7 @@ class EvalOdom():
         """
         err = []
         dist = self.trajectory_distances(poses_gt)
-        self.step_size = 10
+        self.step_size = 4 # FPS
 
         for first_frame in range(0, len(poses_gt), self.step_size):
             for i in range(self.num_lengths):
@@ -207,7 +211,7 @@ class EvalOdom():
             pos_xz = np.asarray(pos_xz)
             plt.plot(pos_xz[:, 0],  pos_xz[:, 1], label=key)
 
-        plt.legend(loc="upper right", prop={'size': fontsize_})
+        plt.legend(prop={'size': fontsize_})
         plt.xticks(fontsize=fontsize_)
         plt.yticks(fontsize=fontsize_)
         plt.xlabel('x (m)', fontsize=fontsize_)
