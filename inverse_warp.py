@@ -87,7 +87,7 @@ class Warper(object):
 
         return pixel_coords
 
-    def inverse_warp_fft_cart(self, img, pose):
+    def inverse_warp_fft_cart(self, img, mask, pose):
         """
         Inverse warp a source radar frame to the target radar plane.
         H: Number of ADC samples (or Doppler bins)
@@ -120,14 +120,14 @@ class Warper(object):
         # src_pixel_coords = pixel_coords.reshape(b, h, w, 2)
         src_pixel_coords = self.radar2pixel_cart(pose_mat)  # [B,H,W,2]
 
-        projected_img = F.grid_sample(
-            img, src_pixel_coords, padding_mode=self.padding_mode)
+        projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=self.padding_mode)
+        projected_mask = F.grid_sample(mask, src_pixel_coords, padding_mode=self.padding_mode)
 
         # calculate mask values for each tformed_xy coordinates to match the target xy
         valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1 # [B,H,W]
         valid_points = torch.unsqueeze(valid_points, 1) # [B,1,H,W]
 
-        return projected_img, valid_points
+        return projected_img, projected_mask, valid_points
 
     #TODO: num_scales eklenebilir buraya.
     #TODO: ref_masks kullanmiyoruz, kullanmak icin mantikli bir yol koy.
@@ -135,29 +135,31 @@ class Warper(object):
     def compute_db_loss(self, tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv):
 
         rec_loss = 0
+        geometry_consistency_loss = 0
         fft_loss = 0
         ssim_loss = 0
         projected_imgs = ref_imgs
 
         for i, (ref_img, ref_mask, pose, pose_inv) in enumerate(zip(ref_imgs, ref_masks, poses, poses_inv)):
 
-            rec_loss1, fft_loss1, ssim_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, tgt_mask, ref_mask, pose)
-            rec_loss2, fft_loss2, ssim_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, ref_mask, tgt_mask, pose_inv)
+            rec_loss1, geometry_consistency_loss1, fft_loss1, ssim_loss1, projected_img = self.compute_pairwise_loss(tgt_img, ref_img, tgt_mask, ref_mask, pose)
+            rec_loss2, geometry_consistency_loss2, fft_loss2, ssim_loss2, _ = self.compute_pairwise_loss(ref_img, tgt_img, ref_mask, tgt_mask, pose_inv)
 
             rec_loss += (rec_loss1 + rec_loss2)
+            geometry_consistency_loss += (geometry_consistency_loss1 + geometry_consistency_loss2)
             fft_loss += (fft_loss1 + fft_loss2)
             ssim_loss += (ssim_loss1 + ssim_loss2)
             projected_imgs[i] = projected_img
 
-        return rec_loss, fft_loss, ssim_loss, projected_imgs
+        return rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs
 
 
     def compute_pairwise_loss(self, tgt_img, ref_img, tgt_mask, ref_mask, pose):
 
-        ref_img_warped, valid_mask = self.inverse_warp_fft_cart(ref_img, pose)
+        ref_img_warped, projected_mask, valid_mask = self.inverse_warp_fft_cart(ref_img, ref_mask, pose)
 
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
-        # diff_depth = ((computed_depth - projected_depth).abs() / (computed_depth + projected_depth)).clamp(0, 1)
+        diff_mask = ((ref_mask - projected_mask).abs()).clamp(0, 1) #/ (computed_depth + projected_depth)).clamp(0, 1)
 
         if self.with_auto_mask == True:
             auto_mask = (diff_img < (tgt_img - ref_img).abs()).float() # [B,1,H,W]
@@ -166,18 +168,18 @@ class Warper(object):
         if tgt_mask is not None:
             valid_mask = valid_mask*tgt_mask
 
-        # compute all loss
-        reconstruction_loss = mean_on_mask(diff_img, valid_mask)
-        # geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)
-        # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
-        fft_loss = torch.Tensor([0]).to(device) # şimdilik disable
-
         # ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
         ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
         # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
         ssim_loss = ssim_map.mean()
 
-        return reconstruction_loss, fft_loss, ssim_loss, ref_img_warped
+        # compute all loss
+        reconstruction_loss = mean_on_mask(diff_img, valid_mask)
+        geometry_consistency_loss = mean_on_mask(diff_mask, valid_mask)
+        # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
+        fft_loss = torch.Tensor([0]).to(device) # şimdilik disable        
+
+        return reconstruction_loss, geometry_consistency_loss, fft_loss, ssim_loss, ref_img_warped
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):    
@@ -189,8 +191,10 @@ def mean_on_mask(diff, valid_mask):
         l1 = mask_diff.sum() / mask.sum()    
         # l2 = mask_diff.square().sum() / mask.sum()
     else:
-        l1 = torch.tensor(1e3).float().to(device)
+        # l1 = torch.tensor(1e3).float().to(device)
         # l2 = torch.tensor(0).float().to(device)
+        mask_diff = diff
+        l1 = mask_diff.sum() / mask.sum()
     
     l = l1 #+l2
     return l

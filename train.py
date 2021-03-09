@@ -52,7 +52,7 @@ parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for ph
 parser.add_argument('-f', '--fft-loss-weight', type=float, help='weight for FFT loss', metavar='W', default=3e-4)
 parser.add_argument('-s', '--ssim-loss-weight', type=float, help='weight for SSIM loss', metavar='W', default=1)
 # parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
-# parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=0.5)
+parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=1.0)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
 # parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
 parser.add_argument('--with-auto-mask', action='store_true', help='with the the mask for stationary points')
@@ -285,7 +285,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
 
@@ -312,21 +312,22 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
         rec_loss = w1*rec_loss
-        fft_loss = w2*fft_loss
-        ssim_loss = w3*ssim_loss
-        loss = rec_loss + fft_loss + ssim_loss
+        geometry_consistency_loss = w2*geometry_consistency_loss
+        fft_loss = w3*fft_loss
+        ssim_loss = w4*ssim_loss
+        loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
-            # train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
             train_writer.add_scalar('train/photometric_error', rec_loss.item(), n_iter)
+            train_writer.add_scalar('train/geometry_consistency_loss', geometry_consistency_loss.item(), n_iter)
             train_writer.add_scalar('train/fft_loss', fft_loss.item(), n_iter)
             train_writer.add_scalar('train/ssim_loss', ssim_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
@@ -339,7 +340,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
             train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
 
-            # train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
+            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)            
 
         # record loss and EPE
         # TODO: Log losses separately
@@ -375,7 +376,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                 },
                 is_best)
 
-            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
+            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)            
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -396,9 +397,9 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
 def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=4, precision=4)
+    losses = AverageMeter(i=5, precision=4)
     log_outputs = val_writer is not None
-    w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to train mode
     if args.with_masknet:
@@ -430,9 +431,10 @@ def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, war
         rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
-        fft_loss = w2*fft_loss
-        ssim_loss = w3*ssim_loss
-        loss = rec_loss + fft_loss + ssim_loss
+        geometry_consistency_loss = w2*geometry_consistency_loss
+        fft_loss = w3*fft_loss
+        ssim_loss = w4*ssim_loss
+        loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
@@ -441,7 +443,7 @@ def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, war
             val_writer.add_image('val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         loss = loss.item()
-        losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
+        losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -469,7 +471,7 @@ def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, war
     logger.valid_bar.update(args.val_size)
 
     errors = losses.avg
-    error_names = ['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']
+    error_names = ['total_loss', 'rec_loss', 'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
     return errors, error_names
 
 
@@ -477,9 +479,9 @@ def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, war
 def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=4, precision=4)
+    losses = AverageMeter(i=5, precision=4)
     log_outputs = val_writer is not None
-    w1, w2, w3 = args.photo_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to train mode
     if args.with_masknet:
@@ -512,9 +514,10 @@ def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logge
         rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
-        fft_loss = w2*fft_loss
-        ssim_loss = w3*ssim_loss
-        loss = rec_loss + fft_loss + ssim_loss
+        geometry_consistency_loss = w2*geometry_consistency_loss
+        fft_loss = w3*fft_loss
+        ssim_loss = w4*ssim_loss
+        loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
@@ -523,7 +526,7 @@ def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logge
             val_writer.add_image('val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         loss = loss.item()
-        losses.update([loss, rec_loss.item(), fft_loss.item(), ssim_loss.item()])
+        losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -552,7 +555,7 @@ def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logge
     logger.valid_bar.update(args.val_size)
 
     errors = [ate_fs_mean.item()]+losses.avg
-    error_names = ['ate_fs_mean']+['total_loss', 'rec_loss', 'fft_loss', 'ssim_loss']
+    error_names = ['ate_fs_mean']+['total_loss', 'rec_loss', 'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
     return errors, error_names
 
 
