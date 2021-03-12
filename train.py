@@ -81,6 +81,8 @@ parser.add_argument('--with-auto-mask', action='store_true',
                     help='with the the mask for stationary points')
 parser.add_argument('--with-masknet', action='store_true',
                     help='with the the masknet for multipath and noise')
+parser.add_argument('--masknet', type=str,
+                    choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
 parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
@@ -225,9 +227,14 @@ def main():
     print("=> creating model")
     mask_net = None
     if args.with_masknet:
-        # mask_net = models.DispResNet(
-        #     args.resnet_layers, args.with_pretrain).to(device)
-        mask_net = models.MaskNet(num_channels=1).to(device)
+        if args.masknet == 'resnet':
+            mask_net = models.DispResNet(
+                args.resnet_layers, args.with_pretrain).to(device)
+        elif args.masknet == 'convnet':
+            mask_net = models.MaskNet(num_channels=1).to(device)
+        else:
+            raise NotImplementedError(
+                'The chosen MaskNet is not implemented! Given: {}'.format(args.masknet))
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
@@ -323,7 +330,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(precision=4)
+    losses = AverageMeter(i=5, precision=4)
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
@@ -385,16 +392,17 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                 'train/trans_pred-y', poses[..., 4], n_iter)
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
-            train_writer.add_image(
-                'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            # train_writer.add_image(
+            #     'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            # train_writer.add_image(
+            #     'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+            # train_writer.add_image(
+            #     'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
-        # TODO: Log losses separately
-        losses.update(loss.item(), args.batch_size)
+        losses_it = [loss.item(), rec_loss.item(
+        ), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()]
+        losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
         optimizer.zero_grad()
@@ -436,7 +444,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             # writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
-            writer.writerow([loss.item()])
+            writer.writerow(losses_it)
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
             logger.train_writer.write(
@@ -504,9 +512,8 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
             val_writer.add_image(
                 'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
-        loss = loss.item()
-        losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(
-        ), fft_loss.item(), ssim_loss.item()])
+        losses.update([loss.item(), rec_loss.item(), geometry_consistency_loss.item(
+        ), fft_loss.item(), ssim_loss.item()], args.batch_size)
 
         # measure elapsed time
         batch_time.update(time.time() - end)
