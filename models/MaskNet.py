@@ -18,82 +18,87 @@ import torch.utils.data
 #  MaskRCNN Class
 ############################################################
 
-class MaskRCNN(nn.Module):
-    """Encapsulates the Mask RCNN model functionality.
-    """
+# class MaskRCNN(nn.Module):
+#     """Encapsulates the Mask RCNN model functionality.
+#     """
 
-    def __init__(self):
-        """
-        config: A Sub-class of the Config class
-        model_dir: Directory to save training logs and trained weights
-        """
-        super(MaskRCNN, self).__init__()
-        self.initialize_weights()
+#     def __init__(self):
+#         """
+#         config: A Sub-class of the Config class
+#         model_dir: Directory to save training logs and trained weights
+#         """
+#         super(MaskRCNN, self).__init__()
+#         self.initialize_weights()
 
-    def build(self):
-        """Build Mask R-CNN architecture.
-        """
+#     def build(self):
+#         """Build Mask R-CNN architecture.
+#         """
 
-        # # Image size must be divisible by 2 multiple times
-        # h, w = config.IMAGE_SHAPE[:2]
-        # if h / 2**6 != int(h / 2**6) or w / 2**6 != int(w / 2**6):
-        #     raise Exception("Image size must be divisible by 64 "
-        #                     "to avoid fractions when downscaling and upscaling."
-        #                     "For example, use 256, 320, 384, 448, 512, ... etc. ")
+#         # # Image size must be divisible by 2 multiple times
+#         # h, w = config.IMAGE_SHAPE[:2]
+#         # if h / 2**6 != int(h / 2**6) or w / 2**6 != int(w / 2**6):
+#         #     raise Exception("Image size must be divisible by 64 "
+#         #                     "to avoid fractions when downscaling and upscaling."
+#         #                     "For example, use 256, 320, 384, 448, 512, ... etc. ")
 
-        # Mask
-        self.mask = Mask(256, 1)
+#         # Mask
+#         self.mask = Mask(num_output_channels=1)
 
-        # Fix batch norm layers
-        def set_bn_fix(m):
-            classname = m.__class__.__name__
-            if classname.find('BatchNorm') != -1:
-                for p in m.parameters():
-                    p.requires_grad = False
+#         # # Fix batch norm layers
+#         # def set_bn_fix(m):
+#         #     classname = m.__class__.__name__
+#         #     if classname.find('BatchNorm') != -1:
+#         #         for p in m.parameters():
+#         #             p.requires_grad = False
 
-        self.apply(set_bn_fix)
+#         # # Set batchnorm always in eval mode during training
+#         # def set_bn_eval(m):
+#         #     classname = m.__class__.__name__
+#         #     if classname.find('BatchNorm') != -1:
+#         #         m.eval()
 
-    def initialize_weights(self):
-        """Initialize model weights.
-        """
+#         # self.apply(set_bn_fix)
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform(m.weight)
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.Linear):
-                m.weight.data.normal_(0, 0.01)
-                m.bias.data.zero_()
+#     def initialize_weights(self):
+#         """Initialize model weights.
+#         """
 
-    def forward(self, x):
-        x = self.mask(x)
-        return x
+#         for m in self.modules():
+#             if isinstance(m, nn.Conv2d):
+#                 nn.init.xavier_uniform(m.weight)
+#                 if m.bias is not None:
+#                     m.bias.data.zero_()
+#             elif isinstance(m, nn.BatchNorm2d):
+#                 m.weight.data.fill_(1)
+#                 m.bias.data.zero_()
+#             elif isinstance(m, nn.Linear):
+#                 m.weight.data.normal_(0, 0.01)
+#                 m.bias.data.zero_()
+
+#     def forward(self, x):
+#         x = self.mask(x)
+#         return x
 
 ############################################################
 #  Feature Pyramid Network Heads
 ############################################################
 
 
-class Mask(nn.Module):
-    def __init__(self, depth, num_output_channels):
-        super(Mask, self).__init__()
-        self.depth = depth
+class MaskNet(nn.Module):
+    def __init__(self, num_channels):
+        super(MaskNet, self).__init__()
         self.padding = SamePad2d(kernel_size=3, stride=1)
-        self.conv1 = nn.Conv2d(self.depth, 256, kernel_size=3, stride=1)
-        self.bn1 = nn.BatchNorm2d(256, eps=0.001)
-        self.conv2 = nn.Conv2d(256, 256, kernel_size=3, stride=1)
-        self.bn2 = nn.BatchNorm2d(256, eps=0.001)
-        self.conv3 = nn.Conv2d(256, 256, kernel_size=3, stride=1)
-        self.bn3 = nn.BatchNorm2d(256, eps=0.001)
-        self.conv4 = nn.Conv2d(256, 256, kernel_size=3, stride=1)
-        self.bn4 = nn.BatchNorm2d(256, eps=0.001)
-        self.deconv = nn.ConvTranspose2d(256, 256, kernel_size=2, stride=2)
-        self.conv5 = nn.Conv2d(256, num_output_channels,
-                               kernel_size=1, stride=1)
+        self.conv1 = nn.Conv2d(num_channels, 128, kernel_size=3, stride=1)
+        self.bn1 = nn.BatchNorm2d(128, eps=0.001)
+        self.conv2 = nn.Conv2d(128, 32, kernel_size=3, stride=1)
+        self.bn2 = nn.BatchNorm2d(32, eps=0.001)
+        self.conv3 = nn.Conv2d(32, 16, kernel_size=3, stride=1)
+        self.bn3 = nn.BatchNorm2d(16, eps=0.001)
+        self.conv4 = nn.Conv2d(16, 8, kernel_size=3, stride=1)
+        self.bn4 = nn.BatchNorm2d(8, eps=0.001)
+        # self.deconv = nn.ConvTranspose2d(16, 8, kernel_size=2, stride=2)
+        self.conv5 = nn.Conv2d(8, num_channels,
+                               kernel_size=3, stride=1)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU(inplace=True)
 
@@ -110,9 +115,9 @@ class Mask(nn.Module):
         x = self.conv4(self.padding(x))
         x = self.bn4(x)
         x = self.relu(x)
-        x = self.deconv(x)
-        x = self.relu(x)
-        x = self.conv5(x)
+        # x = self.deconv(x)
+        # x = self.relu(x)
+        x = self.conv5(self.padding(x))
         x = self.sigmoid(x)
 
         return x
