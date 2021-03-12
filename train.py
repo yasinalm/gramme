@@ -23,63 +23,100 @@ from radar_eval.eval_utils import getTraj, RadarEvalOdom
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
-warnings.filterwarnings("ignore", category=UserWarning) # Supress UserWarning from grid_sample
+# Supress UserWarning from grid_sample
+warnings.filterwarnings("ignore", category=UserWarning)
 
 parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 # parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
-parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
-parser.add_argument('--skip-frames', type=int, metavar='N', help='gap between frames', default=1)
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
-parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--train-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
-parser.add_argument('--val-size', default=0, type=int, metavar='N', help='manual validation size (will match dataset size if not set)')
-parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum for sgd, alpha parameter for adam')
-parser.add_argument('--beta', default=0.999, type=float, metavar='M', help='beta parameters for adam')
-parser.add_argument('--weight-decay', '--wd', default=0, type=float, metavar='W', help='weight decay')
-parser.add_argument('--print-freq', default=10, type=int, metavar='N', help='print frequency')
-parser.add_argument('--seed', default=0, type=int, help='seed for random functions, and network initialization')
-parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar='PATH', help='csv where to save per-epoch train and valid stats')
-parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH', help='csv where to save per-gradient descent train stats')
-parser.add_argument('--log-output', type=int,  default=1, help='will log dispnet outputs at validation step')
-parser.add_argument('--resnet-layers',  type=int, default=18, choices=[18, 50], help='number of ResNet layers for depth estimation.')
+parser.add_argument('--sequence-length', type=int, metavar='N',
+                    help='sequence length for training', default=3)
+parser.add_argument('--skip-frames', type=int, metavar='N',
+                    help='gap between frames', default=1)
+parser.add_argument('-j', '--workers', default=4, type=int,
+                    metavar='N', help='number of data loading workers')
+parser.add_argument('--epochs', default=200, type=int,
+                    metavar='N', help='number of total epochs to run')
+parser.add_argument('--train-size', default=0, type=int, metavar='N',
+                    help='manual epoch size (will match dataset size if not set)')
+parser.add_argument('--val-size', default=0, type=int, metavar='N',
+                    help='manual validation size (will match dataset size if not set)')
+parser.add_argument('-b', '--batch-size', default=4,
+                    type=int, metavar='N', help='mini-batch size')
+parser.add_argument('--lr', '--learning-rate', default=1e-4,
+                    type=float, metavar='LR', help='initial learning rate')
+parser.add_argument('--momentum', default=0.9, type=float,
+                    metavar='M', help='momentum for sgd, alpha parameter for adam')
+parser.add_argument('--beta', default=0.999, type=float,
+                    metavar='M', help='beta parameters for adam')
+parser.add_argument('--weight-decay', '--wd', default=0,
+                    type=float, metavar='W', help='weight decay')
+parser.add_argument('--print-freq', default=10, type=int,
+                    metavar='N', help='print frequency')
+parser.add_argument('--seed', default=0, type=int,
+                    help='seed for random functions, and network initialization')
+parser.add_argument('--log-summary', default='progress_log_summary.csv',
+                    metavar='PATH', help='csv where to save per-epoch train and valid stats')
+parser.add_argument('--log-full', default='progress_log_full.csv',
+                    metavar='PATH', help='csv where to save per-gradient descent train stats')
+parser.add_argument('--log-output', type=int,  default=1,
+                    help='will log dispnet outputs at validation step')
+parser.add_argument('--resnet-layers',  type=int, default=18,
+                    choices=[18, 50], help='number of ResNet layers for depth estimation.')
 # parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
-parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
-parser.add_argument('-f', '--fft-loss-weight', type=float, help='weight for FFT loss', metavar='W', default=3e-4)
-parser.add_argument('-s', '--ssim-loss-weight', type=float, help='weight for SSIM loss', metavar='W', default=1)
+parser.add_argument('-p', '--photo-loss-weight', type=float,
+                    help='weight for photometric loss', metavar='W', default=1)
+parser.add_argument('-f', '--fft-loss-weight', type=float,
+                    help='weight for FFT loss', metavar='W', default=3e-4)
+parser.add_argument('-s', '--ssim-loss-weight', type=float,
+                    help='weight for SSIM loss', metavar='W', default=1)
 # parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
-parser.add_argument('-c', '--geometry-consistency-weight', type=float, help='weight for depth consistency loss', metavar='W', default=1.0)
+parser.add_argument('-c', '--geometry-consistency-weight', type=float,
+                    help='weight for depth consistency loss', metavar='W', default=1.0)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
 # parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
-parser.add_argument('--with-auto-mask', action='store_true', help='with the the mask for stationary points')
-parser.add_argument('--with-masknet', action='store_true', help='with the the masknet for multipath and noise')
-parser.add_argument('--with-pretrain', action='store_true', help='with or without imagenet pretrain for resnet')
-parser.add_argument('--dataset', type=str, choices=['hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
-parser.add_argument('--pretrained-mask', dest='pretrained_mask', default=None, metavar='PATH', help='path to pre-trained masknet model')
-parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None, metavar='PATH', help='path to pre-trained Pose net model')
-parser.add_argument('--name', dest='name', type=str, required=True, help='name of the experiment, checkpoints are stored in checpoints/name')
+parser.add_argument('--with-auto-mask', action='store_true',
+                    help='with the the mask for stationary points')
+parser.add_argument('--with-masknet', action='store_true',
+                    help='with the the masknet for multipath and noise')
+parser.add_argument('--with-pretrain', action='store_true',
+                    help='with or without imagenet pretrain for resnet')
+parser.add_argument('--dataset', type=str, choices=[
+                    'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+parser.add_argument('--pretrained-mask', dest='pretrained_mask',
+                    default=None, metavar='PATH', help='path to pre-trained masknet model')
+parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
+                    metavar='PATH', help='path to pre-trained Pose net model')
+parser.add_argument('--name', dest='name', type=str, required=True,
+                    help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
                     help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
                          ' zeros will null gradients outside target image.'
                          ' border will only null gradients of the coordinate outside (x or y)')
 # parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
-parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
-parser.add_argument('--gt-type', type=str, choices=['kitti', 'xyz'], default='xyz', help='GT format')
-parser.add_argument('--radar-format', type=str, choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
-parser.add_argument('--range-res', type=float, help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
-parser.add_argument('--angle-res', type=float, help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
-parser.add_argument('--cart-res', type=float, help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
-parser.add_argument('--cart-pixels', type=int, help='Cartesian size in pixels (used for both height and width)', metavar='W', default=501)
+parser.add_argument('--gt-file', metavar='DIR',
+                    help='path to ground truth validation file')
+parser.add_argument('--gt-type', type=str,
+                    choices=['kitti', 'xyz'], default='xyz', help='GT format')
+parser.add_argument('--radar-format', type=str,
+                    choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
+parser.add_argument('--range-res', type=float,
+                    help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
+parser.add_argument('--angle-res', type=float,
+                    help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
+parser.add_argument('--cart-res', type=float,
+                    help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
+parser.add_argument('--cart-pixels', type=int,
+                    help='Cartesian size in pixels (used for both height and width)', metavar='W', default=501)
 # parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 # parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
 best_error = -1
 n_iter = 0
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device(
+    "cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
 
@@ -118,9 +155,8 @@ def main():
     # ])
 
     # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
-    ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor()])
-
-    
+    ds_transform = custom_transforms.Compose(
+        [custom_transforms.ArrayToTensor()])
 
     print("=> fetching scenes in '{}'".format(args.data))
     # if args.folder_type == 'sequence':
@@ -133,11 +169,11 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         cart_resolution=args.cart_res,
-        cart_pixels = args.cart_pixels,
+        cart_pixels=args.cart_pixels,
         rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad = args.angle_res,
+        angleResolutionInRad=args.angle_res,
         radar_format=args.radar_format
-        )
+    )
     # else:
     #     train_set = PairFolder(
     #         args.data,
@@ -145,7 +181,6 @@ def main():
     #         train=True,
     #         transform=train_transform
     #     )
-
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
@@ -157,18 +192,16 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         cart_resolution=args.cart_res,
-        cart_pixels = args.cart_pixels,
+        cart_pixels=args.cart_pixels,
         rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad = args.angle_res,
+        angleResolutionInRad=args.angle_res,
         radar_format=args.radar_format
     )
 
-    ro_eval = None
-    if args.gt_file is not None:
-        ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
-        
-    print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
-    print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
+    print('{} samples found in {} train scenes'.format(
+        len(train_set), len(train_set.scenes)))
+    print('{} samples found in {} valid scenes'.format(
+        len(val_set), len(val_set.scenes)))
     train_loader = torch.utils.data.DataLoader(
         train_set, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
@@ -185,14 +218,17 @@ def main():
 
     # create model
     print("=> creating loss object")
-    warper = Warper(args.with_auto_mask, args.cart_res, args.cart_pixels, args.dataset, args.padding_mode)
+    warper = Warper(args.with_auto_mask, args.cart_res,
+                    args.cart_pixels, args.dataset, args.padding_mode)
 
     # create model
     print("=> creating model")
     mask_net = None
     if args.with_masknet:
-        mask_net = models.DispResNet(args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNet(args.dataset, args.resnet_layers, args.with_pretrain).to(device)
+        mask_net = models.DispResNet(
+            args.resnet_layers, args.with_pretrain).to(device)
+    pose_net = models.PoseResNet(
+        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
     # load parameters
     if args.with_masknet and args.pretrained_mask:
@@ -226,9 +262,11 @@ def main():
 
     with open(args.save_path/args.log_full, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
-        writer.writerow(['train_loss', 'photo_loss', 'smooth_loss', 'geometry_consistency_loss'])
+        writer.writerow(['train_loss', 'photo_loss',
+                         'smooth_loss', 'geometry_consistency_loss'])
 
-    logger = TermLogger(n_epochs=args.epochs, train_size=args.train_size, valid_size=args.val_size)
+    logger = TermLogger(n_epochs=args.epochs,
+                        train_size=args.train_size, valid_size=args.val_size)
     logger.epoch_bar.start()
 
     for epoch in range(args.epochs):
@@ -237,20 +275,20 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.train_size, logger, training_writer, warper)
-        train_loss = train(args, train_loader, mask_net, pose_net, optimizer, logger, training_writer, warper)
+        train_loss = train(args, train_loader, mask_net,
+                           pose_net, optimizer, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
         logger.reset_valid_bar()
-        if args.gt_file is not None:
-            errors, error_names = validate_with_gt(args, val_loader, mask_net, pose_net, ro_eval, epoch, logger, warper, val_writer)            
-        else:
-            errors, error_names = validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer)
-        error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
+        errors, error_names = validate(
+            args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer)
+        error_string = ', '.join('{} : {:.3f}'.format(name, error)
+                                 for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
         for error, name in zip(errors, error_names):
-            val_writer.add_scalar('val/'+name, error, epoch)    
+            val_writer.add_scalar('val/'+name, error, epoch)
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
         # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
@@ -307,13 +345,14 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
         # intrinsics = intrinsics.to(device)
 
         # compute output
-        tgt_mask, ref_masks = None, [None for i in range(args.sequence_length-1)]
+        tgt_mask, ref_masks = None, [
+            None for i in range(args.sequence_length-1)]
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
-
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(
+            tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
@@ -326,21 +365,27 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
-            train_writer.add_scalar('train/photometric_error', rec_loss.item(), n_iter)
-            train_writer.add_scalar('train/geometry_consistency_loss', geometry_consistency_loss.item(), n_iter)
+            train_writer.add_scalar(
+                'train/photometric_error', rec_loss.item(), n_iter)
+            train_writer.add_scalar(
+                'train/geometry_consistency_loss', geometry_consistency_loss.item(), n_iter)
             train_writer.add_scalar('train/fft_loss', fft_loss.item(), n_iter)
-            train_writer.add_scalar('train/ssim_loss', ssim_loss.item(), n_iter)
+            train_writer.add_scalar(
+                'train/ssim_loss', ssim_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
 
             # train_writer.add_histogram('train/rot_pred-x', poses[...,0], n_iter)
             # train_writer.add_histogram('train/rot_pred-y', poses[...,1], n_iter)
-            train_writer.add_histogram('train/rot_pred-z', poses[...,2], n_iter)
-            train_writer.add_histogram('train/trans_pred-x', poses[...,3], n_iter)
-            train_writer.add_histogram('train/trans_pred-y', poses[...,4], n_iter)
+            train_writer.add_histogram(
+                'train/rot_pred-z', poses[..., 2], n_iter)
+            train_writer.add_histogram(
+                'train/trans_pred-x', poses[..., 3], n_iter)
+            train_writer.add_histogram(
+                'train/trans_pred-y', poses[..., 4], n_iter)
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
-            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), n_iter)            
 
-            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)            
+            # train_writer.add_image(
+            #     'train/mask/input', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
         # TODO: Log losses separately
@@ -355,14 +400,14 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i>0 and i%1000 == 0:
+        if i > 0 and i % 1000 == 0:
             # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
             # decisive_error = loss.item()
 
             # # remember lowest error and save checkpoint
             # is_best = decisive_error < best_error
             # best_error = min(best_error, decisive_error)
-            is_best = False # Do not choose the best in the training but in the validation wrt. ATE error
+            is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
             mask_ckpt_dict = None
             if args.with_masknet:
                 mask_ckpt_dict = {
@@ -376,7 +421,10 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                 },
                 is_best)
 
-            train_writer.add_image('train/mask/input', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)            
+            train_writer.add_image(
+                'train/input/img', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/input/mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -384,114 +432,33 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             writer.writerow([loss.item()])
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
-            logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
+            logger.train_writer.write(
+                'Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
         if i >= args.train_size - 1:
             break
 
         n_iter += 1
 
     return losses.avg[0]
-    
+
 
 @torch.no_grad()
-def validate_without_gt(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer):
+def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=5, precision=4)
     log_outputs = val_writer is not None
-    w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
-    # switch to train mode
+    # switch to eval mode
     if args.with_masknet:
-        mask_net.train()
-
-    all_poses = []
-    all_inv_poses = []
-
-    # Randomly choose 3 indices to log images
-    rng = np.random.default_rng()
-    log_ind = rng.integers(len(val_loader), size=1)
-    
-    end = time.time()
-    logger.valid_bar.update(0)
-    for i, (tgt_img, ref_imgs) in enumerate(val_loader):
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
-        # intrinsics = intrinsics.to(device)
-        # intrinsics_inv = intrinsics_inv.to(device)
-
-        # compute output
-        tgt_mask, ref_masks = None, [None for i in range(args.sequence_length-1)]
-        if args.with_masknet:
-            tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        all_poses.append(poses)
-        all_inv_poses.append(poses_inv)
-
-        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
-
-        rec_loss = w1*rec_loss
-        geometry_consistency_loss = w2*geometry_consistency_loss
-        fft_loss = w3*fft_loss
-        ssim_loss = w4*ssim_loss
-        loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
-
-        if log_outputs and i in log_ind:
-            # if epoch == 0:
-            val_writer.add_image('val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
-            val_writer.add_image('val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
-            val_writer.add_image('val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
-
-        loss = loss.item()
-        losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()])
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-        logger.valid_bar.update(i+1)
-        if i % args.print_freq == 0:
-            logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
-        if i >= args.val_size - 1:
-            break
-
-    b_pred_xyz, f_pred_xyz = getTraj(all_poses, all_inv_poses, args.skip_frames)
-
-    if log_outputs:
-        # Plot and log predicted trajectory
-        b_fig = utils.traj2Fig(b_pred_xyz)
-        f_fig = utils.traj2Fig(f_pred_xyz)
-        val_writer.add_figure('val/fig/b_traj_pred', b_fig, epoch)
-        val_writer.add_figure('val/fig/f_traj_pred', f_fig, epoch)
-        # Log predicted relative poses in histograms
-        all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        val_writer.add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
-        val_writer.add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
-        val_writer.add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
-
-    logger.valid_bar.update(args.val_size)
-
-    errors = losses.avg
-    error_names = ['total_loss', 'rec_loss', 'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
-    return errors, error_names
-
-
-@torch.no_grad()
-def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logger, warper, val_writer):
-    global device
-    batch_time = AverageMeter()
-    losses = AverageMeter(i=5, precision=4)
-    log_outputs = val_writer is not None
-    w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_loss_weight, args.fft_loss_weight, args.ssim_loss_weight
-
-    # switch to train mode
-    if args.with_masknet:
-        mask_net.train()
+        mask_net.eval()
     pose_net.eval()
 
     all_poses = []
     all_inv_poses = []
 
-    # Randomly choose 3 indices to log images
+    # Randomly choose n indices to log images
     rng = np.random.default_rng()
     log_ind = rng.integers(len(val_loader), size=1)
 
@@ -504,14 +471,16 @@ def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logge
         # intrinsics_inv = intrinsics_inv.to(device)
 
         # compute output
-        tgt_mask, ref_masks = None, [None for i in range(args.sequence_length-1)]
+        tgt_mask, ref_masks = None, [
+            None for i in range(args.sequence_length-1)]
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(
+            tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
         geometry_consistency_loss = w2*geometry_consistency_loss
@@ -521,54 +490,81 @@ def validate_with_gt(args, mask_net, val_loader, pose_net, ro_eval, epoch, logge
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
-            val_writer.add_image('val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
-            val_writer.add_image('val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
-            val_writer.add_image('val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
+            val_writer.add_image(
+                'val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
+            val_writer.add_image(
+                'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
+            val_writer.add_image(
+                'val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         loss = loss.item()
-        losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()])
+        losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(
+        ), fft_loss.item(), ssim_loss.item()])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
         logger.valid_bar.update(i+1)
         if i % args.print_freq == 0:
-            logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
+            logger.valid_writer.write(
+                'valid: Time {} Loss {}'.format(batch_time, losses))
         if i >= args.val_size - 1:
             break
-    ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses, 
-    args.skip_frames)
 
     if log_outputs:
-        # Plot and log aligned trajectory
-        fig = utils.traj2Fig_withgt(f_pred_xyz.squeeze(), ro_eval.gt[:,:3,3].squeeze())
-        # fig2= utils.traj2Fig(f_pred[:,:3,3])
-        val_writer.add_figure('val/fig/traj_aligned_pred', fig, epoch)
-        # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
         # Log predicted relative poses in histograms
-        all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        val_writer.add_histogram('val/rot_pred-z', all_poses_t[...,2], epoch)
-        val_writer.add_histogram('val/trans_pred-x', all_poses_t[...,3], epoch)
-        val_writer.add_histogram('val/trans_pred-y', all_poses_t[...,4], epoch)
-
+        all_poses_t = torch.cat(all_poses, 1)  # [seq_length, N, 6]
+        val_writer.add_histogram(
+            'val/rot_pred-z', all_poses_t[..., 2], epoch)
+        val_writer.add_histogram(
+            'val/trans_pred-x', all_poses_t[..., 3], epoch)
+        val_writer.add_histogram(
+            'val/trans_pred-y', all_poses_t[..., 4], epoch)
 
     logger.valid_bar.update(args.val_size)
 
-    errors = [ate_fs_mean.item()]+losses.avg
-    error_names = ['ate_fs_mean']+['total_loss', 'rec_loss', 'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
+    errors = losses.avg
+    error_names = ['total_loss', 'rec_loss',
+                   'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
+
+    if args.gt_file is not None:
+        ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
+
+        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
+            all_poses, all_inv_poses, args.skip_frames)
+
+        if log_outputs:
+            # Plot and log aligned trajectory
+            fig = utils.traj2Fig_withgt(
+                f_pred_xyz.squeeze(), ro_eval.gt[:, :3, 3].squeeze())
+            # fig2= utils.traj2Fig(f_pred[:,:3,3])
+            val_writer.add_figure('val/fig/traj_aligned_pred', fig, epoch)
+            # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
+
+    else:
+        b_pred_xyz, f_pred_xyz = getTraj(
+            all_poses, all_inv_poses, args.skip_frames)
+
+        if log_outputs:
+            # Plot and log predicted trajectory
+            b_fig = utils.traj2Fig(b_pred_xyz)
+            f_fig = utils.traj2Fig(f_pred_xyz)
+            val_writer.add_figure('val/fig/b_traj_pred', b_fig, epoch)
+            val_writer.add_figure('val/fig/f_traj_pred', f_fig, epoch)
+
     return errors, error_names
 
 
 def compute_mask(mask_net, tgt_img, ref_imgs):
     # tgt_mask = [1/disp for disp in mask_net(tgt_img)]
     # tgt_mask = [mask for mask in mask_net(tgt_img)] # for multiple scale
-    tgt_mask = mask_net(tgt_img) # for single scale
+    tgt_mask = mask_net(tgt_img)  # for single scale
 
     ref_masks = []
     for ref_img in ref_imgs:
         # ref_depth = [1/disp for disp in mask_net(ref_img)]
         # ref_mask = [mask for mask in mask_net(ref_img)] # for multiple scale
-        ref_mask = mask_net(ref_img) # for multiple scale
+        ref_mask = mask_net(ref_img)  # for multiple scale
         ref_masks.append(ref_mask)
 
     return tgt_mask, ref_masks

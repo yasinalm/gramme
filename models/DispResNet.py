@@ -10,9 +10,11 @@ from .resnet_encoder import *
 import numpy as np
 from collections import OrderedDict
 
+
 class ConvBlock(nn.Module):
     """Layer to perform a convolution followed by ELU
     """
+
     def __init__(self, in_channels, out_channels):
         super(ConvBlock, self).__init__()
 
@@ -24,9 +26,11 @@ class ConvBlock(nn.Module):
         out = self.nonlin(out)
         return out
 
+
 class Conv3x3(nn.Module):
     """Layer to pad and convolve input
     """
+
     def __init__(self, in_channels, out_channels, use_refl=True):
         super(Conv3x3, self).__init__()
 
@@ -41,10 +45,12 @@ class Conv3x3(nn.Module):
         out = self.conv(out)
         return out
 
+
 def upsample(x):
     """Upsample input tensor by a factor of 2
     """
     return F.interpolate(x, scale_factor=2, mode="nearest")
+
 
 class DepthDecoder(nn.Module):
     def __init__(self, num_ch_enc, scales=range(4), num_output_channels=1, use_skips=True):
@@ -77,7 +83,8 @@ class DepthDecoder(nn.Module):
             self.convs[("upconv", i, 1)] = ConvBlock(num_ch_in, num_ch_out)
 
         for s in self.scales:
-            self.convs[("dispconv", s)] = Conv3x3(self.num_ch_dec[s], self.num_output_channels)
+            self.convs[("dispconv", s)] = Conv3x3(
+                self.num_ch_dec[s], self.num_output_channels)
 
         self.decoder = nn.ModuleList(list(self.convs.values()))
         self.sigmoid = nn.Sigmoid()
@@ -98,7 +105,7 @@ class DepthDecoder(nn.Module):
                 # self.outputs.append(self.alpha * self.sigmoid(self.convs[("dispconv", i)](x)) + self.beta)
                 disp = self.sigmoid(self.convs[("dispconv", i)](x))
                 # mask = (disp > 0.7).float()
-                mask = disp + 1e-10
+                mask = disp  # + 1e-10
                 self.outputs.append(mask)
 
         self.outputs = self.outputs[::-1]
@@ -107,9 +114,10 @@ class DepthDecoder(nn.Module):
 
 class DispResNet(nn.Module):
 
-    def __init__(self, num_layers = 18, pretrained = True):
+    def __init__(self, num_layers=18, pretrained=True):
         super(DispResNet, self).__init__()
-        self.encoder = ResnetEncoder(num_layers = num_layers, pretrained = pretrained, num_input_images=1)
+        self.encoder = ResnetEncoder(
+            num_layers=num_layers, pretrained=pretrained, num_input_images=1)
         self.decoder = DepthDecoder(self.encoder.num_ch_enc, scales=range(1))
 
     def init_weights(self):
@@ -118,7 +126,7 @@ class DispResNet(nn.Module):
     def forward(self, x):
         features = self.encoder(x)
         outputs = self.decoder(features)
-        
+
         # if self.training:
         #     return outputs
         # else:
@@ -143,5 +151,3 @@ class DispResNet(nn.Module):
 #     tgt_depth = model(tgt_img)
 
 #     print(tgt_depth[0].size())
-
-

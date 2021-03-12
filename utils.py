@@ -1,4 +1,8 @@
 from __future__ import division
+import PIL
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+from matplotlib import cm
+import matplotlib.pyplot as plt
 import shutil
 import numpy as np
 import torch
@@ -7,10 +11,6 @@ import datetime
 from collections import OrderedDict
 import matplotlib as mpl
 mpl.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib import cm
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
-import PIL
 
 
 def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
@@ -57,6 +57,7 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
         array = 119.4501 + tensor.numpy()*6.5258
     return array
 
+
 def traj2Img(pred_xyz):
     """Make an image from the 2D plot of a given trajectory.
 
@@ -68,18 +69,20 @@ def traj2Img(pred_xyz):
     """
 
     pred_xyz = pred_xyz.detach().cpu()
-    pred_x = pred_xyz[:,0].numpy()
-    pred_y = pred_xyz[:,1].numpy()
+    pred_x = pred_xyz[:, 0].numpy()
+    pred_y = pred_xyz[:, 1].numpy()
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.plot(pred_x, pred_y)
     fig.canvas.draw()
 
-    img_plt = PIL.Image.frombytes('RGB', fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
-    img_plt = np.asarray(img_plt) # CHW
-    img_plt = img_plt.transpose(2, 0, 1) # HWC
+    img_plt = PIL.Image.frombytes(
+        'RGB', fig.canvas.get_width_height(), fig.canvas.tostring_rgb())
+    img_plt = np.asarray(img_plt)  # CHW
+    img_plt = img_plt.transpose(2, 0, 1)  # HWC
     return img_plt
+
 
 def traj2Fig(pred_xyz):
     """Make `matplotlib.pyplot.figure` from the 2D plot of a given trajectory.
@@ -95,10 +98,11 @@ def traj2Fig(pred_xyz):
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.plot(pred_xyz[:,0], pred_xyz[:,1])
+    ax.plot(pred_xyz[:, 0], pred_xyz[:, 1])
     # fig.canvas.draw()
 
     return fig
+
 
 def traj2Fig_withgt(pred_xyz, gt_xyz):
     """Make `matplotlib.pyplot.figure` from the 2D plot of a given trajectory.
@@ -116,27 +120,17 @@ def traj2Fig_withgt(pred_xyz, gt_xyz):
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.plot(pred_xyz[:,0], pred_xyz[:,1], label='Prediction')
-    ax.plot(gt_xyz[:,0], gt_xyz[:,1], label='Ground-truth')
+    ax.plot(pred_xyz[:, 0], pred_xyz[:, 1], label='Prediction')
+    ax.plot(gt_xyz[:, 0], gt_xyz[:, 1], label='Ground-truth')
     ax.legend()
     # fig.canvas.draw()
 
     return fig
 
-# def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
-#     file_prefixes = ['dispnet', 'exp_pose']
-#     states = [dispnet_state, exp_pose_state]
-#     for (prefix, state) in zip(file_prefixes, states):
-#         torch.save(state, save_path/'{}_{}'.format(prefix, filename))
 
-#     if is_best:
-#         for prefix in file_prefixes:
-#             shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
-#                             save_path/'{}_model_best.pth.tar'.format(prefix))
-
-def save_checkpoint(save_path, masknet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar'):
-    file_prefixes = ['exp_pose']
-    states = [exp_pose_state]
+def save_checkpoint(save_path, masknet_state, posenet_state, is_best, filename='checkpoint.pth.tar'):
+    file_prefixes = ['posenet']
+    states = [posenet_state]
     if masknet_state is not None:
         file_prefixes.append('masknet')
         states.append(masknet_state)
