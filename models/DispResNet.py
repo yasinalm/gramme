@@ -38,7 +38,8 @@ class Conv3x3(nn.Module):
             self.pad = nn.ReflectionPad2d(1)
         else:
             self.pad = nn.ZeroPad2d(1)
-        self.conv = nn.Conv2d(int(in_channels), int(out_channels), 3)
+        self.conv = nn.Conv2d(int(in_channels), int(
+            out_channels), kernel_size=3)
 
     def forward(self, x):
         out = self.pad(x)

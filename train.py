@@ -351,7 +351,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, _ = warper.compute_db_loss(
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, _, projected_masks = warper.compute_db_loss(
             tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
@@ -385,7 +385,11 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
             # train_writer.add_image(
-            #     'train/mask/input', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            #     'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            # train_writer.add_image(
+            #     'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+            # train_writer.add_image(
+            #     'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
         # TODO: Log losses separately
@@ -422,9 +426,11 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                 is_best)
 
             train_writer.add_image(
-                'train/input/img', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+                'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/input/mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+                'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -479,7 +485,7 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs = warper.compute_db_loss(
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, _ = warper.compute_db_loss(
             tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
@@ -495,7 +501,7 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
             val_writer.add_image(
                 'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
             val_writer.add_image(
-                'val/mask/input', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
+                'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         loss = loss.item()
         losses.update([loss, rec_loss.item(), geometry_consistency_loss.item(
