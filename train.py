@@ -10,6 +10,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
+from torchvision import transforms
 
 import models
 
@@ -157,14 +158,17 @@ def main():
     # ])
 
     # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
-    ds_transform = custom_transforms.Compose(
+    train_transform = custom_transforms.Compose(
+        [custom_transforms.ArrayToTensor(),
+         transforms.RandomRotation(0.15)])
+    val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
     print("=> fetching scenes in '{}'".format(args.data))
     # if args.folder_type == 'sequence':
     train_set = SequenceFolder(
         args.data,
-        transform=ds_transform,
+        transform=train_transform,
         seed=args.seed,
         train=True,
         sequence_length=args.sequence_length,
@@ -187,7 +191,7 @@ def main():
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
         args.data,
-        transform=ds_transform,
+        transform=val_transform,
         seed=args.seed,
         train=False,
         sequence_length=args.sequence_length,
@@ -240,12 +244,12 @@ def main():
 
     # load parameters
     if args.with_masknet and args.pretrained_mask:
-        print("=> using pre-trained weights for MaskResNet")
+        print("=> using pre-trained weights for MaskNet")
         weights = torch.load(args.pretrained_mask)
         mask_net.load_state_dict(weights['state_dict'], strict=False)
 
     if args.pretrained_pose:
-        print("=> using pre-trained weights for PoseResNet")
+        print("=> using pre-trained weights for PoseNet")
         weights = torch.load(args.pretrained_pose)
         pose_net.load_state_dict(weights['state_dict'], strict=False)
 
@@ -436,10 +440,11 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
 
             train_writer.add_image(
                 'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_masknet:
+                train_writer.add_image(
+                    'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -447,8 +452,13 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             writer.writerow(losses_it)
         logger.train_bar.update(i+1)
         if i % args.print_freq == 0:
+            errors = losses.avg
+            error_names = ['total_loss', 'rec_loss',
+                           'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
+            error_string = ', '.join('{} : {:.3f}'.format(name, error)
+                                     for name, error in zip(error_names, errors))
             logger.train_writer.write(
-                'Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
+                'Train: Batch time {} Data time {} '.format(batch_time, data_time, losses) + error_string)
         if i >= args.train_size - 1:
             break
 
@@ -507,10 +517,11 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
             # if epoch == 0:
             val_writer.add_image(
                 'val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
-            val_writer.add_image(
-                'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
-            val_writer.add_image(
-                'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
+            if args.with_masknet:
+                val_writer.add_image(
+                    'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
+                val_writer.add_image(
+                    'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
         losses.update([loss.item(), rec_loss.item(), geometry_consistency_loss.item(
         ), fft_loss.item(), ssim_loss.item()], args.batch_size)

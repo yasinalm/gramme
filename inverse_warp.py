@@ -126,8 +126,10 @@ class Warper(object):
 
         projected_img = F.grid_sample(
             img, src_pixel_coords, padding_mode=self.padding_mode)
-        projected_mask = F.grid_sample(
-            mask, src_pixel_coords, padding_mode=self.padding_mode)
+        projected_mask = None
+        if mask is not None:
+            projected_mask = F.grid_sample(
+                mask, src_pixel_coords, padding_mode=self.padding_mode)
 
         # calculate mask values for each tformed_xy coordinates to match the target xy
         valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1  # [B,H,W]
@@ -171,11 +173,15 @@ class Warper(object):
         ref_img_warped, projected_mask, valid_mask = self.inverse_warp_fft_cart(
             ref_img, ref_mask, pose)
 
-        diff_img = (tgt_img - ref_img_warped*projected_mask).abs().clamp(0, 1)
-        # / (computed_depth + projected_depth)).clamp(0, 1)
-        # diff_mask = ((tgt_mask - projected_mask).abs()).clamp(0, 1)
-        diff_mask = ((tgt_img*tgt_mask - ref_img_warped *
-                      projected_mask).abs()).clamp(0, 1)
+        if tgt_mask is None:
+            diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
+        else:
+            diff_img = (tgt_img - ref_img_warped *
+                        projected_mask).abs().clamp(0, 1)
+            # / (computed_depth + projected_depth)).clamp(0, 1)
+            # diff_mask = ((tgt_mask - projected_mask).abs()).clamp(0, 1)
+            diff_mask = ((tgt_img*tgt_mask - ref_img_warped *
+                          projected_mask).abs()).clamp(0, 1)
 
         if self.with_auto_mask == True:
             auto_mask = (diff_img < (tgt_img - ref_img).abs()
@@ -200,12 +206,14 @@ class Warper(object):
         # ssim_loss += mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
 
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
-        geometry_consistency_loss = mean_on_mask(diff_mask, valid_mask)
-        geometry_consistency_loss += mean_on_mask(diff_img, tgt_mask)
+        if tgt_mask is None:
+            geometry_consistency_loss = torch.Tensor([0]).to(device)
+        else:
+            geometry_consistency_loss = mean_on_mask(diff_mask, valid_mask)
+            geometry_consistency_loss += mean_on_mask(diff_img, tgt_mask)
 
         # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
         fft_loss = torch.Tensor([0]).to(device)  # şimdilik disable
-        # geometry_consistency_loss = torch.Tensor([0]).to(device)  # şimdilik disable
 
         return reconstruction_loss, geometry_consistency_loss, fft_loss, ssim_loss, ref_img_warped, projected_mask
 
