@@ -12,12 +12,13 @@ def load_radar(example_path: AnyStr, dataset: AnyStr) -> np.ndarray:
         fft_data (np.ndarray): Radar power readings along each azimuth
     """
 
-    skip_header = 11 if dataset=='robotcar' else 0
+    skip_header = 11 if dataset == 'robotcar' else 0
 
     raw_example_data = cv2.imread(example_path, cv2.IMREAD_GRAYSCALE)
-    if dataset == 'radiate':
+    if dataset == 'radiate' or dataset == 'hand':
         raw_example_data = np.transpose(raw_example_data)
-    fft_data = raw_example_data[:, skip_header:].astype(np.float32)[:, :, np.newaxis] / 255.
+    fft_data = raw_example_data[:, skip_header:].astype(
+        np.float32)[:, :, np.newaxis] / 255.
 
     return fft_data
 
@@ -111,21 +112,24 @@ def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, 
         cart_min_range = (cart_pixel_width / 2 - 0.5) * cart_resolution
     else:
         cart_min_range = cart_pixel_width // 2 * cart_resolution
-    
-    if dataset=='hand': # 180deg FoV
-        x_coords = np.linspace(0, cart_min_range, cart_pixel_width//2, dtype=np.float32)
-        y_coords = np.linspace(-cart_min_range, cart_min_range, cart_pixel_width, dtype=np.float32)
+
+    if dataset == 'hand':  # 180deg FoV
+        x_coords = np.linspace(
+            0, cart_min_range, cart_pixel_width, dtype=np.float32)
+        y_coords = np.linspace(-cart_min_range/2, cart_min_range/2,
+                               cart_pixel_width, dtype=np.float32)
         Y, X = np.meshgrid(x_coords, y_coords)
-    else: # Full FoV        
-        coords = np.linspace(-cart_min_range, cart_min_range, cart_pixel_width, dtype=np.float32)
+    else:  # Full FoV
+        coords = np.linspace(-cart_min_range, cart_min_range,
+                             cart_pixel_width, dtype=np.float32)
         Y, X = np.meshgrid(coords, -coords)
-        
+
     sample_range = np.sqrt(Y * Y + X * X)
     sample_angle = np.arctan2(Y, X)
     sample_angle += (sample_angle < 0).astype(np.float32) * 2. * np.pi
 
     # Interpolate Radar Data Coordinates
-    azimuth_step = angleResolutionInRad #azimuths[1] - azimuths[0]
+    azimuth_step = angleResolutionInRad  # azimuths[1] - azimuths[0]
     sample_u = (sample_range - radar_resolution / 2) / radar_resolution
     #sample_v = (sample_angle - azimuths[0]) / azimuth_step
     sample_v = (sample_angle - angleResolutionInRad) / azimuth_step
@@ -140,5 +144,6 @@ def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, 
         sample_v = sample_v + 1
 
     polar_to_cart_warp = np.stack((sample_u, sample_v), -1)
-    cart_img = np.expand_dims(cv2.remap(fft_data, polar_to_cart_warp, None, cv2.INTER_LINEAR), 0)
+    cart_img = np.expand_dims(
+        cv2.remap(fft_data, polar_to_cart_warp, None, cv2.INTER_LINEAR), 0)
     return cart_img

@@ -5,20 +5,7 @@ import numpy as np
 import cv2
 from pathlib import Path
 import random
-#import os
 import radar
-
-
-
-
-# def load_img_as_float(path):
-#     # return io.imread(path).astype(np.float32)
-#     img = np.array(Image.open(path), dtype=np.float32) # [H, W]
-#     # Skip metadata in the first 10 columns in the Robotcar dataset
-#     img = img[:, 11:].transpose()
-#     img = img[np.newaxis,:, :] / 255. # [1, H, W] single channel image
-#     return img
-
 
 
 class SequenceFolder(data.Dataset):
@@ -36,19 +23,20 @@ class SequenceFolder(data.Dataset):
         random.seed(seed)
         self.root = Path(root)
         self.train = train
-        self.isCartesian = radar_format=='cartesian'
+        self.isCartesian = radar_format == 'cartesian'
         if sequence is not None:
             radar_folder = 'radar_cart' if self.isCartesian else 'radar'
             self.scenes = [self.root/sequence/radar_folder]
         else:
             scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-            self.scenes = [self.root/folder.strip() for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+            self.scenes = [self.root/folder.strip() for folder in open(scene_list_path)
+                           if not folder.strip().startswith("#")]
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
         self.cart_resolution = cart_resolution
         self.cart_pixels = cart_pixels
-        self.rangeResolutionsInMeter=rangeResolutionsInMeter
+        self.rangeResolutionsInMeter = rangeResolutionsInMeter
         self.angleResolutionInRad = angleResolutionInRad
         self.interpolate_crossover = True
         self.crawl_folders(sequence_length)
@@ -57,11 +45,13 @@ class SequenceFolder(data.Dataset):
         # k skip frames
         sequence_set = []
         demi_length = (sequence_length-1)//2
-        shifts = list(range(-demi_length * self.k, demi_length * self.k + 1, self.k))
+        shifts = list(range(-demi_length * self.k,
+                            demi_length * self.k + 1, self.k))
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            f_type = '*.csv' if self.dataset == 'hand' else '*.png'
+            # f_type = '*.csv' if self.dataset == 'hand' else '*.png'
+            f_type = '*.png'
             imgs = sorted(list(scene.glob(f_type)))
 
             if len(imgs) < sequence_length:
@@ -72,16 +62,17 @@ class SequenceFolder(data.Dataset):
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
                 sequence_set.append(sample)
-        
+
         # Shuffle training dataset
-        if self.train:    
+        if self.train:
             random.shuffle(sequence_set)
         self.samples = sequence_set
 
     def load_img_as_float(self, path):
         # Robotcar dataset has header of length 11 columns
         fft_data = radar.load_radar(str(path), self.dataset)
-        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter, self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
+        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
+                                                  self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
 
         return cart_img
 
@@ -92,7 +83,7 @@ class SequenceFolder(data.Dataset):
         return cart_img
 
     def load_csv_as_float(self, path):
-        img = np.genfromtxt(path, delimiter=',', dtype=np.float32) # [H, W]
+        img = np.genfromtxt(path, delimiter=',', dtype=np.float32)  # [H, W]
         img = img.transpose()
         # img = img[np.newaxis,:,:] # [1, H, W] single channel image
 
@@ -100,18 +91,19 @@ class SequenceFolder(data.Dataset):
         fft_data = img - img.min()
         fft_data = fft_data/fft_data.max()
 
-        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter, self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
+        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
+                                                  self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
 
         return cart_img
 
-    
     def __getitem__(self, index):
         sample = self.samples[index]
         # Choose the loader function
         if self.isCartesian:
             load_as_float = self.load_cart_as_float
         else:
-            load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
+            # load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
+            load_as_float = self.load_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
@@ -120,7 +112,6 @@ class SequenceFolder(data.Dataset):
             ref_imgs = [self.transform(ref_img) for ref_img in ref_imgs]
 
         return tgt_img, ref_imgs
-    
 
     def __len__(self):
         return len(self.samples)

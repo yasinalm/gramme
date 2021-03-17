@@ -112,7 +112,7 @@ parser.add_argument('--angle-res', type=float,
 parser.add_argument('--cart-res', type=float,
                     help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
 parser.add_argument('--cart-pixels', type=int,
-                    help='Cartesian size in pixels (used for both height and width)', metavar='W', default=501)
+                    help='Cartesian size in pixels (used for both height and width)', metavar='W', default=512)
 # parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 # parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
@@ -158,9 +158,12 @@ def main():
     # ])
 
     # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    # TODO: Calculate center of handheld dataset. The rotation center is not the image center (default image center).
+    # train_transform = custom_transforms.Compose(
+    #     [custom_transforms.ArrayToTensor(),
+    #      transforms.RandomRotation(0.50)])
     train_transform = custom_transforms.Compose(
-        [custom_transforms.ArrayToTensor(),
-         transforms.RandomRotation(0.15)])
+        [custom_transforms.ArrayToTensor()])
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
@@ -363,7 +366,7 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, _, projected_masks = warper.compute_db_loss(
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, projected_masks = warper.compute_db_loss(
             tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
@@ -440,6 +443,8 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
 
             train_writer.add_image(
                 'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/img/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
                 train_writer.add_image(
                     'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
@@ -504,7 +509,7 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, _ = warper.compute_db_loss(
+        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, projected_masks = warper.compute_db_loss(
             tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
@@ -517,9 +522,11 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
             # if epoch == 0:
             val_writer.add_image(
                 'val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
+            val_writer.add_image(
+                'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
             if args.with_masknet:
                 val_writer.add_image(
-                    'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
+                    'val/img/warped_mask', utils.tensor2array(projected_masks[0][0], colormap='bone'), epoch)
                 val_writer.add_image(
                     'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 

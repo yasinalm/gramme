@@ -32,7 +32,8 @@ class Warper(object):
         self.dataset = dataset
 
         if self.dataset == 'hand':
-            ranges_x = torch.arange(self.cart_pixels//2)
+            # ranges_x = torch.arange(self.cart_pixels//2)
+            ranges_x = torch.arange(self.cart_pixels)
             ranges_y = torch.arange(self.cart_pixels)-self.cart_pixels//2
         else:
             ranges_x = torch.arange(self.cart_pixels)-self.cart_pixels//2
@@ -109,10 +110,10 @@ class Warper(object):
         self.b, self.c, self.h, self.w = img.size()
 
         assert self.h == self.cart_pixels  # self.numRangeBins
-        if self.dataset == 'hand':
-            assert self.w == self.cart_pixels//2  # self.num_angle_bins
-        else:
-            assert self.w == self.cart_pixels
+        # if self.dataset == 'hand':
+        #     assert self.w == self.cart_pixels//2  # self.num_angle_bins
+        # else:
+        assert self.w == self.cart_pixels
 
         # if (xy_hom is None) or xy_hom.size(1) < 4:
         #     set_radar_grid()
