@@ -74,7 +74,7 @@ class Warper(object):
         # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
         if self.dataset == 'hand':
             # X and Y are in [0, self.cart_pixels*self.cart_resolution] meters.
-            w = (self.cart_pixels//2)*self.cart_resolution
+            w = self.cart_pixels*self.cart_resolution
             h = (self.cart_pixels//2)*self.cart_resolution
             X_norm = 2*X/w - 1
             Y_norm = Y/h  # [B, H*W]

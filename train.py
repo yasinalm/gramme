@@ -399,12 +399,15 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                 'train/trans_pred-y', poses[..., 4], n_iter)
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
-            # train_writer.add_image(
-            #     'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            # train_writer.add_image(
-            #     'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-            # train_writer.add_image(
-            #     'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/img/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_masknet:
+                train_writer.add_image(
+                    'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
         losses_it = [loss.item(), rec_loss.item(
