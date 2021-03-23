@@ -370,7 +370,7 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(i=5, precision=4)
+    losses = AverageMeter(i=9, precision=4)
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
@@ -402,20 +402,6 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        if args.with_vo:
-            tgt_depth, ref_depths = compute_depth(
-                disp_net, vo_tgt_img, vo_ref_imgs)
-            vo_poses, vo_poses_inv = compute_pose_with_inv(
-                vo_pose_net, vo_tgt_img, vo_ref_imgs)
-
-            loss_1, loss_2, loss_3 = vo_warper.compute_photo_and_geometry_loss(
-                tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv,
-                args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
-                args.padding_mode)
-
-            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
-            vo_loss = 1.0*loss_1 + 0.1*loss_2 + 0.5*loss_3
-
         (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
          projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
@@ -426,6 +412,25 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
         loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+
+        if args.with_vo:
+            tgt_depth, ref_depths = compute_depth(
+                disp_net, vo_tgt_img, vo_ref_imgs)
+            vo_poses, vo_poses_inv = compute_pose_with_inv(
+                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+
+            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = vo_warper.compute_photo_and_geometry_loss(
+                vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
+                args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
+                args.padding_mode)
+
+            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+            vo_photo_loss = 1.0*vo_photo_loss
+            vo_smooth_loss = 0.1*vo_smooth_loss
+            vo_geometry_loss = 0.5*vo_geometry_loss
+            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
+
+            loss += vo_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -464,6 +469,9 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
         # record loss and EPE
         losses_it = [loss.item(), rec_loss.item(
         ), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()]
+        if args.with_vo:
+            losses_it.extend(
+                [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item()])
         losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
@@ -497,16 +505,27 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
                 is_best)
 
             train_writer.add_image(
-                'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/img/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/img/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
                 train_writer.add_image(
-                    'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/radar_mask/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
                 train_writer.add_image(
-                    'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/radar_mask/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_vo:
+                train_writer.add_image(
+                    'train/img/input', utils.tensor2array(tgt_img[0]), n_iter)
+                train_writer.add_image(
+                    'train/img/ref_input', utils.tensor2array(ref_imgs[0][0]), n_iter)
+                # train_writer.add_image(
+                #     'train/img/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
+                train_writer.add_image(
+                    'train/depth/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
+                train_writer.add_image(
+                    'train/depth/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -517,6 +536,9 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
             errors = losses.avg
             error_names = ['total_loss', 'rec_loss',
                            'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
+            if args.with_vo:
+                error_names.extend(
+                    [['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss']])
             error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                      for name, error in zip(error_names, errors))
             logger.train_writer.write(
