@@ -19,6 +19,7 @@ import utils
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
+import inverse_warp_vo as vo_warper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
@@ -86,6 +87,10 @@ parser.add_argument('--masknet', type=str,
                     choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
 parser.add_argument('--with-vo', action='store_true',
                     help='with VO fusion')
+parser.add_argument('--pretrained-depth', dest='pretrained_depth',
+                    default=None, metavar='PATH', help='path to pre-trained DispResNet model')
+parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=None,
+                    metavar='PATH', help='path to pre-trained VO Pose net model')
 parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
@@ -252,8 +257,8 @@ def main():
     if args.with_vo:
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
-    vo_pose_net = models.PoseResNet(
-        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
+        vo_pose_net = models.PoseResNet(
+            args.dataset, args.resnet_layers, args.with_pretrain).to(device)
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
@@ -268,6 +273,19 @@ def main():
         weights = torch.load(args.pretrained_pose)
         pose_net.load_state_dict(weights['state_dict'], strict=False)
 
+    if args.with_vo:
+        if args.pretrained_depth:
+            print("=> using pre-trained weights for VO DepthResNet")
+            weights = torch.load(args.pretrained_depth)
+            disp_net.load_state_dict(weights['state_dict'], strict=False)
+        if args.pretrained_vo_pose:
+            print("=> using pre-trained weights for VO PoseNet")
+            weights = torch.load(args.pretrained_vo_pose)
+            vo_pose_net.load_state_dict(weights['state_dict'], strict=False)
+
+        disp_net = torch.nn.DataParallel(disp_net)
+        vo_pose_net = torch.nn.DataParallel(vo_pose_net)
+
     if args.with_masknet:
         mask_net = torch.nn.DataParallel(mask_net)
     pose_net = torch.nn.DataParallel(pose_net)
@@ -278,6 +296,10 @@ def main():
     ]
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
+    if args.with_vo:
+        optim_params.append({'params': disp_net.parameters(), 'lr': args.lr})
+        optim_params.append(
+            {'params': vo_pose_net.parameters(), 'lr': args.lr})
 
     optimizer = torch.optim.Adam(optim_params,
                                  betas=(args.momentum, args.beta),
@@ -301,9 +323,8 @@ def main():
 
         # train for one epoch
         logger.reset_train_bar()
-        # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.train_size, logger, training_writer, warper)
         train_loss = train(args, train_loader, mask_net,
-                           pose_net, optimizer, logger, training_writer, warper)
+                           pose_net, disp_net, vo_pose_net, optimizer, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -345,7 +366,7 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_writer, warper):
+def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimizer, logger, train_writer, warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -357,12 +378,15 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
     # switch to train mode
     if args.with_masknet:
         mask_net.train()
+    if args.with_vo:
+        disp_net.train()
+        vo_pose_net.train()
     pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
 
-    for i, (tgt_img, ref_imgs) in enumerate(train_loader):
+    for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics) in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
         # measure data loading time
@@ -378,8 +402,22 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, projected_masks = warper.compute_db_loss(
-            tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+        if args.with_vo:
+            tgt_depth, ref_depths = compute_depth(
+                disp_net, vo_tgt_img, vo_ref_imgs)
+            vo_poses, vo_poses_inv = compute_pose_with_inv(
+                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+
+            loss_1, loss_2, loss_3 = vo_warper.compute_photo_and_geometry_loss(
+                tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv,
+                args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
+                args.padding_mode)
+
+            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+            vo_loss = 1.0*loss_1 + 0.1*loss_2 + 0.5*loss_3
+
+        (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
+         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
@@ -607,18 +645,27 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
 
 
 def compute_mask(mask_net, tgt_img, ref_imgs):
-    # tgt_mask = [1/disp for disp in mask_net(tgt_img)]
     # tgt_mask = [mask for mask in mask_net(tgt_img)] # for multiple scale
     tgt_mask = mask_net(tgt_img)  # for single scale
 
     ref_masks = []
     for ref_img in ref_imgs:
-        # ref_depth = [1/disp for disp in mask_net(ref_img)]
         # ref_mask = [mask for mask in mask_net(ref_img)] # for multiple scale
         ref_mask = mask_net(ref_img)  # for multiple scale
         ref_masks.append(ref_mask)
 
     return tgt_mask, ref_masks
+
+
+def compute_depth(disp_net, tgt_img, ref_imgs):
+    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+
+    ref_depths = []
+    for ref_img in ref_imgs:
+        ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depths.append(ref_depth)
+
+    return tgt_depth, ref_depths
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):

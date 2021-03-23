@@ -5,6 +5,7 @@ import torch.fft
 
 import conversions as tgm
 import loss_ssim
+import utils_warp as utils
 
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -104,8 +105,8 @@ class Warper(object):
             projected_img: Source image warped to the target image plane
             valid_points: Boolean array indicating point validity
         """
-        check_sizes(img, 'img', 'B1HW')
-        check_sizes(pose, 'pose', 'B6')
+        utils.check_sizes(img, 'img', 'B1HW')
+        utils.check_sizes(pose, 'pose', 'B6')
 
         self.b, self.c, self.h, self.w = img.size()
 
@@ -372,24 +373,3 @@ def fft_rec_loss2(tgt, src, mask):
     l = 1e-4*mag_diff.sum() + pha_diff.sum()
 
     return l
-
-
-def check_sizes(input, input_name, expected):
-    condition = [input.ndimension() == len(expected)]
-    for i, size in enumerate(expected):
-        if size.isdigit():
-            condition.append(input.size(i) == int(size))
-    assert(all(condition)), "wrong size for {}, expected {}, got  {}".format(
-        input_name, 'x'.join(expected), list(input.size()))
-
-
-def cart2pol(x, y):
-    rho = torch.sqrt(x**2 + y**2)
-    phi = torch.atan2(y, x)
-    return phi, rho
-
-
-def pol2cart(phi, rho):
-    x = rho * torch.cos(phi)
-    y = rho * torch.sin(phi)
-    return x, y
