@@ -77,13 +77,15 @@ parser.add_argument('-s', '--ssim-loss-weight', type=float,
 parser.add_argument('-c', '--geometry-consistency-weight', type=float,
                     help='weight for depth consistency loss', metavar='W', default=1.0)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
-# parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
+# parser.add_argument('--with-mask', type=int, default=1, help='with the mask for moving objects and occlusions or not')
 parser.add_argument('--with-auto-mask', action='store_true',
-                    help='with the the mask for stationary points')
+                    help='with the mask for stationary points')
 parser.add_argument('--with-masknet', action='store_true',
-                    help='with the the masknet for multipath and noise')
+                    help='with the masknet for multipath and noise')
 parser.add_argument('--masknet', type=str,
                     choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
+parser.add_argument('--with-vo', action='store_true',
+                    help='with VO fusion')
 parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
@@ -240,13 +242,18 @@ def main():
     mask_net = None
     if args.with_masknet:
         if args.masknet == 'resnet':
-            mask_net = models.DispResNet(
+            mask_net = models.MaskResNet(
                 args.resnet_layers, args.with_pretrain).to(device)
         elif args.masknet == 'convnet':
             mask_net = models.MaskNet(num_channels=1).to(device)
         else:
             raise NotImplementedError(
                 'The chosen MaskNet is not implemented! Given: {}'.format(args.masknet))
+    if args.with_vo:
+        disp_net = models.DispResNet(
+            args.resnet_layers, args.with_pretrain).to(device)
+    vo_pose_net = models.PoseResNet(
+        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
