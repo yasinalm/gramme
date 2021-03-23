@@ -165,7 +165,7 @@ def main():
     # ])
 
     # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
-    # TODO: Calculate center of handheld dataset. The rotation center is not the image center (default image center).
+    # Calculate center of handheld dataset. The rotation center is not the image center (default image center).
     if args.dataset == 'hand':
         center = (0, args.cart_pixels//2)
         train_transform = custom_transforms.Compose(
@@ -179,9 +179,15 @@ def main():
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
-    print("=> fetching scenes in '{}'".format(args.data))
-    # if args.folder_type == 'sequence':
-    train_set = SequenceFolder(
+    print("=> fetching radar scenes in '{}'".format(args.data))
+    ro_params = {
+        'cart_resolution': args.cart_res,
+        'cart_pixels': args.cart_pixels,
+        'rangeResolutionsInMeter': args.range_res,
+        'angleResolutionInRad': args.angle_res,
+        'radar_format': args.radar_format
+    }
+    train_set_radar = SequenceFolder(
         args.data,
         transform=train_transform,
         seed=args.seed,
@@ -189,22 +195,11 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        cart_resolution=args.cart_res,
-        cart_pixels=args.cart_pixels,
-        rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad=args.angle_res,
-        radar_format=args.radar_format
+        ro_params=ro_params
     )
-    # else:
-    #     train_set = PairFolder(
-    #         args.data,
-    #         seed=args.seed,
-    #         train=True,
-    #         transform=train_transform
-    #     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
-    val_set = SequenceFolder(
+    val_set_radar = SequenceFolder(
         args.data,
         transform=val_transform,
         seed=args.seed,
@@ -212,30 +207,82 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        cart_resolution=args.cart_res,
-        cart_pixels=args.cart_pixels,
-        rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad=args.angle_res,
-        radar_format=args.radar_format
+        ro_params=ro_params
+
     )
 
     print('{} samples found in {} train scenes'.format(
-        len(train_set), len(train_set.scenes)))
+        len(train_set_radar), len(train_set_radar.scenes)))
     print('{} samples found in {} valid scenes'.format(
-        len(val_set), len(val_set.scenes)))
-    train_loader = torch.utils.data.DataLoader(
-        train_set, batch_size=args.batch_size, shuffle=True,
+        len(val_set_radar), len(val_set_radar.scenes)))
+    train_loader_radar = torch.utils.data.DataLoader(
+        train_set_radar, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
-    val_loader = torch.utils.data.DataLoader(
-        val_set, batch_size=args.batch_size, shuffle=False,
+    val_loader_radar = torch.utils.data.DataLoader(
+        val_set_radar, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
     if args.train_size == 0:
-        args.train_size = len(train_loader)
+        args.train_size = len(train_loader_radar)
     print('Epoch size: ', args.train_size)
     if args.val_size == 0:
-        args.val_size = len(val_loader)
+        args.val_size = len(val_loader_radar)
     print('Validation size: ', args.val_size)
+
+    if args.with_vo:
+        print("=> fetching monocular camera scenes in '{}'".format(args.data))
+        mono_params = {'dataset': args.dataset}
+        imagenet_mean = [0.485, 0.456, 0.406]
+        imagenet_std = [0.229, 0.224, 0.225]
+        normalize = transforms.Normalize(mean=imagenet_mean,
+                                         std=imagenet_std)
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        normalize])
+        train_set_mono = SequenceFolder(
+            args.data,
+            transform=transform,
+            seed=args.seed,
+            train=True,
+            sequence_length=args.sequence_length,
+            skip_frames=args.skip_frames,
+            dataset=args.dataset,
+            mono_params=mono_params
+        )
+
+        # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
+        val_set_mono = SequenceFolder(
+            args.data,
+            transform=transform,
+            seed=args.seed,
+            train=False,
+            sequence_length=args.sequence_length,
+            skip_frames=args.skip_frames,
+            dataset=args.dataset,
+            mono_params=mono_params
+
+        )
+
+        print('{} samples found in {} train scenes'.format(
+            len(train_set_mono), len(train_set_mono.scenes)))
+        print('{} samples found in {} valid scenes'.format(
+            len(val_set_mono), len(val_set_mono.scenes)))
+        train_loader_mono = torch.utils.data.DataLoader(
+            train_set_mono, batch_size=args.batch_size, shuffle=True,
+            num_workers=args.workers, pin_memory=True)
+        val_loader_mono = torch.utils.data.DataLoader(
+            val_set_mono, batch_size=args.batch_size, shuffle=False,
+            num_workers=args.workers, pin_memory=True)
+
+        if args.train_size == 0:
+            args.train_size_mono = len(train_loader_mono)
+        else:
+            args.train_size_mono = args.train_size
+        print('Epoch size: ', args.train_size)
+        if args.val_size == 0:
+            args.val_size_mono = len(val_loader_mono)
+        else:
+            args.train_size_mono = args.val_size
+        print('Validation size: ', args.val_size)
 
     # create model
     print("=> creating loss object")
@@ -323,14 +370,14 @@ def main():
 
         # train for one epoch
         logger.reset_train_bar()
-        train_loss = train(args, train_loader, mask_net,
+        train_loss = train(args, train_loader_radar, train_loader_mono, mask_net,
                            pose_net, disp_net, vo_pose_net, optimizer, logger, training_writer, warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
         logger.reset_valid_bar()
         errors, error_names = validate(
-            args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer)
+            args, val_loader_radar, mask_net, pose_net, epoch, logger, warper, val_writer)
         error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                  for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
@@ -366,7 +413,10 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimizer, logger, train_writer, warper):
+def train(
+        args, train_loader_radar, train_loader_mono,
+        mask_net, pose_net, disp_net, vo_pose_net, optimizer,
+        logger, train_writer, warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -381,12 +431,13 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
     if args.with_vo:
         disp_net.train()
         vo_pose_net.train()
+        train_loader_mono = iter(train_loader_mono)
     pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
 
-    for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics) in enumerate(train_loader):
+    for i, (tgt_img, ref_imgs) in enumerate(train_loader_radar):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
         # measure data loading time
@@ -414,23 +465,29 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
         loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         if args.with_vo:
-            tgt_depth, ref_depths = compute_depth(
-                disp_net, vo_tgt_img, vo_ref_imgs)
-            vo_poses, vo_poses_inv = compute_pose_with_inv(
-                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+            # TODO: Shuuffling den dolayi carsi pazar karisiyor.
+            # tek bir loader da radar ve aradaki monocular frame leri oku.
+            # image lari burdaki loop da dodur.
+            # tgt_radar, tgt_images in train_loader gibi birsey olacak yani.
+            # tgt_images iki tgt_radar arasindaki image lar.
+            for (vo_tgt_img, vo_ref_imgs, intrinsics) in train_loader_mono:
+                tgt_depth, ref_depths = compute_depth(
+                    disp_net, vo_tgt_img, vo_ref_imgs)
+                vo_poses, vo_poses_inv = compute_pose_with_inv(
+                    vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = vo_warper.compute_photo_and_geometry_loss(
-                vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
-                args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
-                args.padding_mode)
+                vo_photo_loss, vo_smooth_loss, vo_geometry_loss = vo_warper.compute_photo_and_geometry_loss(
+                    vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
+                    args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
+                    args.padding_mode)
 
-            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
-            vo_photo_loss = 1.0*vo_photo_loss
-            vo_smooth_loss = 0.1*vo_smooth_loss
-            vo_geometry_loss = 0.5*vo_geometry_loss
-            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
+                # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+                vo_photo_loss = 1.0*vo_photo_loss
+                vo_smooth_loss = 0.1*vo_smooth_loss
+                vo_geometry_loss = 0.5*vo_geometry_loss
+                vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
 
-            loss += vo_loss
+                loss += vo_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -467,8 +524,10 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
             #         'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
-        losses_it = [loss.item(), rec_loss.item(
-        ), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()]
+        losses_it = [
+            loss.item(), rec_loss.item(), geometry_consistency_loss.item(
+            ), fft_loss.item(), ssim_loss.item()
+        ]
         if args.with_vo:
             losses_it.extend(
                 [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item()])
@@ -552,7 +611,7 @@ def train(args, train_loader, mask_net, pose_net, disp_net, vo_pose_net, optimiz
 
 
 @torch.no_grad()
-def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer):
+def validate(args, val_loader_radar, mask_net, pose_net, epoch, logger, warper, val_writer):
     global device
     batch_time = AverageMeter()
     losses = AverageMeter(i=5, precision=4)
@@ -569,11 +628,11 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
 
     # Randomly choose n indices to log images
     rng = np.random.default_rng()
-    log_ind = rng.integers(len(val_loader), size=1)
+    log_ind = rng.integers(len(val_loader_radar), size=1)
 
     end = time.time()
     logger.valid_bar.update(0)
-    for i, (tgt_img, ref_imgs) in enumerate(val_loader):
+    for i, (tgt_img, ref_imgs) in enumerate(val_loader_radar):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)

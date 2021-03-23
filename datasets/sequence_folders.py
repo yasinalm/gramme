@@ -1,7 +1,7 @@
 import torch.utils.data as data
 import numpy as np
 # from skimage import io
-#from PIL import Image
+from PIL import Image
 import cv2
 from pathlib import Path
 import random
@@ -18,27 +18,46 @@ class SequenceFolder(data.Dataset):
         transform functions must take in an image
     """
 
-    def __init__(self, root, skip_frames, sequence_length, train, dataset, cart_resolution, cart_pixels, rangeResolutionsInMeter, angleResolutionInRad, radar_format, seed=None, transform=None, sequence=None):
+    def __init__(
+            self, root, skip_frames, sequence_length, train, dataset,
+            ro_params=None, mono_params=None,
+            seed=None, transform=None, sequence=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.train = train
-        self.isCartesian = radar_format == 'cartesian'
-        if sequence is not None:
-            radar_folder = 'radar_cart' if self.isCartesian else 'radar'
-            self.scenes = [self.root/sequence/radar_folder]
+
+        if ro_params is not None:
+            self.modality = 'radar'
+            self.isCartesian = ro_params['radar_format'] == 'cartesian'
+            if sequence is not None:
+                radar_folder = 'radar_cart' if self.isCartesian else 'radar'
+                self.scenes = [self.root/sequence/radar_folder]
+            else:
+                scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+                self.scenes = [self.root/folder.strip() for folder in open(scene_list_path)
+                               if not folder.strip().startswith("#")]
+                self.cart_resolution = ro_params['cart_resolution']
+                self.cart_pixels = ro_params['cart_pixels']
+                self.rangeResolutionsInMeter = ro_params['rangeResolutionsInMeter']
+                self.angleResolutionInRad = ro_params['angleResolutionInRad']
+                self.interpolate_crossover = True
+        elif mono_params is not None:
+            self.modality = 'mono'
+            if sequence is not None:
+                mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/centre'
+                self.scenes = [self.root/sequence/mono_folder]
+            else:
+                scene_list_path = self.root/'train_vo.txt' if train else self.root/'val_vo.txt'
+                self.scenes = [self.root/folder.strip() for folder in open(scene_list_path)
+                               if not folder.strip().startswith("#")]
         else:
-            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-            self.scenes = [self.root/folder.strip() for folder in open(scene_list_path)
-                           if not folder.strip().startswith("#")]
+            raise ValueError(
+                'Supported modality types are: [radar, mono], noth are None')
+
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
-        self.cart_resolution = cart_resolution
-        self.cart_pixels = cart_pixels
-        self.rangeResolutionsInMeter = rangeResolutionsInMeter
-        self.angleResolutionInRad = angleResolutionInRad
-        self.interpolate_crossover = True
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -68,13 +87,18 @@ class SequenceFolder(data.Dataset):
             random.shuffle(sequence_set)
         self.samples = sequence_set
 
-    def load_img_as_float(self, path):
+    def load_radar_img_as_float(self, path):
         # Robotcar dataset has header of length 11 columns
         fft_data = radar.load_radar(str(path), self.dataset)
-        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
-                                                  self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
+        cart_img = radar.radar_polar_to_cartesian(
+            self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
+            self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
 
         return cart_img
+
+    def load_mono_img_as_float(self, path):
+        img = Image.open(path)
+        return img
 
     def load_cart_as_float(self, path):
         raw_data = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
@@ -92,19 +116,24 @@ class SequenceFolder(data.Dataset):
         fft_data = img - img.min()
         fft_data = fft_data/fft_data.max()
 
-        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
-                                                  self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
+        cart_img = radar.radar_polar_to_cartesian(
+            self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
+            self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
 
         return cart_img
 
     def __getitem__(self, index):
         sample = self.samples[index]
         # Choose the loader function
-        if self.isCartesian:
-            load_as_float = self.load_cart_as_float
+        if self.modality == 'radar':
+            # if self.isCartesian:
+            #     load_as_float = self.load_cart_as_float
+            # else:
+            #     # load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
+            #     load_as_float = self.load_radar_img_as_float
+            load_as_float = self.load_cart_as_float if self.isCartesian else self.load_radar_img_as_float
         else:
-            # load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
-            load_as_float = self.load_img_as_float
+            load_as_float = self.load_mono_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
