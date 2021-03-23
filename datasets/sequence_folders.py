@@ -79,6 +79,7 @@ class SequenceFolder(data.Dataset):
     def load_cart_as_float(self, path):
         raw_data = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
         cart_img = raw_data.astype(np.float32)[np.newaxis, :, :] / 255.
+        cart_img[cart_img < 0.2] = 0
 
         return cart_img
 
