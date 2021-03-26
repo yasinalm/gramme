@@ -437,7 +437,7 @@ def train(
     end = time.time()
     logger.train_bar.update(0)
 
-    for i, (tgt_img, ref_imgs) in enumerate(train_loader_radar):
+    for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics) in enumerate(train_loader_radar):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
         # measure data loading time
@@ -465,29 +465,25 @@ def train(
         loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         if args.with_vo:
-            # TODO: Shuuffling den dolayi carsi pazar karisiyor.
-            # tek bir loader da radar ve aradaki monocular frame leri oku.
-            # image lari burdaki loop da dodur.
-            # tgt_radar, tgt_images in train_loader gibi birsey olacak yani.
-            # tgt_images iki tgt_radar arasindaki image lar.
-            for (vo_tgt_img, vo_ref_imgs, intrinsics) in train_loader_mono:
-                tgt_depth, ref_depths = compute_depth(
-                    disp_net, vo_tgt_img, vo_ref_imgs)
-                vo_poses, vo_poses_inv = compute_pose_with_inv(
-                    vo_pose_net, vo_tgt_img, vo_ref_imgs)
+            tgt_depth, ref_depths = compute_depth(
+                disp_net, vo_tgt_img, vo_ref_imgs)
+            vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
+                vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-                vo_photo_loss, vo_smooth_loss, vo_geometry_loss = vo_warper.compute_photo_and_geometry_loss(
-                    vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
-                    args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
-                    args.padding_mode)
+            # TODO: Buraya gelen pose ve depth degerleri radar frame leri arasinda kalan tum mono frame ler icin.
+            # bunlari reconstruction modulune uygun hale getir.
+            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = vo_warper.compute_photo_and_geometry_loss(
+                vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
+                args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
+                args.padding_mode)
 
-                # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
-                vo_photo_loss = 1.0*vo_photo_loss
-                vo_smooth_loss = 0.1*vo_smooth_loss
-                vo_geometry_loss = 0.5*vo_geometry_loss
-                vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
+            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+            vo_photo_loss = 1.0*vo_photo_loss
+            vo_smooth_loss = 0.1*vo_smooth_loss
+            vo_geometry_loss = 0.5*vo_geometry_loss
+            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
 
-                loss += vo_loss
+            loss += vo_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -742,9 +738,12 @@ def compute_depth(disp_net, tgt_img, ref_imgs):
     tgt_depth = [1/disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
-    for ref_img in ref_imgs:
-        ref_depth = [1/disp for disp in disp_net(ref_img)]
-        ref_depths.append(ref_depth)
+    for ref_matches in ref_imgs:
+        match_depths = []
+        for ref_img in ref_matches:
+            ref_depth = [1/disp for disp in disp_net(ref_img)]
+            match_depths.append(ref_depth)
+        ref_depths.append(match_depths)
 
     return tgt_depth, ref_depths
 
@@ -755,6 +754,38 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
     for ref_img in ref_imgs:
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))
+
+    return torch.stack(poses), torch.stack(poses_inv)
+
+
+def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
+    # poses = []
+    # poses_inv = []
+    # for ref_matches in ref_imgs:
+
+    # Assume tgt=9, refs=[6,12], then
+    # backward = [p7-6, p8-7, p9-8]
+    # forward = [p9-10, p10-11, p11-12]
+    backward = []
+    backward_inv = []
+    ref_matches = ref_imgs[0]
+    for ref, tgt in zip(ref_matches, ref_matches[1:]+[tgt_img]):
+        backward.append(pose_net(tgt, ref))
+        backward_inv.append(pose_net(ref, tgt))
+    backward = torch.stack(backward)
+    backward_inv = torch.stack(backward_inv)
+
+    forward = []
+    forward_inv = []
+    ref_matches = ref_imgs[1]
+    for ref, tgt in zip([tgt_img] + ref_matches[:-1], ref_matches):
+        forward.append(pose_net(tgt, ref))
+        forward_inv.append(pose_net(ref, tgt))
+    forward = torch.stack(forward)
+    forward_inv = torch.stack(forward_inv)
+
+    poses = [backward, forward]
+    poses_inv = [backward_inv, forward_inv]
 
     return torch.stack(poses), torch.stack(poses_inv)
 

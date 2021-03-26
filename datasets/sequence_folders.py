@@ -86,6 +86,8 @@ class SequenceFolder(data.Dataset):
                     sample['ref_imgs'].append(imgs[i+j])
 
                 if self.load_mono:
+                    # We need to collect the corresponding monocular frames within the same dataset class.
+                    # If we use separate classes for radar and mono, the order is messed up due to shuffling.
                     if self.dataset == 'radiate':
                         imgs_mono = sorted(
                             list(self.mono_scenes[s].glob(f_type)))
@@ -102,10 +104,14 @@ class SequenceFolder(data.Dataset):
 
                         mono_matches = self.find_mono_samples(i, rts, mts)
                         if mono_matches is not None:
-                            # TODO: radar frame leri arasinda birden fazla monocular sequence var. Onlari sample a ekle.
+                            # Add all the monocular frames between the matched source and target frames.
                             sample['vo_tgt_img'] = imgs_mono[mono_matches[0]]
+                            # vo_ref_imgs = [
+                            # [imgs_mono[src-1],...,imgs_mono[tgt]],
+                            # [imgs_mono[tgt],...,imgs_mono[src+1]
+                            # ]
                             sample['vo_ref_imgs'] = [
-                                imgs_mono[ref] for ref in mono_matches[1:]]
+                                [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
                     else:
                         raise NotImplementedError(
                             'Currently, only the RADIATE dataset is supported for VO')
@@ -152,7 +158,8 @@ class SequenceFolder(data.Dataset):
         return cart_img
 
     def find_mono_samples(self, t_idx: int, rts: List[List[float]], mts: List[List[float]]) -> List[List[int]]:
-        """Returns indexes of monocular frames [[tgt, src-1, src+1], [tgt, src-1, src+1],...]
+        """Returns indexes of monocular frames in the form of 
+        [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
 
         Args:
             t_idx (int): Index of the target radar frame
@@ -162,15 +169,19 @@ class SequenceFolder(data.Dataset):
         Returns:
             List[List[int]]: Indexes of the matched monocular frames
         """
-
-        # TODO: sadece 1 monocular sequence donderiyoz. Target ve source radar arasinda birden fazla monocular sequence var.
         idxs = [find_nearest_mono_idx(rts[t_idx], mts)]
         for s in self.shifts:
             idxs.append(find_nearest_mono_idx(rts[t_idx+s], mts))
 
+        # Check if any of the source or target images are not found,
+        # also check if the matched indices are unique.
         if any([i < 0 for i in idxs]) or len(set(idxs)) < len(self.shifts)+1:
             return None
-
+        # Return all the monocular frame between target and source frames
+        # Convert from [[tgt, src-1, src+1], [tgt, src-1, src+1],...] to
+        # [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
+        idxs[1] = list(range(idxs[1], idxs[0]))
+        idxs[2] = list(range(idxs[0]+1, idxs[2]+1))
         return idxs
 
     def __getitem__(self, index):
