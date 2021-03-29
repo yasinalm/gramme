@@ -187,15 +187,15 @@ class SequenceFolder(data.Dataset):
     def __getitem__(self, index):
         sample = self.samples[index]
         # Choose the loader function
-        if self.modality == 'radar':
-            # if self.isCartesian:
-            #     load_as_float = self.load_cart_as_float
-            # else:
-            #     # load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
-            #     load_as_float = self.load_radar_img_as_float
-            load_as_float = self.load_cart_as_float if self.isCartesian else self.load_radar_img_as_float
-        else:
-            load_as_float = self.load_mono_img_as_float
+        # if self.modality == 'radar':
+        # if self.isCartesian:
+        #     load_as_float = self.load_cart_as_float
+        # else:
+        #     # load_as_float = self.load_csv_as_float if self.dataset=='hand' else self.load_img_as_float
+        #     load_as_float = self.load_radar_img_as_float
+        load_as_float = self.load_cart_as_float if self.isCartesian else self.load_radar_img_as_float
+        # else:
+        #     load_as_float = self.load_mono_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
@@ -203,8 +203,17 @@ class SequenceFolder(data.Dataset):
             tgt_img = self.transform(tgt_img)
             ref_imgs = [self.transform(ref_img) for ref_img in ref_imgs]
 
-        # TODO: Return monocular frames
-        return tgt_img, ref_imgs
+        if self.load_mono:
+            vo_tgt_img = self.load_mono_img_as_float(sample['vo_tgt_img'])
+            vo_ref_imgs = [[self.load_mono_img_as_float(
+                ref_img) for ref_img in refs] for refs in sample['vo_ref_imgs']]
+            if self.mono_transform:
+                vo_tgt_img = self.transform(vo_tgt_img)
+                vo_ref_imgs = [
+                    [self.transform(ref_img) for ref_img in refs] for refs in vo_ref_imgs]
+            return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs
+        else:
+            return tgt_img, ref_imgs
 
     def __len__(self):
         return len(self.samples)

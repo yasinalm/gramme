@@ -440,7 +440,8 @@ def train(
     end = time.time()
     logger.train_bar.update(0)
 
-    # TODO: intrinsics meselesini coz.
+    # TODO: data loader load_mono ya gore vo frame leri yolluyor ya da yollamiyor.
+    # load_mono degilse sadece radar frame leri donderiyor.
     for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs) in enumerate(train_loader_radar):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
