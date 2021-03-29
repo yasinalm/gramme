@@ -787,6 +787,7 @@ def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
     poses = [backward, forward]
     poses_inv = [backward_inv, forward_inv]
 
+    # [B, 2, 3, 6], [B, 2, 3, 6]
     return torch.stack(poses), torch.stack(poses_inv)
 
 

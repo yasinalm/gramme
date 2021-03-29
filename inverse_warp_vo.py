@@ -133,9 +133,45 @@ def inverse_warp(img, depth, ref_depth, pose, intrinsics, padding_mode='zeros'):
     return projected_img, valid_mask, projected_depth, computed_depth
 
 
-# photometric loss
-# geometry consistency loss
-def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv, max_scales, with_ssim, with_mask, with_auto_mask, padding_mode):
+def compute_photo_and_geometry_loss(
+        tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv, max_scales,
+        with_ssim, with_mask, with_auto_mask, padding_mode):
+
+    ref_imgs_sq = ref_imgs[0] + [tgt_img] + ref_imgs[1]  # [6,7,8,9,10,11,12]
+    ref_depths_sq = ref_depths[0] + [tgt_depth] + \
+        ref_depths[1]  # [6,7,8,9,10,11,12]
+    # [p6-7, p7-8, p8-9, p9-10, p10-11, p11-12]
+    poses_sq = poses_inv[0] + poses[1]
+    # [p7-6, p8-7, p9-8, p10-9, p11-10, p12-11]
+    poses_inv_sq = poses[0] + poses_inv[1]
+
+    photo_loss = 0
+    smooth_loss = 0
+    geometry_loss = 0
+
+    for i in range(1, len(ref_imgs_sq)-1):
+        mini_tgt_img = ref_imgs_sq[i]  # [7]
+        mini_ref_imgs = [ref_imgs_sq[i-1], ref_imgs_sq[i+1]]  # [6,8]
+        mini_tgt_depth = ref_depths_sq[i]  # [7]
+        mini_ref_depths = [ref_depths_sq[i-1], ref_depths_sq[i+1]]  # [6,8]
+        mini_poses = [poses_inv_sq[i-1], poses_sq[i]]  # [p7-6, p7-8]
+        mini_poses_inv = [poses_sq[i-1], poses_inv_sq[i]]  # [p6-7, p8-7]
+
+        pl, sl, gl = compute_photo_and_geometry_loss_mini(
+            mini_tgt_img, mini_ref_imgs, intrinsics, mini_tgt_depth, mini_ref_depths,
+            mini_poses, mini_poses_inv, max_scales,
+            with_ssim, with_mask, with_auto_mask, padding_mode)
+
+        photo_loss += pl
+        smooth_loss += sl
+        geometry_loss += gl
+
+    return photo_loss, smooth_loss, geometry_loss
+
+
+def compute_photo_and_geometry_loss_mini(
+        tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv, max_scales,
+        with_ssim, with_mask, with_auto_mask, padding_mode):
 
     photo_loss = 0
     geometry_loss = 0
@@ -171,10 +207,12 @@ def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, re
                 ref_depth_scaled = F.interpolate(
                     ref_depth[s], (h, w), mode='nearest')
 
-            photo_loss1, geometry_loss1 = compute_pairwise_loss(tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose,
-                                                                intrinsic_scaled, with_ssim, with_mask, with_auto_mask, padding_mode)
-            photo_loss2, geometry_loss2 = compute_pairwise_loss(ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv,
-                                                                intrinsic_scaled, with_ssim, with_mask, with_auto_mask, padding_mode)
+            photo_loss1, geometry_loss1 = compute_pairwise_loss(
+                tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose,
+                intrinsic_scaled, with_ssim, with_mask, with_auto_mask, padding_mode)
+            photo_loss2, geometry_loss2 = compute_pairwise_loss(
+                ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv,
+                intrinsic_scaled, with_ssim, with_mask, with_auto_mask, padding_mode)
 
             photo_loss += (photo_loss1 + photo_loss2)
             geometry_loss += (geometry_loss1 + geometry_loss2)
@@ -185,7 +223,8 @@ def compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, re
     return photo_loss, smooth_loss, geometry_loss
 
 
-def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsic, with_ssim, with_mask, with_auto_mask, padding_mode):
+def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsic,
+                          with_ssim, with_mask, with_auto_mask, padding_mode):
 
     ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp(
         ref_img, tgt_depth, ref_depth, pose, intrinsic, padding_mode)
