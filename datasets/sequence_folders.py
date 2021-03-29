@@ -203,6 +203,7 @@ class SequenceFolder(data.Dataset):
             tgt_img = self.transform(tgt_img)
             ref_imgs = [self.transform(ref_img) for ref_img in ref_imgs]
 
+        # TODO: Return monocular frames
         return tgt_img, ref_imgs
 
     def __len__(self):

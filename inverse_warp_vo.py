@@ -15,23 +15,24 @@ class MonoWarper(object):
     """Inverse warper class
     """
 
-    def __init__(self, max_scales, with_ssim, with_mask, with_auto_mask, cart_pixels, dataset, padding_mode='zeros'):
+    def __init__(self, max_scales, with_auto_mask, dataset, with_ssim=True, with_mask=True, padding_mode='zeros'):
         global device
-        self.cart_pixels = cart_pixels
         self.dataset = dataset
         self.padding_mode = padding_mode
         self.with_ssim = with_ssim
         self.with_mask = with_mask
         self.with_auto_mask = with_auto_mask
         self.max_scales = max_scales
-        self.pixel_coords_hom = set_id_grid(cart_pixels)
         if self.dataset == 'radiate':
             fx = 3.379191448899105e+02
             fy = 3.386957068549526e+02
             cx = 3.417366010946575e+02
             cy = 2.007359735313929e+02
+            h, w = 376, 672
         elif self.dataset == 'robotcar':
             fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
+            h, w = 960, 1280
+        self.pixel_coords_hom = set_id_grid(h, w)
         self.intrinsics = utils.camera_matrix(
             torch.Tensor([fx, fy, cx, cy], device=device))  # [4,4]
         self.intrinsics_inv = self.intrinsics.inverse()  # [4,4]

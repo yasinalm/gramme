@@ -290,8 +290,8 @@ def main():
                     args.cart_pixels, args.dataset, args.padding_mode)
     if args.with_vo:
         mono_warper = MonoWarper(
-            args.max_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
-            args.cart_pixels, args.dataset, args.padding_mode)
+            args.max_scales, args.with_auto_mask,
+            args.dataset, args.padding_mode)
     # create model
     print("=> creating model")
     mask_net = None
@@ -441,7 +441,7 @@ def train(
     logger.train_bar.update(0)
 
     # TODO: intrinsics meselesini coz.
-    for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics) in enumerate(train_loader_radar):
+    for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs) in enumerate(train_loader_radar):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
         # measure data loading time
@@ -477,9 +477,7 @@ def train(
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
             vo_photo_loss, vo_smooth_loss, vo_geometry_loss = mono_warper.compute_photo_and_geometry_loss(
-                vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
-                args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
-                args.padding_mode)
+                vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
             vo_photo_loss = 1.0*vo_photo_loss
