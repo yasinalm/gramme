@@ -53,3 +53,13 @@ def pol2cart(phi, rho):
     x = rho * torch.cos(phi)
     y = rho * torch.sin(phi)
     return x, y
+
+
+def camera_matrix(pinholes, eps=1e-6):
+    k = torch.eye(4, device=pinholes.device, dtype=pinholes.dtype) + eps
+    # k = k.view(1, 4, 4).repeat(pinholes.shape[0], 1, 1)  # Nx4x4
+    # fill output with pinhole values
+    k[..., 0, 0] = pinholes[0]  # fx
+    k[..., 0, 2] = pinholes[1]  # cx
+    k[..., 1, 1] = pinholes[2]  # fy
+    k[..., 1, 2] = pinholes[3]  # cy

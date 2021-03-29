@@ -19,7 +19,7 @@ import utils
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
-import inverse_warp_vo as vo_warper
+import inverse_warp_vo as MonoWarper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
@@ -288,7 +288,10 @@ def main():
     print("=> creating loss object")
     warper = Warper(args.with_auto_mask, args.cart_res,
                     args.cart_pixels, args.dataset, args.padding_mode)
-
+    if args.with_vo:
+        mono_warper = MonoWarper(
+            args.max_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
+            args.cart_pixels, args.dataset, args.padding_mode)
     # create model
     print("=> creating model")
     mask_net = None
@@ -371,7 +374,7 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader_radar, train_loader_mono, mask_net,
-                           pose_net, disp_net, vo_pose_net, optimizer, logger, training_writer, warper)
+                           pose_net, disp_net, vo_pose_net, optimizer, logger, training_writer, warper, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -416,7 +419,7 @@ def main():
 def train(
         args, train_loader_radar, train_loader_mono,
         mask_net, pose_net, disp_net, vo_pose_net, optimizer,
-        logger, train_writer, warper):
+        logger, train_writer, warper, mono_warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -437,6 +440,7 @@ def train(
     end = time.time()
     logger.train_bar.update(0)
 
+    # TODO: intrinsics meselesini coz.
     for i, (tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics) in enumerate(train_loader_radar):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
@@ -470,9 +474,9 @@ def train(
             vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-            # TODO: Buraya gelen pose ve depth degerleri radar frame leri arasinda kalan tum mono frame ler icin.
-            # bunlari reconstruction modulune uygun hale getir.
-            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = vo_warper.compute_photo_and_geometry_loss(
+            # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
+            # It calculates the triple-wise losses of the sequence.
+            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = mono_warper.compute_photo_and_geometry_loss(
                 vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv,
                 args.num_scales, args.with_ssim, args.with_mask, args.with_auto_mask,
                 args.padding_mode)
