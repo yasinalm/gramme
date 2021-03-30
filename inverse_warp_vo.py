@@ -283,11 +283,9 @@ def mean_on_mask(diff, valid_mask):
     return mean_value
 
 
-def set_id_grid(h, w=None):
+def set_id_grid(h, w):
     global device
     # b, h, w = depth.size()
-    if w is None:
-        w = h
     ranges_x = torch.arange(0, h)  # .type(depth.dtype)
     ranges_y = torch.arange(0, w)  # .type(depth.dtype)
 

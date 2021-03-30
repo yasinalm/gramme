@@ -33,7 +33,10 @@ class SequenceFolder(data.Dataset):
         # if ro_params is not None:
         # self.modality = 'radar'
         self.isCartesian = ro_params['radar_format'] == 'cartesian'
-        radar_folder = 'radar_cart' if self.isCartesian else 'radar'
+        if self.isCartesian:
+            radar_folder = 'radar_cart' if dataset == 'robotcar' else 'Navtech_Cartesian'
+        else:
+            radar_folder = 'radar' if dataset == 'robotcar' else 'Navtech_Polar'
         if sequence is not None:
             self.scenes = [self.root/sequence/radar_folder]
         else:
@@ -208,9 +211,9 @@ class SequenceFolder(data.Dataset):
             vo_ref_imgs = [[self.load_mono_img_as_float(
                 ref_img) for ref_img in refs] for refs in sample['vo_ref_imgs']]
             if self.mono_transform:
-                vo_tgt_img = self.transform(vo_tgt_img)
+                vo_tgt_img = self.mono_transform(vo_tgt_img)
                 vo_ref_imgs = [
-                    [self.transform(ref_img) for ref_img in refs] for refs in vo_ref_imgs]
+                    [self.mono_transform(ref_img) for ref_img in refs] for refs in vo_ref_imgs]
             return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs
         else:
             return tgt_img, ref_imgs
