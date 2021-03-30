@@ -188,7 +188,7 @@ def main():
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
-    print("=> fetching radar scenes in '{}'".format(args.data))
+    print("=> fetching scenes in '{}'".format(args.data))
     ro_params = {
         'cart_resolution': args.cart_res,
         'cart_pixels': args.cart_pixels,
