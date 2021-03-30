@@ -63,3 +63,4 @@ def camera_matrix(pinholes, eps=1e-6):
     k[..., 0, 2] = pinholes[1]  # cx
     k[..., 1, 1] = pinholes[2]  # fy
     k[..., 1, 2] = pinholes[3]  # cy
+    return k

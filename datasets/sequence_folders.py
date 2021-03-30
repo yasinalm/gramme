@@ -232,13 +232,17 @@ class SequenceFolder(data.Dataset):
             ref_imgs = [self.transform(ref_img) for ref_img in ref_imgs]
 
         if self.load_mono:
-            vo_tgt_img = self.load_mono_img_as_float(sample['vo_tgt_img'])
-            vo_ref_imgs = [[self.load_mono_img_as_float(
-                ref_img) for ref_img in refs] for refs in sample['vo_ref_imgs']]
-            if self.mono_transform:
-                vo_tgt_img = self.mono_transform(vo_tgt_img)
-                vo_ref_imgs = [
-                    [self.mono_transform(ref_img) for ref_img in refs] for refs in vo_ref_imgs]
+            if 'vo_tgt_img' in sample:
+                vo_tgt_img = self.load_mono_img_as_float(sample['vo_tgt_img'])
+                vo_ref_imgs = [[self.load_mono_img_as_float(
+                    ref_img) for ref_img in refs] for refs in sample['vo_ref_imgs']]
+                if self.mono_transform:
+                    vo_tgt_img = self.mono_transform(vo_tgt_img)
+                    vo_ref_imgs = [
+                        [self.mono_transform(ref_img) for ref_img in refs] for refs in vo_ref_imgs]
+            else:
+                vo_tgt_img = []
+                vo_ref_imgs = []
             return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs
         else:
             return tgt_img, ref_imgs

@@ -19,7 +19,7 @@ import utils
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
-import inverse_warp_vo as MonoWarper
+from inverse_warp_vo import MonoWarper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
@@ -67,14 +67,16 @@ parser.add_argument('--log-output', type=int,  default=1,
                     help='will log dispnet outputs at validation step')
 parser.add_argument('--resnet-layers',  type=int, default=18,
                     choices=[18, 50], help='number of ResNet layers for depth estimation.')
-# parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
+parser.add_argument('--num-scales', '--number-of-scales',
+                    type=int, help='the number of scales', metavar='W', default=1)
 parser.add_argument('-p', '--photo-loss-weight', type=float,
                     help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-f', '--fft-loss-weight', type=float,
                     help='weight for FFT loss', metavar='W', default=3e-4)
 parser.add_argument('-s', '--ssim-loss-weight', type=float,
                     help='weight for SSIM loss', metavar='W', default=1)
-# parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
+# parser.add_argument('-s', '--smooth-loss-weight', type=float,
+#                     help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-c', '--geometry-consistency-weight', type=float,
                     help='weight for depth consistency loss', metavar='W', default=1.0)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
@@ -248,7 +250,7 @@ def main():
     mono_warper = None
     if args.with_vo:
         mono_warper = MonoWarper(
-            args.max_scales, args.with_auto_mask,
+            args.num_scales, args.with_auto_mask,
             args.dataset, args.padding_mode)
     # create model
     print("=> creating model")

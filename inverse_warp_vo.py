@@ -34,7 +34,7 @@ class MonoWarper(object):
             h, w = 960, 1280
         self.pixel_coords_hom = set_id_grid(h, w)
         self.intrinsics = utils.camera_matrix(
-            torch.Tensor([fx, fy, cx, cy], device=device))  # [4,4]
+            torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
         self.intrinsics_inv = self.intrinsics.inverse()  # [4,4]
 
     def cam2pixel(self, cam_coords, proj_c2p, dims):
