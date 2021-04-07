@@ -11,6 +11,7 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 from torchvision import transforms
+from torchvision.transforms.transforms import Resize
 
 import models
 
@@ -184,8 +185,12 @@ def main():
         imagenet_std = [0.229, 0.224, 0.225]
         normalize = transforms.Normalize(mean=imagenet_mean,
                                          std=imagenet_std)
-        mono_transform = transforms.Compose([transforms.ToTensor(),
-                                             normalize])
+        mono_transform = [transforms.ToTensor()]
+        # Resize RADIATE dataset to make it divisible by 64, which is needed in resnet_encoder.
+        if args.dataset == 'radiate':
+            mono_transform.append(transforms.Resize((384, 640)))
+        mono_transform.append(normalize)
+        mono_transform = transforms.Compose(mono_transform)
 
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
@@ -229,12 +234,15 @@ def main():
         len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(
         len(val_set), len(val_set.scenes)))
+    cl_fn = None
+    # if args.with_vo:
+    #     cl_fn = mono_collate_fn
     train_loader = torch.utils.data.DataLoader(
         train_set, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        num_workers=args.workers, pin_memory=True, collate_fn=cl_fn)
     val_loader = torch.utils.data.DataLoader(
         val_set, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+        num_workers=args.workers, pin_memory=True, collate_fn=cl_fn)
 
     if args.train_size == 0:
         args.train_size = len(train_loader)
@@ -400,6 +408,9 @@ def train(
     end = time.time()
     logger.train_bar.update(0)
 
+    # TODO: Haydaaa! Her batch ayni boyutta olacak diye hata veriyor mono frame lerden dolayi
+    # Simdilik sadece sabit olarak radar frame ler arasinda 3 mono frame oalcak sekilde aliyoruz.
+    # Diger sequence leri atiyoruz. Data efficient degil. Daha akilli yol bul. collate_fn ile
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
         tgt_img = input[0]
@@ -433,8 +444,8 @@ def train(
             vo_tgt_img = input[2]
             vo_ref_imgs = input[3]
             vo_tgt_img = vo_tgt_img.to(device)
-            ref_imgs = [[ref_img.to(device) for ref_img in refs]
-                        for refs in vo_ref_imgs]
+            vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
+                           for refs in vo_ref_imgs]
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
             vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
@@ -758,6 +769,15 @@ def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
     # [B, 2, 3, 6], [B, 2, 3, 6]
     return torch.stack(poses), torch.stack(poses_inv)
+
+
+def mono_collate_fn(batch):
+    b_tgt_img = torch.Tensor([input[0] for input in batch])
+    b_ref_imgs = torch.Tensor([input[1] for input in batch])
+    b_vo_tgt_img = [input[2] for input in batch]
+    b_vo_ref_imgs = [input[3] for input in batch]
+
+    return b_tgt_img, b_ref_imgs, b_vo_tgt_img, b_vo_ref_imgs
 
 
 if __name__ == '__main__':

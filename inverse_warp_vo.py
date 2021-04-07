@@ -29,12 +29,18 @@ class MonoWarper(object):
             cx = 3.417366010946575e+02
             cy = 2.007359735313929e+02
             h, w = 376, 672
+            scale_x = 640.0/w
+            scale_y = 384.0/h
         elif self.dataset == 'robotcar':
             fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
             h, w = 960, 1280
+            scale_x = scale_y = 1.0
         self.pixel_coords_hom = set_id_grid(h, w)
         self.intrinsics = utils.camera_matrix(
             torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
+        # Resize the intrinsics
+        self.intrinsics[0] *= scale_x
+        self.intrinsics[1] *= scale_y
         self.intrinsics_inv = self.intrinsics.inverse()  # [4,4]
 
     def cam2pixel(self, cam_coords, proj_c2p, dims):

@@ -114,7 +114,7 @@ class DispResNet(nn.Module):
     def __init__(self, num_layers=18, pretrained=True):
         super(DispResNet, self).__init__()
         self.encoder = ResnetEncoder(
-            num_layers=num_layers, pretrained=pretrained, num_input_images=1)
+            num_layers=num_layers, pretrained=pretrained, num_input_images=1, n_img_channels=3)
         self.decoder = DepthDecoder(self.encoder.num_ch_enc)
 
     def init_weights(self):

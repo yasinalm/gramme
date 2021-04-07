@@ -117,24 +117,26 @@ class SequenceFolder(data.Dataset):
                 for j in self.shifts:
                     sample['ref_imgs'].append(imgs[i+j])
 
-                    if self.load_mono:
-                        # self.find_mono_samples(i, rts, mts)
-                        # try:
-                        mono_matches = mono_matches_all[cnt]
-                        # except IndexError:
-                        #     print(len(mono_matches_all))
-                        #     print(i)
-                        #     raise IndexError('Patladi!')
-                        if mono_matches:
-                            # Add all the monocular frames between the matched source and target frames.
-                            sample['vo_tgt_img'] = imgs_mono[mono_matches[0]]
+                if self.load_mono:
+                    # self.find_mono_samples(i, rts, mts)
+                    # try:
+                    mono_matches = mono_matches_all[cnt]
+                    # except IndexError:
+                    #     print(len(mono_matches_all))
+                    #     print(i)
+                    #     raise IndexError('Patladi!')
+                    if mono_matches:
+                        # Add all the monocular frames between the matched source and target frames.
+                        sample['vo_tgt_img'] = imgs_mono[mono_matches[0]]
 
-                            # vo_ref_imgs = [
-                            # [imgs_mono[src-1],...,imgs_mono[tgt]],
-                            # [imgs_mono[tgt],...,imgs_mono[src+1]
-                            # ]
-                            sample['vo_ref_imgs'] = [
-                                [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
+                        # vo_ref_imgs = [
+                        # [imgs_mono[src-1],...,imgs_mono[tgt]],
+                        # [imgs_mono[tgt],...,imgs_mono[src+1]
+                        # ]
+                        sample['vo_ref_imgs'] = [
+                            [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
+                    else:
+                        continue
 
                 sequence_set.append(sample)
 
@@ -154,6 +156,7 @@ class SequenceFolder(data.Dataset):
 
     def load_mono_img_as_float(self, path):
         img = Image.open(path)
+        # img = img.resize((640, 384))
         return img
 
     def load_cart_as_float(self, path):
@@ -209,6 +212,21 @@ class SequenceFolder(data.Dataset):
             # [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
             idxs[1] = list(range(idxs[1], idxs[0]))
             idxs[2] = list(range(idxs[0]+1, idxs[2]+1))
+            # Check if we get exactly three previous and next frames.
+            # This is needed for batching.
+            # If we have more than three frames in either directons, trim the last three frames.
+            # Otherwise, return empty list.
+            if len(idxs[1]) > 3:
+                idxs[1] = idxs[1][-3:]
+            else:
+                t_matches.append([])
+                continue
+            if len(idxs[2]) > 3:
+                idxs[2] = idxs[2][-3:]
+            else:
+                t_matches.append([])
+                continue
+            # Append the matched sequence
             t_matches.append(idxs)
         return t_matches
 
