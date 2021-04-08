@@ -573,7 +573,7 @@ def train(
                            'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
             if args.with_vo:
                 error_names.extend(
-                    [['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss']])
+                    ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss'])
             error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                      for name, error in zip(error_names, errors))
             logger.train_writer.write(
