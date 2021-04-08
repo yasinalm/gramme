@@ -55,6 +55,7 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
         array = 119.4501 + tensor.numpy()*6.5258
+        # TODO: Denormalize using custom_transforms.Denormalize
     return array
 
 

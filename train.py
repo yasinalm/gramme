@@ -11,6 +11,7 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 from torchvision import transforms
+from torchvision.transforms.transforms import Resize
 
 import models
 
@@ -19,6 +20,7 @@ import utils
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
+from inverse_warp_vo import MonoWarper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
 # from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
@@ -66,24 +68,32 @@ parser.add_argument('--log-output', type=int,  default=1,
                     help='will log dispnet outputs at validation step')
 parser.add_argument('--resnet-layers',  type=int, default=18,
                     choices=[18, 50], help='number of ResNet layers for depth estimation.')
-# parser.add_argument('--num-scales', '--number-of-scales', type=int, help='the number of scales', metavar='W', default=1)
+parser.add_argument('--num-scales', '--number-of-scales',
+                    type=int, help='the number of scales', metavar='W', default=1)
 parser.add_argument('-p', '--photo-loss-weight', type=float,
                     help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-f', '--fft-loss-weight', type=float,
                     help='weight for FFT loss', metavar='W', default=3e-4)
 parser.add_argument('-s', '--ssim-loss-weight', type=float,
                     help='weight for SSIM loss', metavar='W', default=1)
-# parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
+# parser.add_argument('-s', '--smooth-loss-weight', type=float,
+#                     help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-c', '--geometry-consistency-weight', type=float,
                     help='weight for depth consistency loss', metavar='W', default=1.0)
 # parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
-# parser.add_argument('--with-mask', type=int, default=1, help='with the the mask for moving objects and occlusions or not')
+# parser.add_argument('--with-mask', type=int, default=1, help='with the mask for moving objects and occlusions or not')
 parser.add_argument('--with-auto-mask', action='store_true',
-                    help='with the the mask for stationary points')
+                    help='with the mask for stationary points')
 parser.add_argument('--with-masknet', action='store_true',
-                    help='with the the masknet for multipath and noise')
+                    help='with the masknet for multipath and noise')
 parser.add_argument('--masknet', type=str,
                     choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
+parser.add_argument('--with-vo', action='store_true',
+                    help='with VO fusion')
+parser.add_argument('--pretrained-depth', dest='pretrained_depth',
+                    default=None, metavar='PATH', help='path to pre-trained DispResNet model')
+parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=None,
+                    metavar='PATH', help='path to pre-trained VO Pose net model')
 parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
@@ -158,7 +168,7 @@ def main():
     # ])
 
     # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
-    # TODO: Calculate center of handheld dataset. The rotation center is not the image center (default image center).
+    # Calculate center of handheld dataset. The rotation center is not the image center (default image center).
     if args.dataset == 'hand':
         center = (0, args.cart_pixels//2)
         train_transform = custom_transforms.Compose(
@@ -169,11 +179,30 @@ def main():
             [custom_transforms.ArrayToTensor(),
              transforms.RandomRotation(10)])
 
+    mono_transform = None
+    if args.with_vo:
+        imagenet_mean = [0.485, 0.456, 0.406]
+        imagenet_std = [0.229, 0.224, 0.225]
+        normalize = transforms.Normalize(mean=imagenet_mean,
+                                         std=imagenet_std)
+        mono_transform = [transforms.ToTensor()]
+        # Resize RADIATE dataset to make it divisible by 64, which is needed in resnet_encoder.
+        if args.dataset == 'radiate':
+            mono_transform.append(transforms.Resize((384, 640)))
+        mono_transform.append(normalize)
+        mono_transform = transforms.Compose(mono_transform)
+
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
     print("=> fetching scenes in '{}'".format(args.data))
-    # if args.folder_type == 'sequence':
+    ro_params = {
+        'cart_resolution': args.cart_res,
+        'cart_pixels': args.cart_pixels,
+        'rangeResolutionsInMeter': args.range_res,
+        'angleResolutionInRad': args.angle_res,
+        'radar_format': args.radar_format
+    }
     train_set = SequenceFolder(
         args.data,
         transform=train_transform,
@@ -182,19 +211,10 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        cart_resolution=args.cart_res,
-        cart_pixels=args.cart_pixels,
-        rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad=args.angle_res,
-        radar_format=args.radar_format
+        ro_params=ro_params,
+        load_mono=args.with_vo,
+        mono_transform=mono_transform
     )
-    # else:
-    #     train_set = PairFolder(
-    #         args.data,
-    #         seed=args.seed,
-    #         train=True,
-    #         transform=train_transform
-    #     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
@@ -205,23 +225,24 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        cart_resolution=args.cart_res,
-        cart_pixels=args.cart_pixels,
-        rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad=args.angle_res,
-        radar_format=args.radar_format
+        ro_params=ro_params,
+        load_mono=args.with_vo,
+        mono_transform=mono_transform
     )
 
     print('{} samples found in {} train scenes'.format(
         len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(
         len(val_set), len(val_set.scenes)))
+    cl_fn = None
+    # if args.with_vo:
+    #     cl_fn = mono_collate_fn
     train_loader = torch.utils.data.DataLoader(
         train_set, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        num_workers=args.workers, pin_memory=True, collate_fn=cl_fn)
     val_loader = torch.utils.data.DataLoader(
         val_set, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+        num_workers=args.workers, pin_memory=True, collate_fn=cl_fn)
 
     if args.train_size == 0:
         args.train_size = len(train_loader)
@@ -234,19 +255,29 @@ def main():
     print("=> creating loss object")
     warper = Warper(args.with_auto_mask, args.cart_res,
                     args.cart_pixels, args.dataset, args.padding_mode)
-
+    mono_warper = None
+    if args.with_vo:
+        mono_warper = MonoWarper(
+            args.num_scales, args.with_auto_mask,
+            args.dataset, args.padding_mode)
     # create model
     print("=> creating model")
     mask_net = None
     if args.with_masknet:
         if args.masknet == 'resnet':
-            mask_net = models.DispResNet(
+            mask_net = models.MaskResNet(
                 args.resnet_layers, args.with_pretrain).to(device)
         elif args.masknet == 'convnet':
             mask_net = models.MaskNet(num_channels=1).to(device)
         else:
             raise NotImplementedError(
                 'The chosen MaskNet is not implemented! Given: {}'.format(args.masknet))
+    disp_net = vo_pose_net = None
+    if args.with_vo:
+        disp_net = models.DispResNet(
+            args.resnet_layers, args.with_pretrain).to(device)
+        vo_pose_net = models.PoseResNet(
+            args.dataset, args.resnet_layers, args.with_pretrain, is_vo=True).to(device)
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
@@ -261,6 +292,19 @@ def main():
         weights = torch.load(args.pretrained_pose)
         pose_net.load_state_dict(weights['state_dict'], strict=False)
 
+    if args.with_vo:
+        if args.pretrained_depth:
+            print("=> using pre-trained weights for VO DepthResNet")
+            weights = torch.load(args.pretrained_depth)
+            disp_net.load_state_dict(weights['state_dict'], strict=False)
+        if args.pretrained_vo_pose:
+            print("=> using pre-trained weights for VO PoseNet")
+            weights = torch.load(args.pretrained_vo_pose)
+            vo_pose_net.load_state_dict(weights['state_dict'], strict=False)
+
+        disp_net = torch.nn.DataParallel(disp_net)
+        vo_pose_net = torch.nn.DataParallel(vo_pose_net)
+
     if args.with_masknet:
         mask_net = torch.nn.DataParallel(mask_net)
     pose_net = torch.nn.DataParallel(pose_net)
@@ -271,6 +315,10 @@ def main():
     ]
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
+    if args.with_vo:
+        optim_params.append({'params': disp_net.parameters(), 'lr': args.lr})
+        optim_params.append(
+            {'params': vo_pose_net.parameters(), 'lr': args.lr})
 
     optimizer = torch.optim.Adam(optim_params,
                                  betas=(args.momentum, args.beta),
@@ -294,9 +342,8 @@ def main():
 
         # train for one epoch
         logger.reset_train_bar()
-        # train_loss = train(args, train_loader, disp_net, pose_net, optimizer, args.train_size, logger, training_writer, warper)
         train_loss = train(args, train_loader, mask_net,
-                           pose_net, optimizer, logger, training_writer, warper)
+                           pose_net, disp_net, vo_pose_net, optimizer, logger, training_writer, warper, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -338,11 +385,14 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_writer, warper):
+def train(
+        args, train_loader,
+        mask_net, pose_net, disp_net, vo_pose_net, optimizer,
+        logger, train_writer, warper, mono_warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(i=5, precision=4)
+    losses = AverageMeter(i=9 if args.with_vo else 5, precision=4)
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
@@ -350,13 +400,21 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
     # switch to train mode
     if args.with_masknet:
         mask_net.train()
+    if args.with_vo:
+        disp_net.train()
+        vo_pose_net.train()
     pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
 
-    for i, (tgt_img, ref_imgs) in enumerate(train_loader):
+    # TODO: Haydaaa! Her batch ayni boyutta olacak diye hata veriyor mono frame lerden dolayi
+    # Simdilik sadece sabit olarak radar frame ler arasinda 3 mono frame oalcak sekilde aliyoruz.
+    # Diger sequence leri atiyoruz. Data efficient degil. Daha akilli yol bul. collate_fn ile
+    for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
+        tgt_img = input[0]
+        ref_imgs = input[1]
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -371,8 +429,8 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, projected_masks = warper.compute_db_loss(
-            tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+        (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
+         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
@@ -381,6 +439,31 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
         loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+
+        if args.with_vo:
+            vo_tgt_img = input[2]
+            vo_ref_imgs = input[3]
+            vo_tgt_img = vo_tgt_img.to(device)
+            vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
+                           for refs in vo_ref_imgs]
+            tgt_depth, ref_depths = compute_depth(
+                disp_net, vo_tgt_img, vo_ref_imgs)
+            vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
+                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+
+            # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
+            # It calculates the triple-wise losses of the sequence.
+            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = mono_warper.compute_photo_and_geometry_loss(
+                vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
+
+            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+            vo_photo_loss = 1.0*vo_photo_loss
+            vo_smooth_loss = 0.1*vo_smooth_loss
+            vo_geometry_loss = 0.5*vo_geometry_loss
+            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
+
+            # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
+            loss += vo_loss
 
         if log_losses:
             # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -417,8 +500,13 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             #         'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
-        losses_it = [loss.item(), rec_loss.item(
-        ), geometry_consistency_loss.item(), fft_loss.item(), ssim_loss.item()]
+        losses_it = [
+            loss.item(), rec_loss.item(), geometry_consistency_loss.item(
+            ), fft_loss.item(), ssim_loss.item()
+        ]
+        if args.with_vo:
+            losses_it.extend(
+                [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item()])
         losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
@@ -451,16 +539,27 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
                 })
 
             train_writer.add_image(
-                'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/img/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/img/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
                 train_writer.add_image(
-                    'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/radar_mask/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
                 train_writer.add_image(
-                    'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/radar_mask/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_vo:
+                train_writer.add_image(
+                    'train/img/input', utils.tensor2array(tgt_img[0]), n_iter)
+                train_writer.add_image(
+                    'train/img/ref_input', utils.tensor2array(ref_imgs[0][0]), n_iter)
+                # train_writer.add_image(
+                #     'train/img/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
+                train_writer.add_image(
+                    'train/depth/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
+                train_writer.add_image(
+                    'train/depth/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -471,6 +570,9 @@ def train(args, train_loader, mask_net, pose_net, optimizer, logger, train_write
             errors = losses.avg
             error_names = ['total_loss', 'rec_loss',
                            'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
+            if args.with_vo:
+                error_names.extend(
+                    ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss'])
             error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                      for name, error in zip(error_names, errors))
             logger.train_writer.write(
@@ -599,18 +701,30 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
 
 
 def compute_mask(mask_net, tgt_img, ref_imgs):
-    # tgt_mask = [1/disp for disp in mask_net(tgt_img)]
     # tgt_mask = [mask for mask in mask_net(tgt_img)] # for multiple scale
     tgt_mask = mask_net(tgt_img)  # for single scale
 
     ref_masks = []
     for ref_img in ref_imgs:
-        # ref_depth = [1/disp for disp in mask_net(ref_img)]
         # ref_mask = [mask for mask in mask_net(ref_img)] # for multiple scale
         ref_mask = mask_net(ref_img)  # for multiple scale
         ref_masks.append(ref_mask)
 
     return tgt_mask, ref_masks
+
+
+def compute_depth(disp_net, tgt_img, ref_imgs):
+    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+
+    ref_depths = []
+    for ref_matches in ref_imgs:
+        match_depths = []
+        for ref_img in ref_matches:
+            ref_depth = [1/disp for disp in disp_net(ref_img)]
+            match_depths.append(ref_depth)
+        ref_depths.append(match_depths)
+
+    return tgt_depth, ref_depths
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
@@ -621,6 +735,48 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses_inv.append(pose_net(ref_img, tgt_img))
 
     return torch.stack(poses), torch.stack(poses_inv)
+
+
+def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
+    # poses = []
+    # poses_inv = []
+    # for ref_matches in ref_imgs:
+
+    # Assume tgt=9, refs=[6,12], then
+    # backward = [p7-6, p8-7, p9-8]
+    # forward = [p9-10, p10-11, p11-12]
+    backward = []
+    backward_inv = []
+    ref_matches = ref_imgs[0]
+    for ref, tgt in zip(ref_matches, ref_matches[1:]+[tgt_img]):
+        backward.append(pose_net(tgt, ref))
+        backward_inv.append(pose_net(ref, tgt))
+    backward = torch.stack(backward)
+    backward_inv = torch.stack(backward_inv)
+
+    forward = []
+    forward_inv = []
+    ref_matches = ref_imgs[1]
+    for ref, tgt in zip([tgt_img] + ref_matches[:-1], ref_matches):
+        forward.append(pose_net(tgt, ref))
+        forward_inv.append(pose_net(ref, tgt))
+    forward = torch.stack(forward)
+    forward_inv = torch.stack(forward_inv)
+
+    poses = [backward, forward]
+    poses_inv = [backward_inv, forward_inv]
+
+    # [B, 2, 3, 6], [B, 2, 3, 6]
+    return torch.stack(poses), torch.stack(poses_inv)
+
+
+def mono_collate_fn(batch):
+    b_tgt_img = torch.Tensor([input[0] for input in batch])
+    b_ref_imgs = torch.Tensor([input[1] for input in batch])
+    b_vo_tgt_img = [input[2] for input in batch]
+    b_vo_ref_imgs = [input[3] for input in batch]
+
+    return b_tgt_img, b_ref_imgs, b_vo_tgt_img, b_vo_ref_imgs
 
 
 if __name__ == '__main__':
