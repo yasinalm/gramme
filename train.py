@@ -181,8 +181,8 @@ def main():
 
     mono_transform = None
     if args.with_vo:
-        imagenet_mean = [0.485, 0.456, 0.406]
-        imagenet_std = [0.229, 0.224, 0.225]
+        imagenet_mean = utils.imagenet_mean #[0.485, 0.456, 0.406]
+        imagenet_std = utils.imagenet_std #[0.229, 0.224, 0.225]
         normalize = transforms.Normalize(mean=imagenet_mean,
                                          std=imagenet_std)
         mono_transform = [transforms.ToTensor()]
@@ -487,17 +487,28 @@ def train(
                 'train/trans_pred-y', poses[..., 4], n_iter)
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
 
-            # train_writer.add_image(
-            #     'train/img/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            # train_writer.add_image(
-            #     'train/img/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            # train_writer.add_image(
-            #     'train/img/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            # if args.with_masknet:
-            #     train_writer.add_image(
-            #         'train/img/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-            #     train_writer.add_image(
-            #         'train/img/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_masknet:
+                train_writer.add_image(
+                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_vo:
+                train_writer.add_image(
+                    'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
+                # train_writer.add_image(
+                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
+                # train_writer.add_image(
+                #     'train/mono/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
+                train_writer.add_image(
+                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
+                train_writer.add_image(
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
 
         # record loss and EPE
         losses_it = [
@@ -551,9 +562,9 @@ def train(
                     'train/radar_mask/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
                 train_writer.add_image(
-                    'train/img/input', utils.tensor2array(tgt_img[0]), n_iter)
+                    'train/img/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
                 train_writer.add_image(
-                    'train/img/ref_input', utils.tensor2array(ref_imgs[0][0]), n_iter)
+                    'train/img/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
                 # train_writer.add_image(
                 #     'train/img/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
                 train_writer.add_image(

@@ -42,6 +42,9 @@ COLORMAPS = {'rainbow': opencv_rainbow(),
              'magma': high_res_colormap(cm.get_cmap('magma')),
              'bone': cm.get_cmap('bone', 10000)}
 
+imagenet_mean = np.array([0.485, 0.456, 0.406])
+imagenet_std = np.array([0.229, 0.224, 0.225])
+
 
 def tensor2array(tensor, max_value=None, colormap='rainbow'):
     tensor = tensor.detach().cpu()
@@ -54,8 +57,9 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
 
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
-        array = 119.4501 + tensor.numpy()*6.5258
-        # TODO: Denormalize using custom_transforms.Denormalize
+        # array = 119.4501 + tensor.numpy()*6.5258
+        array = imagenet_mean[:, None, None] + \
+            tensor.numpy()*imagenet_std[:, None, None]
     return array
 
 
