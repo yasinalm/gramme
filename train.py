@@ -359,13 +359,13 @@ def main():
 
         # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
         # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
-        decisive_error = errors[0]
-        if best_error < 0:
-            best_error = decisive_error
+        # decisive_error = errors[0]
+        # if best_error < 0:
+        #     best_error = decisive_error
 
         # remember lowest error and save checkpoint
-        is_best = decisive_error < best_error
-        best_error = min(best_error, decisive_error)
+        # is_best = decisive_error < best_error
+        # best_error = min(best_error, decisive_error)
         mask_ckpt_dict = None
         if args.with_masknet:
             mask_ckpt_dict = {
@@ -377,11 +377,11 @@ def main():
                 'epoch': epoch + 1,
                 'state_dict': pose_net.module.state_dict()
             },
-            is_best)
+            epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
-            writer.writerow([train_loss, decisive_error])
+            writer.writerow([train_loss])
     logger.epoch_bar.finish()
 
 
@@ -525,7 +525,7 @@ def train(
             # # remember lowest error and save checkpoint
             # is_best = decisive_error < best_error
             # best_error = min(best_error, decisive_error)
-            is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
+            # is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
             mask_ckpt_dict = None
             if args.with_masknet:
                 mask_ckpt_dict = {
@@ -536,8 +536,7 @@ def train(
                 args.save_path, mask_ckpt_dict, {
                     'n_iter': n_iter + 1,
                     'state_dict': pose_net.module.state_dict()
-                },
-                is_best)
+                })
 
             train_writer.add_image(
                 'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)

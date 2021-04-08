@@ -148,10 +148,9 @@ class SequenceFolder(data.Dataset):
     def load_radar_img_as_float(self, path):
         # Robotcar dataset has header of length 11 columns
         fft_data = radar.load_radar(str(path), self.dataset)
-        cart_img = radar.radar_polar_to_cartesian(
-            self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
-            self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
-
+        cart_img = radar.radar_polar_to_cartesian(self.angleResolutionInRad, fft_data, self.rangeResolutionsInMeter,
+                                                  self.cart_resolution, self.cart_pixels, self.dataset, self.interpolate_crossover)
+        cart_img[cart_img < 0.2] = 0
         return cart_img
 
     def load_mono_img_as_float(self, path):
