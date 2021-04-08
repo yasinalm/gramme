@@ -277,7 +277,7 @@ def main():
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
         vo_pose_net = models.PoseResNet(
-            args.dataset, args.resnet_layers, args.with_pretrain).to(device)
+            args.dataset, args.resnet_layers, args.with_pretrain, is_vo=True).to(device)
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 

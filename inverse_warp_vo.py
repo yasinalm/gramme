@@ -31,6 +31,7 @@ class MonoWarper(object):
             h, w = 376, 672
             scale_x = 640.0/w
             scale_y = 384.0/h
+            h, w = 384, 640
         elif self.dataset == 'robotcar':
             fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
             h, w = 960, 1280
@@ -84,13 +85,14 @@ class MonoWarper(object):
         # b, c, h, w = depth.size()
         # pixel_coords = set_id_grid(depth)
         cam_coords = torch.matmul(
-            self.intrinsics_inv, torch.transpose(self.pixel_coords, 0, 1))  # [B,4,N]
+            self.intrinsics_inv, torch.transpose(self.pixel_coords_hom, 0, 1))  # [4,N]
         # cam_coords = torch.transpose(cam_coords, 1, 2)  # [B,N,4]
         # Convert from homogenous coordinates
         # cam_coords = tgm.convert_points_from_homogeneous(
         #     cam_coords)  # [B,N,3]
         # cam_coords = torch.transpose(cam_coords, 1, 2)  # [B,4,N]
         # cam_coords = cam_coords.reshape(b, 3, h, w)
+        cam_coords = cam_coords.repeat(depth.shape[0], 1, 1)  # [B, 4, N]
         cam_coords[:, :3, :] = cam_coords[:, :3, :] * \
             depth.flatten(2)  # [B,3,N] * [B,1,N] = [B,3,N]
         return cam_coords  # [B,4,N]
@@ -114,7 +116,7 @@ class MonoWarper(object):
         utils.check_sizes(depth, 'depth', 'B1HW')
         utils.check_sizes(ref_depth, 'ref_depth', 'B1HW')
         utils.check_sizes(pose, 'pose', 'B6')
-        utils.check_sizes(self.intrinsics, 'intrinsics', 'B44')
+        utils.check_sizes(self.intrinsics, 'intrinsics', '44')
 
         _, _, img_height, img_width = img.size()
 
@@ -171,9 +173,9 @@ class MonoWarper(object):
         ref_depths_sq = ref_depths[0] + [tgt_depth] + \
             ref_depths[1]  # [6,7,8,9,10,11,12]
         # [p6-7, p7-8, p8-9, p9-10, p10-11, p11-12]
-        poses_sq = poses_inv[0] + poses[1]
+        poses_sq = torch.cat((poses_inv[0], poses[1]))
         # [p7-6, p8-7, p9-8, p10-9, p11-10, p12-11]
-        poses_inv_sq = poses[0] + poses_inv[1]
+        poses_inv_sq = torch.cat((poses[0], poses_inv[1]))
 
         photo_loss = 0
         smooth_loss = 0
@@ -303,7 +305,7 @@ def set_id_grid(h, w):
     xy = torch.vstack((x, y, torch.zeros_like(x)))
     xy = torch.transpose(xy, 0, 1)  # [N,3]
     pixel_coords_hom = tgm.convert_points_to_homogeneous(
-        xy).to(device)  # [N,4]
+        xy).to(device).type(torch.float)  # [N,4]
 
     # pixel_coords = torch.stack((j_range, i_range, ones), dim=1)  # [1, 3, H, W]
 
