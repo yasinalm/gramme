@@ -126,7 +126,7 @@ parser.add_argument('--cart-pixels', type=int,
 # parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 # parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
-best_error = -1
+# best_error = -1
 n_iter = 0
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -178,11 +178,13 @@ def main():
         train_transform = custom_transforms.Compose(
             [custom_transforms.ArrayToTensor(),
              transforms.RandomRotation(10)])
+    val_transform = custom_transforms.Compose(
+        [custom_transforms.ArrayToTensor()])
 
     mono_transform = None
     if args.with_vo:
-        imagenet_mean = utils.imagenet_mean #[0.485, 0.456, 0.406]
-        imagenet_std = utils.imagenet_std #[0.229, 0.224, 0.225]
+        imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
+        imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
         normalize = transforms.Normalize(mean=imagenet_mean,
                                          std=imagenet_std)
         mono_transform = [transforms.ToTensor()]
@@ -191,9 +193,6 @@ def main():
             mono_transform.append(transforms.Resize((384, 640)))
         mono_transform.append(normalize)
         mono_transform = transforms.Compose(mono_transform)
-
-    val_transform = custom_transforms.Compose(
-        [custom_transforms.ArrayToTensor()])
 
     print("=> fetching scenes in '{}'".format(args.data))
     ro_params = {
@@ -258,7 +257,7 @@ def main():
     mono_warper = None
     if args.with_vo:
         mono_warper = MonoWarper(
-            args.num_scales, args.with_auto_mask,
+            args.num_scales,
             args.dataset, args.padding_mode)
     # create model
     print("=> creating model")
@@ -392,7 +391,7 @@ def train(
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(i=9 if args.with_vo else 5, precision=4)
+    losses = AverageMeter(i=10 if args.with_vo else 5, precision=4)
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
@@ -438,14 +437,20 @@ def train(
         geometry_consistency_loss = w2*geometry_consistency_loss
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
-        loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+        radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+        loss = radar_loss
 
         if args.with_vo:
-            vo_tgt_img = input[2]
-            vo_ref_imgs = input[3]
+            # num_scales = 4, num_match=3
+            vo_tgt_img = input[2]  # [B,3,H,W]
+            vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             vo_tgt_img = vo_tgt_img.to(device)
             vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
                            for refs in vo_ref_imgs]
+            # tgt_depth: [4,B,1,H,W]
+            # ref_depths: [2,3,4,B,1,H,W]
+            # vo_poses: [2,3,B,6]
+            # vo_poses_inv: [2,3,B,6]
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
             vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
@@ -453,39 +458,60 @@ def train(
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
-            vo_photo_loss, vo_smooth_loss, vo_geometry_loss = mono_warper.compute_photo_and_geometry_loss(
+            vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss, mono_ref_img_warped, mono_valid_mask = mono_warper.compute_photo_and_geometry_loss(
                 vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
             vo_photo_loss = 1.0*vo_photo_loss
             vo_smooth_loss = 0.1*vo_smooth_loss
             vo_geometry_loss = 0.5*vo_geometry_loss
-            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss
+            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
             loss += vo_loss
 
         if log_losses:
-            # train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
-            # train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
             train_writer.add_scalar(
-                'train/photometric_error', rec_loss.item(), n_iter)
+                'train/radar/photometric_error', rec_loss.item(), n_iter)
             train_writer.add_scalar(
-                'train/geometry_consistency_loss', geometry_consistency_loss.item(), n_iter)
-            train_writer.add_scalar('train/fft_loss', fft_loss.item(), n_iter)
+                'train/radar/geometry_consistency_loss', geometry_consistency_loss.item(), n_iter)
             train_writer.add_scalar(
-                'train/ssim_loss', ssim_loss.item(), n_iter)
+                'train/radar/fft_loss', fft_loss.item(), n_iter)
+            train_writer.add_scalar(
+                'train/radar/ssim_loss', ssim_loss.item(), n_iter)
+            train_writer.add_scalar(
+                'train/radar/total_loss', radar_loss.item(), n_iter)
             train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
+
+            if args.with_vo:
+                train_writer.add_scalar(
+                    'train/mono/photometric_error', vo_photo_loss.item(), n_iter)
+                train_writer.add_scalar(
+                    'train/mono/disparity_smoothness_loss', vo_smooth_loss.item(), n_iter)
+                train_writer.add_scalar(
+                    'train/mono/geometry_consistency_loss', vo_geometry_loss.item(), n_iter)
+                train_writer.add_scalar(
+                    'train/mono/ssim_loss', vo_ssim_loss.item(), n_iter)
+                train_writer.add_scalar(
+                    'train/mono/total_loss', vo_loss.item(), n_iter)
 
             # train_writer.add_histogram('train/rot_pred-x', poses[...,0], n_iter)
             # train_writer.add_histogram('train/rot_pred-y', poses[...,1], n_iter)
             train_writer.add_histogram(
-                'train/rot_pred-z', poses[..., 2], n_iter)
+                'train/radar/rot_pred-z', poses[..., 2], n_iter)
             train_writer.add_histogram(
-                'train/trans_pred-x', poses[..., 3], n_iter)
+                'train/radar/trans_pred-x', poses[..., 3], n_iter)
             train_writer.add_histogram(
-                'train/trans_pred-y', poses[..., 4], n_iter)
+                'train/radar/trans_pred-y', poses[..., 4], n_iter)
             # train_writer.add_histogram('train/trans_pred-z', poses[...,5], n_iter)
+
+            if args.with_vo:
+                train_writer.add_histogram(
+                    'train/mono/rot_pred-z', vo_poses[..., 2], n_iter)
+                train_writer.add_histogram(
+                    'train/mono/trans_pred-x', vo_poses[..., 3], n_iter)
+                train_writer.add_histogram(
+                    'train/mono/trans_pred-y', vo_poses[..., 4], n_iter)
 
             train_writer.add_image(
                 'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
@@ -503,12 +529,14 @@ def train(
                     'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
                 # train_writer.add_image(
                 #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
-                # train_writer.add_image(
-                #     'train/mono/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
+                train_writer.add_image(
+                    'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
                 train_writer.add_image(
                     'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
                 train_writer.add_image(
                     'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
         losses_it = [
@@ -517,7 +545,7 @@ def train(
         ]
         if args.with_vo:
             losses_it.extend(
-                [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item()])
+                [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item(), vo_ssim_loss.item()])
         losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
@@ -557,20 +585,20 @@ def train(
                 'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
                 train_writer.add_image(
-                    'train/radar_mask/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
                 train_writer.add_image(
-                    'train/radar_mask/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
                 train_writer.add_image(
-                    'train/img/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
-                train_writer.add_image(
-                    'train/img/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
+                    'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
                 # train_writer.add_image(
-                #     'train/img/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
+                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
+                # train_writer.add_image(
+                #     'train/mono/warped_input', utils.tensor2array(projected_imgs[0][0]), n_iter)
                 train_writer.add_image(
-                    'train/depth/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
+                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
                 train_writer.add_image(
-                    'train/depth/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -583,7 +611,7 @@ def train(
                            'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
             if args.with_vo:
                 error_names.extend(
-                    ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss'])
+                    ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss', 'vo_ssim_loss'])
             error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                      for name, error in zip(error_names, errors))
             logger.train_writer.write(
@@ -725,6 +753,18 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
+    """Compute the depth map of the given monocular RGB frames.
+
+    Args:
+        disp_net (nn.module): Disparity network
+        tgt_img (torch.Tensor): Target RGB image [B,3,H,W]
+        ref_imgs (List[List[torch.Tensor]]): Reference monocular images [2,3,B,3,H,W]
+
+    Returns:
+        tgt_depth (List[torch.Tensor]): Return target depth in 4 scales [4,B,1,H,W]
+        ref_depths (List[List[torch.Tensor]]): Return reference depth maps in 4 scales [2,3,4,B,1,H,W]
+    """
+
     tgt_depth = [1/disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
@@ -749,6 +789,19 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
 
 def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
+    """Make a sequence of reference and target images. 
+    Compute monocular triple-wise relative pose values of reference frames with respect to the target. 
+
+    Args:
+        pose_net (nn.module): PoseNet
+        tgt_img (torch.Tensor): Target image [B,3,H,W]
+        ref_imgs (List[List[torch.Tensor]]): Reference monocular images [2,3,B,3,H,W]
+
+    Returns:
+        vo_poses: [2,3,B,6]
+        vo_poses_inv: [2,3,B,6]
+    """
+
     # poses = []
     # poses_inv = []
     # for ref_matches in ref_imgs:

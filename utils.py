@@ -12,6 +12,9 @@ from collections import OrderedDict
 import matplotlib as mpl
 mpl.use('Agg')
 
+device = torch.device(
+    "cuda") if torch.cuda.is_available() else torch.device("cpu")
+
 
 def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
     # Construct the list colormap, with interpolated values for higer resolution
@@ -42,24 +45,27 @@ COLORMAPS = {'rainbow': opencv_rainbow(),
              'magma': high_res_colormap(cm.get_cmap('magma')),
              'bone': cm.get_cmap('bone', 10000)}
 
-imagenet_mean = np.array([0.485, 0.456, 0.406])
-imagenet_std = np.array([0.229, 0.224, 0.225])
+imagenet_mean = torch.Tensor([0.485, 0.456, 0.406])
+imagenet_std = torch.Tensor([0.229, 0.224, 0.225])
 
 
 def tensor2array(tensor, max_value=None, colormap='rainbow'):
-    tensor = tensor.detach().cpu()
+    #tensor = tensor.detach().cpu()
     if max_value is None:
-        max_value = tensor.abs().max().item()
+        max_value = tensor.abs().max()  # .item()
     if tensor.ndimension() == 2 or tensor.size(0) == 1:
-        norm_array = tensor.squeeze().numpy()/max_value
+        # norm_array = tensor.squeeze().numpy()/max_value
+        norm_array = tensor.squeeze()/max_value
+        norm_array = norm_array.detach().cpu().numpy()
         array = COLORMAPS[colormap](norm_array).astype(np.float32)
         array = array.transpose(2, 0, 1)
 
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
         # array = 119.4501 + tensor.numpy()*6.5258
-        array = imagenet_mean[:, None, None] + \
-            tensor.numpy()*imagenet_std[:, None, None]
+        array = imagenet_mean[:, None, None].to(tensor.device) + \
+            tensor*imagenet_std[:, None, None].to(tensor.device)
+        array = array.detach().cpu().numpy()
     return array
 
 

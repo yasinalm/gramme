@@ -19,6 +19,7 @@ class PoseDecoder(nn.Module):
 
         self.num_ch_enc = num_ch_enc
         self.num_input_features = num_input_features
+        self.is_vo = is_vo
 
         if num_frames_to_predict_for is None:
             num_frames_to_predict_for = num_input_features - 1
@@ -92,8 +93,12 @@ class PoseDecoder(nn.Module):
 
         # SE(2) pose
         pose = torch.zeros(r.shape[0], 6).to(r.device)
-        pose[:, 2:3] = r
-        pose[:, 3:5] = t
+        if self.is_vo:
+            pose[:, 0:1] = r
+            pose[:, 4:6] = t
+        else:
+            pose[:, 2:3] = r
+            pose[:, 3:5] = t
         # pose = torch.cat((r, t), 1) # [B, 6]
 
         return pose

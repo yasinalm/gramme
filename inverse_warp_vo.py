@@ -15,7 +15,7 @@ class MonoWarper(object):
     """Inverse warper class
     """
 
-    def __init__(self, max_scales, with_auto_mask, dataset, with_ssim=True, with_mask=True, padding_mode='zeros'):
+    def __init__(self, max_scales, dataset, with_auto_mask=True, with_ssim=True, with_mask=True, padding_mode='zeros'):
         global device
         self.dataset = dataset
         self.padding_mode = padding_mode
@@ -93,16 +93,20 @@ class MonoWarper(object):
         # cam_coords = torch.transpose(cam_coords, 1, 2)  # [B,4,N]
         # cam_coords = cam_coords.reshape(b, 3, h, w)
         cam_coords = cam_coords.repeat(depth.shape[0], 1, 1)  # [B, 4, N]
-        cam_coords[:, :3, :] = cam_coords[:, :3, :] * \
+        # Note: slicing returns a view of the tensor.
+        # Just a work around for cam_coords[:, :3, :] = cam_coords[:, :3, :] * depth.flatten(2),
+        # which causes illegal in-place operation for multiplication.
+        cam_coords_xyz = cam_coords[:, :3, :]
+        cam_coords_xyz = cam_coords_xyz * \
             depth.flatten(2)  # [B,3,N] * [B,1,N] = [B,3,N]
         return cam_coords  # [B,4,N]
 
-    def inverse_warp(self, img, depth, ref_depth, pose):
+    def inverse_warp(self, ref_img, tgt_depth, ref_depth, pose):
         """
         Inverse warp a source image to the target image plane.
         Args:
-            img: the source image (where to sample pixels) -- [B, 3, H, W]
-            depth: depth map of the target image -- [B, 1, H, W]
+            ref_img: the source image (where to sample pixels) -- [B, 3, H, W]
+            tgt_depth: depth map of the target image -- [B, 1, H, W]
             ref_depth: the source depth map (where to sample depth) -- [B, 1, H, W] 
             pose: 6DoF pose parameters from target to source -- [B, 6]
             intrinsics: camera intrinsic matrix -- [B, 3, 3]
@@ -112,15 +116,15 @@ class MonoWarper(object):
             projected_depth: sampled depth from source image  
             computed_depth: computed depth of source image using the target depth
         """
-        utils.check_sizes(img, 'img', 'B3HW')
-        utils.check_sizes(depth, 'depth', 'B1HW')
+        utils.check_sizes(ref_img, 'ref_img', 'B3HW')
+        utils.check_sizes(tgt_depth, 'tgt_depth', 'B1HW')
         utils.check_sizes(ref_depth, 'ref_depth', 'B1HW')
         utils.check_sizes(pose, 'pose', 'B6')
         utils.check_sizes(self.intrinsics, 'intrinsics', '44')
 
-        _, _, img_height, img_width = img.size()
+        _, _, img_height, img_width = ref_img.size()
 
-        cam_coords = self.pixel2cam(depth)  # [B,3,H,W]
+        cam_coords = self.pixel2cam(tgt_depth)  # [B,3,H,W]
 
         # Convert 6 DoF pose to 4x4 transformation matrix
         # T*R in homogenous coordinates [B,4,4]
@@ -133,7 +137,7 @@ class MonoWarper(object):
         src_pixel_coords, computed_depth = self.cam2pixel(
             cam_coords, proj_cam_to_src_pixel, [img_height, img_width])  # [B,H,W,2]
         projected_img = F.grid_sample(
-            img, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
+            ref_img, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
 
         valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
         valid_mask = valid_points.unsqueeze(1).float()
@@ -180,6 +184,7 @@ class MonoWarper(object):
         photo_loss = 0
         smooth_loss = 0
         geometry_loss = 0
+        ssim_loss = 0
 
         for i in range(1, len(ref_imgs_sq)-1):
             mini_tgt_img = ref_imgs_sq[i]  # [7]
@@ -189,21 +194,23 @@ class MonoWarper(object):
             mini_poses = [poses_inv_sq[i-1], poses_sq[i]]  # [p7-6, p7-8]
             mini_poses_inv = [poses_sq[i-1], poses_inv_sq[i]]  # [p6-7, p8-7]
 
-            pl, sl, gl = self.compute_photo_and_geometry_loss_mini(
+            pl, sl, gl, ssiml, ref_img_warped, valid_mask = self.compute_photo_and_geometry_loss_mini(
                 mini_tgt_img, mini_ref_imgs, mini_tgt_depth, mini_ref_depths,
                 mini_poses, mini_poses_inv)
 
             photo_loss += pl
             smooth_loss += sl
             geometry_loss += gl
+            ssim_loss += ssiml
 
-        return photo_loss, smooth_loss, geometry_loss
+        return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
     def compute_photo_and_geometry_loss_mini(
             self, tgt_img, ref_imgs, tgt_depth, ref_depths, poses, poses_inv):
 
         photo_loss = 0
         geometry_loss = 0
+        ssim_loss = 0
 
         num_scales = min(len(tgt_depth), self.max_scales)
         for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
@@ -236,18 +243,19 @@ class MonoWarper(object):
                     ref_depth_scaled = F.interpolate(
                         ref_depth[s], (h, w), mode='nearest')
 
-                photo_loss1, geometry_loss1 = self.compute_pairwise_loss(
+                photo_loss1, geometry_loss1, ssim_loss1, ref_img_warped, valid_mask = self.compute_pairwise_loss(
                     tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose)
-                photo_loss2, geometry_loss2 = self.compute_pairwise_loss(
+                photo_loss2, geometry_loss2, ssim_loss2, _, _ = self.compute_pairwise_loss(
                     ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv)
 
                 photo_loss += (photo_loss1 + photo_loss2)
                 geometry_loss += (geometry_loss1 + geometry_loss2)
+                ssim_loss += (ssim_loss1 + ssim_loss2)
 
         smooth_loss = utils.compute_smooth_loss(
             tgt_depth, tgt_img, ref_depths, ref_imgs)
 
-        return photo_loss, smooth_loss, geometry_loss
+        return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
     def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose):
 
@@ -261,14 +269,15 @@ class MonoWarper(object):
 
         if self.with_auto_mask == True:
             auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
-                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float() * valid_mask
-            valid_mask = auto_mask
+                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
+            valid_mask = auto_mask * valid_mask
 
-        if self.with_ssim == True:
-            ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
-            # diff_img = (0.90 * diff_img + 0.10 * ssim_map)
-            # ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
-            diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        # if self.with_ssim == True:
+        ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
+        # diff_img = (0.90 * diff_img + 0.10 * ssim_map)
+        # ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
+        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
 
         if self.with_mask == True:
             weight_mask = (1 - diff_depth)
@@ -278,16 +287,19 @@ class MonoWarper(object):
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
         geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)
 
-        return reconstruction_loss, geometry_consistency_loss
+        return reconstruction_loss, geometry_consistency_loss, ssim_loss, ref_img_warped, valid_mask
 
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
     mask = valid_mask.expand_as(diff)
-    if mask.sum() > 10000:
-        mean_value = (diff * mask).sum() / mask.sum()
+    thr_mask = diff.numel()//3  # at least a third of the input must be valid
+    if mask.sum() > thr_mask:
+        mean_value = (diff * mask).sum() / (mask.sum()+1e-7)
     else:
-        mean_value = torch.tensor(0).float().to(device)
+        # mean_value = torch.tensor(0).float().to(device)
+        mask_diff = diff
+        mean_value = mask_diff.sum() / (mask.sum()+1e-7)
     return mean_value
 
 
@@ -302,7 +314,7 @@ def set_id_grid(h, w):
     y = torch.flatten(y)
 
     # [3,N] Augment with zero z column
-    xy = torch.vstack((x, y, torch.zeros_like(x)))
+    xy = torch.vstack((y, x, torch.ones_like(x)))
     xy = torch.transpose(xy, 0, 1)  # [N,3]
     pixel_coords_hom = tgm.convert_points_to_homogeneous(
         xy).to(device).type(torch.float)  # [N,4]

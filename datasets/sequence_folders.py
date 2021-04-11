@@ -230,6 +230,19 @@ class SequenceFolder(data.Dataset):
         return t_matches
 
     def __getitem__(self, index):
+        """Returns an item from the dataset
+
+        Args:
+            index (int): index of the element to return
+
+        Returns:
+            tgt_img (torch.Tensor): Target radar frame [B,1,H,W]
+            ref_imgs (List[torch.Tensor]): Reference target frames [2,B,1,H,W]
+            vo_tgt_img (torch.Tensor): Target monocular frame [B,3,H,W]
+            vo_ref_imgs (List[List[torch.Tensor]]): Reference monocular frames 
+            [num_sequence-1,num_matches,B,num_channels,H,W]=[2,3,B,3,H,W]
+        """
+
         sample = self.samples[index]
         # Choose the loader function
         # if self.modality == 'radar':
