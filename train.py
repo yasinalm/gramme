@@ -347,16 +347,12 @@ def main():
 
         # evaluate on validation set
         logger.reset_valid_bar()
-        errors, error_names = validate(
-            args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer)
-        error_string = ', '.join('{} : {:.3f}'.format(name, error)
-                                 for name, error in zip(error_names, errors))
-        logger.valid_writer.write(' * Avg {}'.format(error_string))
+        val_loss = validate(
+            args, val_loader, mask_net, pose_net, disp_net, vo_pose_net, epoch, logger, warper, mono_warper, val_writer)
+        logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        for error, name in zip(errors, error_names):
-            val_writer.add_scalar('val/'+name, error, epoch)
-
-        # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+        # Up to you to chose the most relevant error to measure your model's performance,
+        # careful some measures are to maximize (such as a1,a2,a3)
         # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
         # decisive_error = errors[0]
         # if best_error < 0:
@@ -470,6 +466,7 @@ def train(
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
             loss += vo_loss
 
+        # TODO: is there any pretty way of logging?
         if log_losses:
             train_writer.add_scalar(
                 'train/radar/photometric_error', rec_loss.item(), n_iter)
@@ -558,7 +555,8 @@ def train(
         end = time.time()
 
         if i > 0 and i % 1000 == 0:
-            # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+            # Up to you to chose the most relevant error to measure your model's performance,
+            # careful some measures are to maximize (such as a1,a2,a3)
             # decisive_error = loss.item()
 
             # # remember lowest error and save checkpoint
@@ -605,7 +603,7 @@ def train(
             # writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
             writer.writerow(losses_it)
         logger.train_bar.update(i+1)
-        if i % args.print_freq == 0:
+        if log_losses:
             errors = losses.avg
             error_names = ['total_loss', 'rec_loss',
                            'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
@@ -625,20 +623,27 @@ def train(
 
 
 @torch.no_grad()
-def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_writer):
+def validate(
+        args, val_loader, mask_net, pose_net, disp_net, vo_pose_net,
+        epoch, logger, warper, mono_warper, val_writer):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=5, precision=4)
+    losses = AverageMeter(i=10 if args.with_vo else 5, precision=4)
     log_outputs = val_writer is not None
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # switch to eval mode
     if args.with_masknet:
         mask_net.eval()
+    if args.with_vo:
+        disp_net.train()
+        vo_pose_net.train()
     pose_net.eval()
 
     all_poses = []
     all_inv_poses = []
+    all_poses_mono = []
+    all_inv_poses_mono = []
 
     # Randomly choose n indices to log images
     rng = np.random.default_rng()
@@ -646,7 +651,9 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
 
     end = time.time()
     logger.valid_bar.update(0)
-    for i, (tgt_img, ref_imgs) in enumerate(val_loader):
+    for i, input in enumerate(val_loader):
+        tgt_img = input[0]
+        ref_imgs = input[1]
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)
@@ -661,14 +668,50 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
         all_poses.append(poses)
         all_inv_poses.append(poses_inv)
 
-        rec_loss, geometry_consistency_loss, fft_loss, ssim_loss, projected_imgs, projected_masks = warper.compute_db_loss(
+        (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
+         projected_imgs, projected_masks) = warper.compute_db_loss(
             tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
 
         rec_loss = w1*rec_loss
         geometry_consistency_loss = w2*geometry_consistency_loss
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
-        loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+        radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+        loss = radar_loss
+
+        if args.with_vo:
+            # num_scales = 4, num_match=3
+            vo_tgt_img = input[2]  # [B,3,H,W]
+            vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
+            vo_tgt_img = vo_tgt_img.to(device)
+            vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
+                           for refs in vo_ref_imgs]
+            # tgt_depth: [4,B,1,H,W]
+            # ref_depths: [2,3,4,B,1,H,W]
+            # vo_poses: [2,3,B,6]
+            # vo_poses_inv: [2,3,B,6]
+            tgt_depth, ref_depths = compute_depth(
+                disp_net, vo_tgt_img, vo_ref_imgs)
+            vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
+                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+
+            all_poses_mono.append(poses)
+            all_inv_poses_mono.append(poses_inv)
+
+            # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
+            # It calculates the triple-wise losses of the sequence.
+            (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
+             mono_ref_img_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+                vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
+
+            # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+            vo_photo_loss = 1.0*vo_photo_loss
+            vo_smooth_loss = 0.1*vo_smooth_loss
+            vo_geometry_loss = 0.5*vo_geometry_loss
+            vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
+
+            # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
+            loss += vo_loss
 
         if log_outputs and i in log_ind:
             # if epoch == 0:
@@ -682,8 +725,12 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
                 val_writer.add_image(
                     'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
 
-        losses.update([loss.item(), rec_loss.item(), geometry_consistency_loss.item(
-        ), fft_loss.item(), ssim_loss.item()], args.batch_size)
+        losses_it = [loss.item(), rec_loss.item(), geometry_consistency_loss.item(
+        ), fft_loss.item(), ssim_loss.item()]
+        if args.with_vo:
+            losses_it.extend(
+                [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item(), vo_ssim_loss.item()])
+        losses.update(losses_it, args.batch_size)
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -705,12 +752,34 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
         val_writer.add_histogram(
             'val/trans_pred-y', all_poses_t[..., 4], epoch)
 
+        if args.with_vo:
+            all_poses_mono_t = torch.cat(
+                all_poses_mono, 1)
+            val_writer.add_histogram(
+                'train/mono/rot_pred-z', all_poses_mono_t[..., 2], n_iter)
+            val_writer.add_histogram(
+                'train/mono/trans_pred-x', all_poses_mono_t[..., 3], n_iter)
+            val_writer.add_histogram(
+                'train/mono/trans_pred-y', all_poses_mono_t[..., 4], n_iter)
+
     logger.valid_bar.update(args.val_size)
 
+    # Log errors
     errors = losses.avg
     error_names = ['total_loss', 'rec_loss',
                    'geometry_consistency_loss', 'fft_loss', 'ssim_loss']
+    if args.with_vo:
+        error_names.extend(
+            ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss', 'vo_ssim_loss'])
+    error_string = ', '.join('{} : {:.3f}'.format(name, error)
+                             for name, error in zip(error_names, errors))
+    logger.valid_writer.write(' * Avg {}'.format(error_string))
 
+    if log_outputs:
+        for error, name in zip(errors, error_names):
+            val_writer.add_scalar('val/'+name, error, epoch)
+
+    # TODO: Plot mono pose results
     if args.gt_file is not None:
         ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
@@ -736,7 +805,7 @@ def validate(args, val_loader, mask_net, pose_net, epoch, logger, warper, val_wr
             val_writer.add_figure('val/fig/b_traj_pred', b_fig, epoch)
             val_writer.add_figure('val/fig/f_traj_pred', f_fig, epoch)
 
-    return errors, error_names
+    return losses.avg[0]
 
 
 def compute_mask(mask_net, tgt_img, ref_imgs):
