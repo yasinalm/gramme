@@ -52,7 +52,7 @@ class SequenceFolder(data.Dataset):
                            if not folder.strip().startswith("#")]
 
         if self.load_mono:
-            self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/centre'
+            self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
             # self.modality = 'mono'
             # if sequence is not None:
             #     self.mono_scenes = [self.root/sequence]
@@ -87,13 +87,13 @@ class SequenceFolder(data.Dataset):
 
             if self.load_mono:
                 # We need to collect the corresponding monocular frames within the same dataset class.
-                # If we use separate classes for radar and mono, the order is messed up due to shuffling.
-                if self.dataset == 'radiate':
-                    imgs_mono = sorted(
-                        list((scene/self.mono_folder).glob(f_type)))
-                    if len(imgs) < sequence_length:
-                        continue
+                # If we use separate classes for radar and mono, the order gets messy due to shuffling.
+                imgs_mono = sorted(
+                    list((scene/self.mono_folder).glob(f_type)))
+                if len(imgs) < sequence_length:
+                    continue
 
+                if self.dataset == 'radiate':
                     f_rt = self.root/scene/'Navtech_Polar.txt'
                     f_mt = self.root/scene/'zed_left.txt'
 
@@ -103,13 +103,25 @@ class SequenceFolder(data.Dataset):
                            for folder in open(f_mt)]
                     # Some scenes contain timestamps more than images. Drop the extra timestamps.
                     mts = mts[:len(imgs_mono)]
-                    radar_idxs = list(
-                        range(demi_length * self.k, len(imgs)-demi_length * self.k))
-                    mono_matches_all = self.find_mono_samples(
-                        radar_idxs, rts, mts)
+
+                elif self.dataset == 'robotcar':
+                    f_rt = self.root/scene/'radar.timestamps'
+                    f_mt = self.root/scene/'stereo.timestamps'
+
+                    # Robotcar timestamps are in microsecs.
+                    # Read them in secs.
+                    rts = [float(folder.strip().split()[0].strip())/1e6
+                           for folder in open(f_rt)]
+                    mts = [float(folder.strip().split()[0].strip())/1e6
+                           for folder in open(f_mt)]
                 else:
                     raise NotImplementedError(
-                        'Currently, only the RADIATE dataset is supported for VO')
+                        'Currently, RADIATE and RobotCar datasets supported for VO')
+
+                radar_idxs = list(
+                    range(demi_length * self.k, len(imgs)-demi_length * self.k))
+                mono_matches_all = self.find_mono_samples(
+                    radar_idxs, rts, mts)
 
             for cnt, i in enumerate(range(demi_length * self.k, len(imgs)-demi_length * self.k)):
                 # sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': []}
