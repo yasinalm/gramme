@@ -35,7 +35,9 @@ class MonoWarper(object):
         elif self.dataset == 'robotcar':
             fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
             h, w = 960, 1280
-            scale_x = scale_y = 1.0
+            scale_x = 640.0/w
+            scale_y = 384.0/h
+            h, w = 384, 640
         self.pixel_coords_hom = set_id_grid(h, w)
         self.intrinsics = utils.camera_matrix(
             torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
@@ -116,7 +118,7 @@ class MonoWarper(object):
             projected_depth: sampled depth from source image  
             computed_depth: computed depth of source image using the target depth
         """
-        utils.check_sizes(ref_img, 'ref_img', 'B3HW')
+        utils.check_sizes(ref_img, 'ref_img', 'BCHW')
         utils.check_sizes(tgt_depth, 'tgt_depth', 'B1HW')
         utils.check_sizes(ref_depth, 'ref_depth', 'B1HW')
         utils.check_sizes(pose, 'pose', 'B6')

@@ -88,14 +88,24 @@ class SequenceFolder(data.Dataset):
             if self.load_mono:
                 # We need to collect the corresponding monocular frames within the same dataset class.
                 # If we use separate classes for radar and mono, the order gets messy due to shuffling.
+
+                # Temporary fix to read stereo folder from non-dataroot directory.
+                # Delete the following lines once done. uncomment f_mt below.
+                temp_root = Path('/home/yasin/mmwave-raw/robotcar')
+                f_mt = temp_root/scene.name/'stereo.timestamps'
+                if not f_mt.is_file():
+                    continue
                 imgs_mono = sorted(
-                    list((scene/self.mono_folder).glob(f_type)))
+                    list((temp_root/scene.name/self.mono_folder).glob(f_type)))
+
+                # imgs_mono = sorted(
+                #     list((scene/self.mono_folder).glob(f_type)))
                 if len(imgs) < sequence_length:
                     continue
 
                 if self.dataset == 'radiate':
-                    f_rt = self.root/scene/'Navtech_Polar.txt'
-                    f_mt = self.root/scene/'zed_left.txt'
+                    f_rt = scene/'Navtech_Polar.txt'
+                    f_mt = scene/'zed_left.txt'
 
                     rts = [float(folder.strip().split(':')[-1].strip())
                            for folder in open(f_rt)]
@@ -105,8 +115,8 @@ class SequenceFolder(data.Dataset):
                     mts = mts[:len(imgs_mono)]
 
                 elif self.dataset == 'robotcar':
-                    f_rt = self.root/scene/'radar.timestamps'
-                    f_mt = self.root/scene/'stereo.timestamps'
+                    f_rt = scene/'radar.timestamps'
+                    # f_mt = scene/'stereo.timestamps'
 
                     # Robotcar timestamps are in microsecs.
                     # Read them in secs.

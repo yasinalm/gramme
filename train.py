@@ -183,15 +183,22 @@ def main():
 
     mono_transform = None
     if args.with_vo:
-        imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
-        imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
-        normalize = transforms.Normalize(mean=imagenet_mean,
-                                         std=imagenet_std)
         mono_transform = [transforms.ToTensor()]
         # Resize RADIATE dataset to make it divisible by 64, which is needed in resnet_encoder.
         if args.dataset == 'radiate':
+            imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
+            imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
+            normalize = transforms.Normalize(mean=imagenet_mean,
+                                             std=imagenet_std)
             mono_transform.append(transforms.Resize((384, 640)))
-        mono_transform.append(normalize)
+            mono_transform.append(normalize)
+        elif args.dataset == 'robotcar':
+            imagenet_mean = utils.imagenet_mean_grey
+            imagenet_std = utils.imagenet_std_grey
+            normalize = transforms.Normalize(mean=imagenet_mean,
+                                             std=imagenet_std)
+            mono_transform.append(transforms.Resize((384, 640)))
+            mono_transform.append(normalize)
         mono_transform = transforms.Compose(mono_transform)
 
     print("=> fetching scenes in '{}'".format(args.data))
@@ -273,12 +280,15 @@ def main():
                 'The chosen MaskNet is not implemented! Given: {}'.format(args.masknet))
     disp_net = vo_pose_net = None
     if args.with_vo:
+        # Robotcar images are greyscale.
+        n_img_channels = 1 if args.dataset == 'robotcar' else 3
         disp_net = models.DispResNet(
-            args.resnet_layers, args.with_pretrain).to(device)
+            args.resnet_layers, args.with_pretrain, n_img_channels=n_img_channels).to(device)
         vo_pose_net = models.PoseResNet(
-            args.dataset, args.resnet_layers, args.with_pretrain, is_vo=True).to(device)
+            args.dataset, args.resnet_layers, args.with_pretrain,
+            is_vo=True, n_img_channels=n_img_channels).to(device)
     pose_net = models.PoseResNet(
-        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
+        args.dataset, args.resnet_layers, args.with_pretrain, n_img_channels=1).to(device)
 
     # load parameters
     if args.with_masknet and args.pretrained_mask:
@@ -519,30 +529,31 @@ def train(
                 train_writer.add_histogram(
                     'train/mono/trans_pred-z', vo_poses[..., 5], n_iter)
 
-            # train_writer.add_image(
-            #     'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            # train_writer.add_image(
-            #     'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            # train_writer.add_image(
-            #     'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            # if args.with_masknet:
-            #     train_writer.add_image(
-            #         'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-            #     train_writer.add_image(
-            #         'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
-            # if args.with_vo:
-            #     train_writer.add_image(
-            #         'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
-            #     # train_writer.add_image(
-            #     #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
-            #     train_writer.add_image(
-            #         'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
-            #     train_writer.add_image(
-            #         'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
-            #     train_writer.add_image(
-            #         'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
-            #     train_writer.add_image(
-            #         'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_masknet:
+                train_writer.add_image(
+                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_vo:
+                is_grey = args.dataset == 'robotcar'
+                train_writer.add_image(
+                    'train/mono/input', utils.tensor2array(vo_tgt_img[0], is_grey=is_grey), n_iter)
+                # train_writer.add_image(
+                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0], is_grey=is_grey), n_iter)
+                train_writer.add_image(
+                    'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0], is_grey=is_grey), n_iter)
+                train_writer.add_image(
+                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
+                train_writer.add_image(
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
         # record loss and EPE
         losses_it = [
@@ -596,12 +607,13 @@ def train(
                 train_writer.add_image(
                     'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
+                is_grey = args.dataset == 'robotcar'
                 train_writer.add_image(
-                    'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
+                    'train/mono/input', utils.tensor2array(vo_tgt_img[0], is_grey=is_grey), n_iter)
                 # train_writer.add_image(
-                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
+                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0], is_grey=is_grey), n_iter)
                 train_writer.add_image(
-                    'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
+                    'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0], is_grey=is_grey), n_iter)
                 train_writer.add_image(
                     'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
                 train_writer.add_image(
