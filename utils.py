@@ -43,7 +43,7 @@ def opencv_rainbow(resolution=1000):
 
 COLORMAPS = {'rainbow': opencv_rainbow(),
              'magma': high_res_colormap(cm.get_cmap('magma')),
-             'bone': cm.get_cmap('bone', 10000)}
+             'bone': cm.get_cmap('bone', 1000)}
 
 imagenet_mean = torch.Tensor([0.485, 0.456, 0.406])
 imagenet_std = torch.Tensor([0.229, 0.224, 0.225])

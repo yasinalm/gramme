@@ -275,9 +275,8 @@ class MonoWarper(object):
         # if self.with_ssim == True:
         ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
         # diff_img = (0.90 * diff_img + 0.10 * ssim_map)
-        # ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
-        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
         ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
+        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
         if self.with_mask == True:
             weight_mask = (1 - diff_depth)

@@ -40,11 +40,17 @@ class PoseDecoder(nn.Module):
         num_features = 15360 if is_vo else 16384  # vo-16384 ro-16384
 
         self.fc_t1 = nn.Linear(num_features, 128)
-        # self.fc_t2 = nn.Linear(128, 3 * num_frames_to_predict_for) # [x,y,z]
-        self.fc_t2 = nn.Linear(128, 2 * num_frames_to_predict_for)  # [x,y]
+        if self.is_vo:
+            self.fc_t2 = nn.Linear(
+                128, 3 * num_frames_to_predict_for)  # [x,y,z]
+        else:
+            self.fc_t2 = nn.Linear(128, 2 * num_frames_to_predict_for)  # [x,y]
         self.fc_r1 = nn.Linear(num_features, 128)
-        # self.fc_r2 = nn.Linear(128, 3 * num_frames_to_predict_for) # [rx,ry,rz]
-        self.fc_r2 = nn.Linear(128, 1 * num_frames_to_predict_for)  # [rz]
+        if self.is_vo:
+            self.fc_r2 = nn.Linear(
+                128, 3 * num_frames_to_predict_for)  # [rx,ry,rz]
+        else:
+            self.fc_r2 = nn.Linear(128, 1 * num_frames_to_predict_for)  # [rz]
 
         self.net = nn.ModuleList(list(self.convs.values()))
 
@@ -91,15 +97,17 @@ class PoseDecoder(nn.Module):
         # r = r.clamp(-6.28, 6.28) # [-2pi, 2pi] rad
         r = torch.fmod(r, 2*np.pi)
 
-        # SE(2) pose
-        pose = torch.zeros(r.shape[0], 6).to(r.device)
+        # # SE(2) pose
+        # pose = torch.zeros(r.shape[0], 6).to(r.device)
         if self.is_vo:
-            pose[:, 0:1] = r
-            pose[:, 4:6] = t
+            # pose[:, 1:2] = r  # [ry]
+            # pose[:, [3, 5]] = t  # [tx,tz]
+            pose = torch.cat((r, t), 1)  # [B, 6]
         else:
+            pose = torch.zeros(r.shape[0], 6).to(r.device)
             pose[:, 2:3] = r
             pose[:, 3:5] = t
-        # pose = torch.cat((r, t), 1) # [B, 6]
+        # pose = torch.cat((r, t), 1)  # [B, 6]
 
         return pose
 
