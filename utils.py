@@ -48,25 +48,25 @@ COLORMAPS = {'rainbow': opencv_rainbow(),
 imagenet_mean = torch.Tensor([0.485, 0.456, 0.406])
 imagenet_std = torch.Tensor([0.229, 0.224, 0.225])
 
-imagenet_mean_grey = torch.Tensor([0.445])
-imagenet_std_grey = torch.Tensor([0.269])
+# imagenet_mean_grey = torch.Tensor([0.445])
+# imagenet_std_grey = torch.Tensor([0.269])
 
 
-def tensor2array(tensor, max_value=None, colormap='rainbow', is_grey=False):
+def tensor2array(tensor, max_value=None, colormap='rainbow'):
     #tensor = tensor.detach().cpu()
     if max_value is None:
         max_value = tensor.abs().max()  # .item()
     if tensor.ndimension() == 2 or tensor.size(0) == 1:
-        if is_grey:  # grey image
-            array = imagenet_mean_grey[:, None, None].to(tensor.device) + \
-                tensor*imagenet_std_grey[:, None, None].to(tensor.device)
-            array = array.detach().cpu().numpy()
-        else:  # Depth image
-            # norm_array = tensor.squeeze().numpy()/max_value
-            norm_array = tensor.squeeze()/max_value
-            norm_array = norm_array.detach().cpu().numpy()
-            array = COLORMAPS[colormap](norm_array).astype(np.float32)
-            array = array.transpose(2, 0, 1)
+        # if is_grey:  # grey image
+        #     array = imagenet_mean_grey[:, None, None].to(tensor.device) + \
+        #         tensor*imagenet_std_grey[:, None, None].to(tensor.device)
+        #     array = array.detach().cpu().numpy()
+        # else:  # Depth image
+        # norm_array = tensor.squeeze().numpy()/max_value
+        norm_array = tensor.squeeze()/max_value
+        norm_array = norm_array.detach().cpu().numpy()
+        array = COLORMAPS[colormap](norm_array).astype(np.float32)
+        array = array.transpose(2, 0, 1)
 
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)

@@ -114,9 +114,9 @@ class PoseDecoder(nn.Module):
 
 class PoseResNet(nn.Module):
 
-    def __init__(self, dataset, num_layers=18, pretrained=False, is_vo=False, n_img_channels=1):
+    def __init__(self, dataset, num_layers=18, pretrained=False, is_vo=False):
         super(PoseResNet, self).__init__()
-        # n_img_channels = 3 if is_vo else 1  # n_channels = vo-3 ro-1
+        n_img_channels = 3 if is_vo else 1  # n_channels = vo-3 ro-1
         self.encoder = ResnetEncoder(
             num_layers=num_layers, pretrained=pretrained, num_input_images=2, n_img_channels=n_img_channels)
         self.decoder = PoseDecoder(dataset, is_vo, self.encoder.num_ch_enc)

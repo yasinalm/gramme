@@ -176,8 +176,11 @@ class SequenceFolder(data.Dataset):
         return cart_img
 
     def load_mono_img_as_float(self, path):
+        from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
         img = Image.open(path)
         # img = img.resize((640, 384))
+        img = demosaic(img, 'gbrg').astype(np.float32) / 255.
+        # img = model.undistort(img)
         return img
 
     def load_cart_as_float(self, path):
