@@ -3,6 +3,8 @@ import torch.utils.data as data
 import numpy as np
 # from skimage import io
 from PIL import Image
+from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
+from .robotcar_camera.camera_model import CameraModel
 import cv2
 from pathlib import Path
 from typing import List
@@ -53,16 +55,8 @@ class SequenceFolder(data.Dataset):
 
         if self.load_mono:
             self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
-            # self.modality = 'mono'
-            # if sequence is not None:
-            #     self.mono_scenes = [self.root/sequence]
-            # else:
-            #     scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-            #     self.mono_scenes = [self.root/folder.strip() for folder in open(scene_list_path)
-            #                         if not folder.strip().startswith("#")]
-        # else:
-        #     raise ValueError(
-        #         'Supported modality types are: [radar, mono], noth are None')
+            if dataset == 'robotcar':
+                self.cam_model = CameraModel()
 
         self.transform = transform
         self.mono_transform = mono_transform
@@ -176,11 +170,12 @@ class SequenceFolder(data.Dataset):
         return cart_img
 
     def load_mono_img_as_float(self, path):
-        from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
         img = Image.open(path)
         # img = img.resize((640, 384))
-        img = demosaic(img, 'gbrg').astype(np.float32) / 255.
-        # img = model.undistort(img)
+        if self.dataset == 'robotcar':
+            img = demosaic(img, 'gbrg')
+            img = self.cam_model.undistort(img)
+        img = img.astype(np.float32) / 255.
         return img
 
     def load_cart_as_float(self, path):

@@ -33,7 +33,8 @@ class MonoWarper(object):
             scale_y = 384.0/h
             h, w = 384, 640
         elif self.dataset == 'robotcar':
-            fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
+            # fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
+            fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
             h, w = 960, 1280
             scale_x = 640.0/w
             scale_y = 384.0/h
