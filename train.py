@@ -448,7 +448,7 @@ def train(
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
         radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
-        loss = radar_loss
+        vo_loss = 0
 
         if args.with_vo:
             # num_scales = 4, num_match=3
@@ -478,7 +478,9 @@ def train(
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
-            loss += vo_loss
+            # loss += vo_loss
+
+        loss = radar_loss + vo_loss
 
         # TODO: is there any pretty way of logging?
         if log_losses:
@@ -711,6 +713,7 @@ def validate(
             vo_tgt_img = vo_tgt_img.to(device)
             vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
                            for refs in vo_ref_imgs]
+            # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]

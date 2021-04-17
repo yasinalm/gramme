@@ -257,6 +257,7 @@ class MonoWarper(object):
 
         smooth_loss = utils.compute_smooth_loss(
             tgt_depth, tgt_img, ref_depths, ref_imgs)
+        # smooth_loss = torch.Tensor([0]).to(device)
 
         return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
@@ -279,7 +280,7 @@ class MonoWarper(object):
         ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
         # diff_img = (0.90 * diff_img + 0.10 * ssim_map)
         ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
-        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
         if self.with_mask == True:
             weight_mask = (1 - diff_depth)
@@ -296,12 +297,11 @@ class MonoWarper(object):
 def mean_on_mask(diff, valid_mask):
     mask = valid_mask.expand_as(diff)
     thr_mask = diff.numel()//3  # at least a third of the input must be valid
-    if mask.sum() > thr_mask:
+    if mask.sum() > thr_mask and mask.sum() < diff.numel()*0.99:
         mean_value = (diff * mask).sum() / (mask.sum()+1e-7)
     else:
-        # mean_value = torch.tensor(0).float().to(device)
-        mask_diff = diff
-        mean_value = mask_diff.sum() / (mask.sum()+1e-7)
+        # mean_value = torch.tensor(diff.numel()*10).float().to(device)
+        mean_value = diff.sum() / (mask.sum()+1e-7)
     return mean_value
 
 
