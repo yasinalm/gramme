@@ -150,7 +150,7 @@ class MonoWarper(object):
 
         return projected_img, valid_mask, projected_depth, computed_depth
 
-    def compute_photo_and_geometry_loss(
+    def compute_photo_and_geometry_loss_all(
             self, tgt_img, ref_imgs, tgt_depth, ref_depths, poses, poses_inv):
         """Given a sequence of monocular frames, calculates triple-wise self-supervised photometric, smoothness and geometric losses.
         Converts a given sequence into mini target and source frames. For example, given a target and reference images 9 and [[7,8], [10,11]],
@@ -208,7 +208,7 @@ class MonoWarper(object):
 
         return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
-    def compute_photo_and_geometry_loss_mini(
+    def compute_photo_and_geometry_loss(
             self, tgt_img, ref_imgs, tgt_depth, ref_depths, poses, poses_inv):
 
         photo_loss = 0
@@ -271,20 +271,20 @@ class MonoWarper(object):
         diff_depth = ((computed_depth - projected_depth).abs() /
                       (computed_depth + projected_depth)).clamp(0, 1)
 
-        if self.with_auto_mask == True:
-            auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
-                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
-            valid_mask = auto_mask * valid_mask
+        # if self.with_auto_mask == True:
+        #     auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
+        #         tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
+        #     valid_mask = auto_mask * valid_mask
+
+        # if self.with_mask == True:
+        #     weight_mask = (1 - diff_depth)
+        #     diff_img = diff_img * weight_mask
 
         # if self.with_ssim == True:
         ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
-        # diff_img = (0.90 * diff_img + 0.10 * ssim_map)
+        # diff_img = (0.60 * diff_img + 0.40 * ssim_map)
         ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
-        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
-
-        if self.with_mask == True:
-            weight_mask = (1 - diff_depth)
-            diff_img = diff_img * weight_mask
+        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
@@ -296,12 +296,12 @@ class MonoWarper(object):
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
     mask = valid_mask.expand_as(diff)
-    thr_mask = diff.numel()//3  # at least a third of the input must be valid
-    if mask.sum() > thr_mask and mask.sum() < diff.numel()*0.99:
-        mean_value = (diff * mask).sum() / (mask.sum()+1e-7)
+    thr_mask = diff.numel()//10  # at least a third of the input must be valid
+    if mask.sum() > thr_mask:
+        mean_value = (diff * mask).sum() / (mask.sum()+1e-12)
     else:
         # mean_value = torch.tensor(diff.numel()*10).float().to(device)
-        mean_value = diff.sum() / (mask.sum()+1e-7)
+        mean_value = diff.sum() / (mask.sum()+1e-12)
     return mean_value
 
 

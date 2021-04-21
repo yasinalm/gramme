@@ -150,7 +150,8 @@ class SequenceFolder(data.Dataset):
                         # [imgs_mono[tgt],...,imgs_mono[src+1]
                         # ]
                         sample['vo_ref_imgs'] = [
-                            [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
+                            # [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
+                            imgs_mono[ref] for ref in mono_matches[1:]]
                     else:
                         continue
 
@@ -226,25 +227,25 @@ class SequenceFolder(data.Dataset):
                 t_matches.append([])
                 continue
             last_search_idx = idxs[1]
-            # Return all the monocular frame between target and source frames
-            # Convert from [[tgt, src-1, src+1], [tgt, src-1, src+1],...] to
-            # [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
-            idxs[1] = list(range(idxs[1], idxs[0]))
-            idxs[2] = list(range(idxs[0]+1, idxs[2]+1))
-            # Check if we get exactly three previous and next frames.
-            # This is needed for batching.
-            # If we have more than three frames in either directons, trim the last three frames.
-            # Otherwise, return empty list.
-            if len(idxs[1]) > 3:
-                idxs[1] = idxs[1][-3:]
-            else:
-                t_matches.append([])
-                continue
-            if len(idxs[2]) > 3:
-                idxs[2] = idxs[2][-3:]
-            else:
-                t_matches.append([])
-                continue
+            # # Return all the monocular frame between target and source frames
+            # # Convert from [[tgt, src-1, src+1], [tgt, src-1, src+1],...] to
+            # # [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
+            # idxs[1] = list(range(idxs[1], idxs[0]))
+            # idxs[2] = list(range(idxs[0]+1, idxs[2]+1))
+            # # Check if we get exactly three previous and next frames.
+            # # This is needed for batching.
+            # # If we have more than three frames in either directons, trim the last three frames.
+            # # Otherwise, return empty list.
+            # if len(idxs[1]) > 3:
+            #     idxs[1] = idxs[1][-3:]
+            # else:
+            #     t_matches.append([])
+            #     continue
+            # if len(idxs[2]) > 3:
+            #     idxs[2] = idxs[2][-3:]
+            # else:
+            #     t_matches.append([])
+            #     continue
             # Append the matched sequence
             t_matches.append(idxs)
         return t_matches
@@ -284,12 +285,12 @@ class SequenceFolder(data.Dataset):
         if self.load_mono:
             if 'vo_tgt_img' in sample:
                 vo_tgt_img = self.load_mono_img_as_float(sample['vo_tgt_img'])
-                vo_ref_imgs = [[self.load_mono_img_as_float(
-                    ref_img) for ref_img in refs] for refs in sample['vo_ref_imgs']]
+                vo_ref_imgs = [self.load_mono_img_as_float(
+                    ref_img) for ref_img in sample['vo_ref_imgs']]
                 if self.mono_transform:
                     vo_tgt_img = self.mono_transform(vo_tgt_img)
                     vo_ref_imgs = [
-                        [self.mono_transform(ref_img) for ref_img in refs] for refs in vo_ref_imgs]
+                        self.mono_transform(ref_img) for ref_img in vo_ref_imgs]
             else:
                 vo_tgt_img = []
                 vo_ref_imgs = []

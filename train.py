@@ -270,8 +270,10 @@ def main():
     mono_warper = None
     if args.with_vo:
         mono_warper = MonoWarper(
-            args.num_scales,
-            args.dataset, args.padding_mode)
+            max_scales=args.num_scales,
+            dataset=args.dataset,
+            # batch_size=args.batch_size,
+            padding_mode=args.padding_mode)
     # create model
     print("=> creating model")
     mask_net = None
@@ -455,20 +457,20 @@ def train(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             vo_tgt_img = vo_tgt_img.to(device)
-            vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
-                           for refs in vo_ref_imgs]
+            vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
             # vo_poses_inv: [2,3,B,6]
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
-            vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
+            vo_poses, vo_poses_inv = compute_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
-            vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss, mono_ref_img_warped, mono_valid_mask = mono_warper.compute_photo_and_geometry_loss(
+            (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
+             mono_ref_img_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
                 vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
@@ -480,7 +482,7 @@ def train(
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
             # loss += vo_loss
 
-        loss = radar_loss + vo_loss
+        loss = 0*radar_loss + vo_loss
 
         # TODO: is there any pretty way of logging?
         if log_losses:
@@ -571,6 +573,7 @@ def train(
         losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
+        # TODO: Can we repeat this in vo part?
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -711,13 +714,13 @@ def validate(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             vo_tgt_img = vo_tgt_img.to(device)
-            vo_ref_imgs = [[ref_img.to(device) for ref_img in refs]
-                           for refs in vo_ref_imgs]
+            vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
             # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
             # vo_poses_inv: [2,3,B,6]
+
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
             vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
@@ -849,28 +852,40 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
     return tgt_mask, ref_masks
 
 
+# def compute_depth(disp_net, tgt_img, ref_imgs):
+#     """Compute the depth map of the given monocular RGB frames.
+
+#     Args:
+#         disp_net (nn.module): Disparity network
+#         tgt_img (torch.Tensor): Target RGB image [B,3,H,W]
+#         ref_imgs (List[List[torch.Tensor]]): Reference monocular images [2,3,B,3,H,W]
+
+#     Returns:
+#         tgt_depth (List[torch.Tensor]): Return target depth in 4 scales [4,B,1,H,W]
+#         ref_depths (List[List[torch.Tensor]]): Return reference depth maps in 4 scales [2,3,4,B,1,H,W]
+#     """
+
+#     tgt_depth = [1/(0.01+0.99*disp) for disp in disp_net(tgt_img)]
+
+#     ref_depths = []
+#     for ref_matches in ref_imgs:
+#         match_depths = []
+#         for ref_img in ref_matches:
+#             ref_depth = [1/(0.01+0.99*disp) for disp in disp_net(ref_img)]
+#             match_depths.append(ref_depth)
+#         ref_depths.append(match_depths)
+
+#     return tgt_depth, ref_depths
+
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    """Compute the depth map of the given monocular RGB frames.
-
-    Args:
-        disp_net (nn.module): Disparity network
-        tgt_img (torch.Tensor): Target RGB image [B,3,H,W]
-        ref_imgs (List[List[torch.Tensor]]): Reference monocular images [2,3,B,3,H,W]
-
-    Returns:
-        tgt_depth (List[torch.Tensor]): Return target depth in 4 scales [4,B,1,H,W]
-        ref_depths (List[List[torch.Tensor]]): Return reference depth maps in 4 scales [2,3,4,B,1,H,W]
-    """
-
     tgt_depth = [1/(0.01+0.99*disp) for disp in disp_net(tgt_img)]
+    # tgt_depth = [1/disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
-    for ref_matches in ref_imgs:
-        match_depths = []
-        for ref_img in ref_matches:
-            ref_depth = [1/(0.01+0.99*disp) for disp in disp_net(ref_img)]
-            match_depths.append(ref_depth)
-        ref_depths.append(match_depths)
+    for ref_img in ref_imgs:
+        ref_depth = [1/(0.01+0.99*disp) for disp in disp_net(ref_img)]
+        # ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
 
