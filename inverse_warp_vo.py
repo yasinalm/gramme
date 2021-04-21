@@ -255,9 +255,9 @@ class MonoWarper(object):
                 geometry_loss += (geometry_loss1 + geometry_loss2)
                 ssim_loss += (ssim_loss1 + ssim_loss2)
 
-        # smooth_loss = utils.compute_smooth_loss(
-        #     tgt_depth, tgt_img, ref_depths, ref_imgs)
-        smooth_loss = torch.Tensor([0]).to(device)
+        smooth_loss = utils.compute_smooth_loss(
+            tgt_depth, tgt_img, ref_depths, ref_imgs)
+        # smooth_loss = torch.Tensor([0]).to(device)
 
         return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
@@ -271,20 +271,20 @@ class MonoWarper(object):
         diff_depth = ((computed_depth - projected_depth).abs() /
                       (computed_depth + projected_depth)).clamp(0, 1)
 
-        if self.with_auto_mask == True:
-            auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
-                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
-            valid_mask = auto_mask * valid_mask
+        # if self.with_auto_mask == True:
+        #     auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
+        #         tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
+        #     valid_mask = auto_mask * valid_mask
+
+        # if self.with_mask == True:
+        #     weight_mask = (1 - diff_depth)
+        #     diff_img = diff_img * weight_mask
 
         # if self.with_ssim == True:
         ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
-        # diff_img = (0.90 * diff_img + 0.10 * ssim_map)
+        # diff_img = (0.60 * diff_img + 0.40 * ssim_map)
         ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
         # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
-
-        if self.with_mask == True:
-            weight_mask = (1 - diff_depth)
-            diff_img = diff_img * weight_mask
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)

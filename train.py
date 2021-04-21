@@ -270,8 +270,10 @@ def main():
     mono_warper = None
     if args.with_vo:
         mono_warper = MonoWarper(
-            args.num_scales,
-            args.dataset, args.padding_mode)
+            max_scales=args.num_scales,
+            dataset=args.dataset,
+            # batch_size=args.batch_size,
+            padding_mode=args.padding_mode)
     # create model
     print("=> creating model")
     mask_net = None
@@ -480,7 +482,7 @@ def train(
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
             # loss += vo_loss
 
-        loss = radar_loss + vo_loss
+        loss = 0*radar_loss + vo_loss
 
         # TODO: is there any pretty way of logging?
         if log_losses:
@@ -876,11 +878,13 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
 #     return tgt_depth, ref_depths
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [1/(0.01+0.99*disp) for disp in disp_net(tgt_img)]
+    # tgt_depth = [1/disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depth = [1/(0.01+0.99*disp) for disp in disp_net(ref_img)]
+        # ref_depth = [1/disp for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
