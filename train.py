@@ -177,7 +177,8 @@ def main():
     else:
         train_transform = custom_transforms.Compose(
             [custom_transforms.ArrayToTensor(),
-             transforms.RandomRotation(10)])
+             # transforms.RandomRotation(10)
+             ])
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
@@ -203,7 +204,7 @@ def main():
         imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
         normalize = transforms.Normalize(mean=imagenet_mean,
                                          std=imagenet_std)
-        mono_transform.append(transforms.Resize((384, 640)))
+        mono_transform.append(transforms.Resize((192, 320)))
         mono_transform.append(normalize)
         mono_transform = transforms.Compose(mono_transform)
 
@@ -331,7 +332,8 @@ def main():
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
     if args.with_vo:
-        optim_params.append({'params': disp_net.parameters(), 'lr': args.lr})
+        optim_params.append(
+            {'params': disp_net.parameters(), 'lr': args.lr})
         optim_params.append(
             {'params': vo_pose_net.parameters(), 'lr': args.lr})
 
@@ -414,7 +416,7 @@ def train(
     if args.with_vo:
         disp_net.train()
         vo_pose_net.train()
-    pose_net.train()
+    pose_net.train(False)
 
     end = time.time()
     logger.train_bar.update(0)
@@ -440,16 +442,6 @@ def train(
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
-         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
-
-        # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
-        # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
-        rec_loss = w1*rec_loss
-        geometry_consistency_loss = w2*geometry_consistency_loss
-        fft_loss = w3*fft_loss
-        ssim_loss = w4*ssim_loss
-        radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
         vo_loss = 0
 
         if args.with_vo:
@@ -467,6 +459,23 @@ def train(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
+            # poses_log = poses.clone().detach()
+            # vo_poses_log = vo_poses.clone().detach()
+
+            # # r = (poses[..., 2] + vo_poses[..., 1])/2
+            # r = poses[..., 2]
+            # poses[..., 2] = r
+            # vo_poses[..., 1] = r
+            # # r = (poses_inv[..., 2] + vo_poses_inv[..., 1])/2
+            # r = poses_inv[..., 2]
+            # poses_inv[..., 2] = r
+            # vo_poses_inv[..., 1] = r
+
+            # # t = (poses[..., 3:5] + vo_poses[..., [3, 5]])/2#
+            # vo_poses[..., 5] = -poses[..., 4]
+            # # t = (poses_inv[..., 3:5] + vo_poses_inv[..., [3, 5]])/2#
+            # vo_poses_inv[..., 5] = -poses_inv[..., 4]
+
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
             (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
@@ -482,7 +491,18 @@ def train(
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
             # loss += vo_loss
 
-        loss = 0*radar_loss + vo_loss
+        (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
+         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+
+        # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
+        # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
+        rec_loss = w1*rec_loss
+        geometry_consistency_loss = w2*geometry_consistency_loss
+        fft_loss = w3*fft_loss
+        ssim_loss = w4*ssim_loss
+        radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+
+        loss = radar_loss + vo_loss
 
         # TODO: is there any pretty way of logging?
         if log_losses:
@@ -555,10 +575,10 @@ def train(
                 #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
                 train_writer.add_image(
                     'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
+                # train_writer.add_image(
+                #     'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
                 train_writer.add_image(
-                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
-                train_writer.add_image(
-                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='gist_heat'), n_iter)
                 train_writer.add_image(
                     'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
@@ -878,13 +898,11 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
 #     return tgt_depth, ref_depths
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [1/(0.01+0.99*disp) for disp in disp_net(tgt_img)]
-    # tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [1/(0.01+0.99*disp) for disp in disp_net(ref_img)]
-        # ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depth = [disp for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths

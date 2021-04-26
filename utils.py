@@ -1,14 +1,14 @@
 from __future__ import division
 import PIL
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+# from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from matplotlib import cm
 import matplotlib.pyplot as plt
-import shutil
+# import shutil
 import numpy as np
 import torch
 # from pathlib import Path
-import datetime
-from collections import OrderedDict
+# import datetime
+# from collections import OrderedDict
 import matplotlib as mpl
 mpl.use('Agg')
 
@@ -16,34 +16,34 @@ device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
-    # Construct the list colormap, with interpolated values for higer resolution
-    # For a linear segmented colormap, you can just specify the number of point in
-    # cm.get_cmap(name, lutsize) with the parameter lutsize
-    x = np.linspace(0, 1, low_res_cmap.N)
-    low_res = low_res_cmap(x)
-    new_x = np.linspace(0, max_value, resolution)
-    high_res = np.stack([np.interp(new_x, x, low_res[:, i])
-                         for i in range(low_res.shape[1])], axis=1)
-    return ListedColormap(high_res)
+# def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
+#     # Construct the list colormap, with interpolated values for higer resolution
+#     # For a linear segmented colormap, you can just specify the number of point in
+#     # cm.get_cmap(name, lutsize) with the parameter lutsize
+#     x = np.linspace(0, 1, low_res_cmap.N)
+#     low_res = low_res_cmap(x)
+#     new_x = np.linspace(0, max_value, resolution)
+#     high_res = np.stack([np.interp(new_x, x, low_res[:, i])
+#                          for i in range(low_res.shape[1])], axis=1)
+#     return ListedColormap(high_res)
 
 
-def opencv_rainbow(resolution=1000):
-    # Construct the opencv equivalent of Rainbow
-    opencv_rainbow_data = (
-        (0.000, (1.00, 0.00, 0.00)),
-        (0.400, (1.00, 1.00, 0.00)),
-        (0.600, (0.00, 1.00, 0.00)),
-        (0.800, (0.00, 0.00, 1.00)),
-        (1.000, (0.60, 0.00, 1.00))
-    )
+# def opencv_rainbow(resolution=1000):
+#     # Construct the opencv equivalent of Rainbow
+#     opencv_rainbow_data = (
+#         (0.000, (1.00, 0.00, 0.00)),
+#         (0.400, (1.00, 1.00, 0.00)),
+#         (0.600, (0.00, 1.00, 0.00)),
+#         (0.800, (0.00, 0.00, 1.00)),
+#         (1.000, (0.60, 0.00, 1.00))
+#     )
 
-    return LinearSegmentedColormap.from_list('opencv_rainbow', opencv_rainbow_data, resolution)
+#     return LinearSegmentedColormap.from_list('opencv_rainbow', opencv_rainbow_data, resolution)
 
 
-COLORMAPS = {'rainbow': opencv_rainbow(),
-             'magma': high_res_colormap(cm.get_cmap('magma')),
-             'bone': cm.get_cmap('bone', 1000)}
+# COLORMAPS = {'rainbow': opencv_rainbow(),
+#              'magma': high_res_colormap(cm.get_cmap('magma')),
+#              'bone': cm.get_cmap('bone', 1000)}
 
 imagenet_mean = torch.Tensor([0.485, 0.456, 0.406])
 imagenet_std = torch.Tensor([0.229, 0.224, 0.225])
@@ -52,7 +52,7 @@ imagenet_std = torch.Tensor([0.229, 0.224, 0.225])
 # imagenet_std_grey = torch.Tensor([0.269])
 
 
-def tensor2array(tensor, max_value=None, colormap='rainbow'):
+def tensor2array(tensor, max_value=None, colormap='magma'):
     #tensor = tensor.detach().cpu()
     if max_value is None:
         max_value = tensor.abs().max()  # .item()
@@ -65,7 +65,8 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
         # norm_array = tensor.squeeze().numpy()/max_value
         norm_array = tensor.squeeze()/max_value
         norm_array = norm_array.detach().cpu().numpy()
-        array = COLORMAPS[colormap](norm_array).astype(np.float32)
+        # array = COLORMAPS[colormap](norm_array).astype(np.float32)
+        array = cm.get_cmap(colormap)(norm_array).astype(np.float32)
         array = array.transpose(2, 0, 1)
 
     elif tensor.ndimension() == 3:

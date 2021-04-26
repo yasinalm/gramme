@@ -148,8 +148,8 @@ class Warper(object):
         geometry_consistency_loss = 0
         fft_loss = 0
         ssim_loss = 0
-        projected_imgs = ref_imgs
-        projected_masks = ref_masks
+        projected_imgs = []
+        projected_masks = []
 
         for i, (ref_img, ref_mask, pose, pose_inv) in enumerate(zip(ref_imgs, ref_masks, poses, poses_inv)):
 
@@ -163,8 +163,8 @@ class Warper(object):
                                           geometry_consistency_loss2)
             fft_loss += (fft_loss1 + fft_loss2)
             ssim_loss += (ssim_loss1 + ssim_loss2)
-            projected_imgs[i] = projected_img
-            projected_masks[i] = projected_mask
+            projected_imgs.append(projected_img)
+            projected_masks.append(projected_mask)
 
         # fft_loss = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
 

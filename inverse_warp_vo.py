@@ -36,9 +36,9 @@ class MonoWarper(object):
             # fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
             fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
             h, w = 960, 1280
-            scale_x = 640.0/w
-            scale_y = 384.0/h
-            h, w = 384, 640
+            scale_x = 320.0/w
+            scale_y = 192.0/h
+            h, w = 192, 320
         self.pixel_coords_hom = set_id_grid(h, w)
         self.intrinsics = utils.camera_matrix(
             torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
@@ -266,25 +266,31 @@ class MonoWarper(object):
         ref_img_warped, valid_mask, projected_depth, computed_depth = self.inverse_warp(
             ref_img, tgt_depth, ref_depth, pose)
 
+        # Robotcar bottom pixels are occluded
+        valid_mask[..., -50:, :] = 0
+
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
 
         diff_depth = ((computed_depth - projected_depth).abs() /
                       (computed_depth + projected_depth)).clamp(0, 1)
 
-        # if self.with_auto_mask == True:
-        #     auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
-        #         tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
-        #     valid_mask = auto_mask * valid_mask
+        if self.with_auto_mask == True:
+            auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
+                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
+            valid_mask = auto_mask * valid_mask
 
-        # if self.with_mask == True:
-        #     weight_mask = (1 - diff_depth)
-        #     diff_img = diff_img * weight_mask
+        if self.with_ssim == True:
+            ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
+            # diff_img = (0.60 * diff_img + 0.40 * ssim_map)
+            ssim_loss = torch.Tensor([0]).to(device)
+            # ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
+            diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        else:
+            ssim_loss = torch.Tensor([0]).to(device)
 
-        # if self.with_ssim == True:
-        ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
-        # diff_img = (0.60 * diff_img + 0.40 * ssim_map)
-        ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
-        # diff_img = (0.15 * diff_img + 0.85 * ssim_map)
+        if self.with_mask == True:
+            weight_mask = (1 - diff_depth)
+            diff_img = diff_img * weight_mask
 
         # compute all loss
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
@@ -296,10 +302,12 @@ class MonoWarper(object):
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
     mask = valid_mask.expand_as(diff)
-    thr_mask = diff.numel()//10  # at least a third of the input must be valid
+    # thr_mask = diff.numel()//10  # at least a third of the input must be valid
+    thr_mask = 1e4
     if mask.sum() > thr_mask:
-        mean_value = (diff * mask).sum() / (mask.sum()+1e-12)
+        mean_value = (diff * mask).sum() / mask.sum()
     else:
+        mean_value = torch.tensor(0).float().to(device)
         # mean_value = torch.tensor(diff.numel()*10).float().to(device)
         mean_value = diff.sum() / (mask.sum()+1e-12)
     return mean_value
