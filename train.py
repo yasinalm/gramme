@@ -264,7 +264,7 @@ def main():
         args.val_size = len(val_loader)
     print('Validation size: ', args.val_size)
 
-    # create model
+    # create loss
     print("=> creating loss object")
     warper = Warper(args.with_auto_mask, args.cart_res,
                     args.cart_pixels, args.dataset, args.padding_mode)
@@ -291,7 +291,7 @@ def main():
     if args.with_vo:
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
-        vo_pose_net = models.PoseResNet(
+        vo_pose_net = models.PoseResNetv2(
             args.dataset, args.resnet_layers, args.with_pretrain,
             is_vo=True).to(device)
     pose_net = models.PoseResNet(
@@ -807,11 +807,11 @@ def validate(
             all_poses_mono_t = torch.cat(
                 all_poses_mono, 1)
             val_writer.add_histogram(
-                'train/mono/rot_pred-z', all_poses_mono_t[..., 2], n_iter)
+                'val/mono/rot_pred-z', all_poses_mono_t[..., 2], n_iter)
             val_writer.add_histogram(
-                'train/mono/trans_pred-x', all_poses_mono_t[..., 3], n_iter)
+                'val/mono/trans_pred-x', all_poses_mono_t[..., 3], n_iter)
             val_writer.add_histogram(
-                'train/mono/trans_pred-y', all_poses_mono_t[..., 4], n_iter)
+                'val/mono/trans_pred-y', all_poses_mono_t[..., 4], n_iter)
 
     logger.valid_bar.update(args.val_size)
 

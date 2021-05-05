@@ -161,3 +161,15 @@ def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename=
     #     for prefix in file_prefixes:
     #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
     #                         save_path/'{}_best.pth.tar'.format(prefix))
+
+
+def save_checkpoint_mono(save_path, dispnet_state, exp_pose_state, step, filename='checkpoint.pth.tar'):
+    file_prefixes = ['dispnet', 'exp_pose']
+    states = [dispnet_state, exp_pose_state]
+    for (prefix, state) in zip(file_prefixes, states):
+        torch.save(state, save_path/'{}_{}{}'.format(prefix, step, filename))
+
+    # if is_best:
+    #     for prefix in file_prefixes:
+    #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
+    #                         save_path/'{}_model_best.pth.tar'.format(prefix))

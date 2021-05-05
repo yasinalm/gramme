@@ -1,6 +1,7 @@
 from __future__ import division
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 import conversions as tgm
 import loss_ssim
@@ -9,6 +10,44 @@ import utils_warp as utils
 
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
+class SSIM(nn.Module):
+    """Layer to compute the SSIM loss between a pair of images
+    """
+
+    def __init__(self):
+        super(SSIM, self).__init__()
+        self.mu_x_pool = nn.AvgPool2d(3, 1)
+        self.mu_y_pool = nn.AvgPool2d(3, 1)
+        self.sig_x_pool = nn.AvgPool2d(3, 1)
+        self.sig_y_pool = nn.AvgPool2d(3, 1)
+        self.sig_xy_pool = nn.AvgPool2d(3, 1)
+
+        self.refl = nn.ReflectionPad2d(1)
+
+        self.C1 = 0.01 ** 2
+        self.C2 = 0.03 ** 2
+
+    def forward(self, x, y):
+        x = self.refl(x)
+        y = self.refl(y)
+
+        mu_x = self.mu_x_pool(x)
+        mu_y = self.mu_y_pool(y)
+
+        sigma_x = self.sig_x_pool(x ** 2) - mu_x ** 2
+        sigma_y = self.sig_y_pool(y ** 2) - mu_y ** 2
+        sigma_xy = self.sig_xy_pool(x * y) - mu_x * mu_y
+
+        SSIM_n = (2 * mu_x * mu_y + self.C1) * (2 * sigma_xy + self.C2)
+        SSIM_d = (mu_x ** 2 + mu_y ** 2 + self.C1) * \
+            (sigma_x + sigma_y + self.C2)
+
+        return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
+
+
+compute_ssim_loss = SSIM().to(device)
 
 
 class MonoWarper(object):
@@ -24,28 +63,31 @@ class MonoWarper(object):
         self.with_auto_mask = with_auto_mask
         self.max_scales = max_scales
         if self.dataset == 'radiate':
-            fx = 3.379191448899105e+02
-            fy = 3.386957068549526e+02
-            cx = 3.417366010946575e+02
-            cy = 2.007359735313929e+02
-            h, w = 376, 672
-            scale_x = 640.0/w
-            scale_y = 384.0/h
+            # fx = 3.379191448899105e+02
+            # fy = 3.386957068549526e+02
+            # cx = 3.417366010946575e+02
+            # cy = 2.007359735313929e+02
+            # h, w = 376, 672
+            # scale_x = 640.0/w
+            # scale_y = 384.0/h
             h, w = 384, 640
         elif self.dataset == 'robotcar':
             # fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
-            fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
-            h, w = 960, 1280
-            scale_x = 320.0/w
-            scale_y = 192.0/h
+            # fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
+            # h, w = 960, 1280
+            # scale_x = 320.0/w
+            # scale_y = 192.0/h
             h, w = 192, 320
+        else:
+            raise NotImplementedError(
+                'The chosen dataset is not implemented! Given: {}'.format(self.dataset))
         self.pixel_coords_hom = set_id_grid(h, w)
-        self.intrinsics = utils.camera_matrix(
-            torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
-        # Resize the intrinsics
-        self.intrinsics[0] *= scale_x
-        self.intrinsics[1] *= scale_y
-        self.intrinsics_inv = self.intrinsics.inverse()  # [4,4]
+        # self.intrinsics = utils.camera_matrix(
+        #     torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
+        # # Resize the intrinsics
+        # self.intrinsics[0] *= scale_x
+        # self.intrinsics[1] *= scale_y
+        # self.intrinsics_inv = self.intrinsics.inverse()  # [4,4]
 
     def cam2pixel(self, cam_coords, proj_c2p, dims):
         """Transform coordinates in the camera frame to the pixel frame.
@@ -77,7 +119,7 @@ class MonoWarper(object):
         pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
         return pixel_coords.reshape(-1, h, w, 2), Z.reshape(-1, 1, h, w)
 
-    def pixel2cam(self, depth):
+    def pixel2cam(self, depth, intrinsics_inv):
         """Transform coordinates in the pixel frame to the camera frame.
         Args:
             depth: depth maps -- [B, 1, H, W]
@@ -88,23 +130,26 @@ class MonoWarper(object):
         # b, c, h, w = depth.size()
         # pixel_coords = set_id_grid(depth)
         cam_coords = torch.matmul(
-            self.intrinsics_inv, torch.transpose(self.pixel_coords_hom, 0, 1))  # [4,N]
+            intrinsics_inv, torch.transpose(self.pixel_coords_hom, 0, 1))  # [B,4,N]
         # cam_coords = torch.transpose(cam_coords, 1, 2)  # [B,N,4]
         # Convert from homogenous coordinates
         # cam_coords = tgm.convert_points_from_homogeneous(
         #     cam_coords)  # [B,N,3]
         # cam_coords = torch.transpose(cam_coords, 1, 2)  # [B,4,N]
         # cam_coords = cam_coords.reshape(b, 3, h, w)
-        cam_coords = cam_coords.repeat(depth.shape[0], 1, 1)  # [B, 4, N]
+        # cam_coords = cam_coords.repeat(depth.shape[0], 1, 1)  # [B, 4, N]
         # Note: slicing returns a view of the tensor.
         # Just a work around for cam_coords[:, :3, :] = cam_coords[:, :3, :] * depth.flatten(2),
         # which causes illegal in-place operation for multiplication.
-        cam_coords_xyz = cam_coords[:, :3, :]
-        cam_coords_xyz = cam_coords_xyz * \
+        # cam_coords_xyz = cam_coords[:, :3, :]
+        # cam_coords_xyz = cam_coords_xyz * \
+        #     depth.flatten(2)  # [B,3,N] * [B,1,N] = [B,3,N]
+        cam_coords = cam_coords * \
             depth.flatten(2)  # [B,3,N] * [B,1,N] = [B,3,N]
+        cam_coords[:, 3, :] = 1.0
         return cam_coords  # [B,4,N]
 
-    def inverse_warp(self, ref_img, tgt_depth, ref_depth, pose):
+    def inverse_warp(self, ref_img, tgt_depth, ref_depth, pose, intrinsics):
         """
         Inverse warp a source image to the target image plane.
         Args:
@@ -123,18 +168,19 @@ class MonoWarper(object):
         utils.check_sizes(tgt_depth, 'tgt_depth', 'B1HW')
         utils.check_sizes(ref_depth, 'ref_depth', 'B1HW')
         utils.check_sizes(pose, 'pose', 'B6')
-        utils.check_sizes(self.intrinsics, 'intrinsics', '44')
+        utils.check_sizes(intrinsics, 'intrinsics', 'B44')
 
         _, _, img_height, img_width = ref_img.size()
 
-        cam_coords = self.pixel2cam(tgt_depth)  # [B,3,H,W]
+        cam_coords = self.pixel2cam(
+            tgt_depth, intrinsics.inverse())  # [B,3,H,W]
 
         # Convert 6 DoF pose to 4x4 transformation matrix
         # T*R in homogenous coordinates [B,4,4]
         pose_mat = tgm.rtvec_to_pose(pose)
 
         # Get projection matrix for tgt camera frame to source pixel frame
-        proj_cam_to_src_pixel = self.intrinsics @ pose_mat  # [B, 4, 4]
+        proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 4, 4]
 
         # rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
         src_pixel_coords, computed_depth = self.cam2pixel(
@@ -209,11 +255,12 @@ class MonoWarper(object):
         return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
     def compute_photo_and_geometry_loss(
-            self, tgt_img, ref_imgs, tgt_depth, ref_depths, poses, poses_inv):
+            self, tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv):
 
         photo_loss = 0
         geometry_loss = 0
-        ssim_loss = 0
+        # ssim_loss = 0
+        ssim_loss = torch.Tensor([0]).to(device)
 
         num_scales = min(len(tgt_depth), self.max_scales)
         for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
@@ -236,7 +283,7 @@ class MonoWarper(object):
                 b, _, h, w = tgt_img.size()
                 tgt_img_scaled = tgt_img
                 ref_img_scaled = ref_img
-                # intrinsic_scaled = intrinsics
+                intrinsics_scaled = intrinsics
                 if s == 0:
                     tgt_depth_scaled = tgt_depth[s]
                     ref_depth_scaled = ref_depth[s]
@@ -246,14 +293,14 @@ class MonoWarper(object):
                     ref_depth_scaled = F.interpolate(
                         ref_depth[s], (h, w), mode='nearest')
 
-                photo_loss1, geometry_loss1, ssim_loss1, ref_img_warped, valid_mask = self.compute_pairwise_loss(
-                    tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose)
-                photo_loss2, geometry_loss2, ssim_loss2, _, _ = self.compute_pairwise_loss(
-                    ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv)
+                photo_loss1, geometry_loss1, ref_img_warped, valid_mask = self.compute_pairwise_loss(
+                    tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose, intrinsics_scaled)
+                photo_loss2, geometry_loss2, _, _ = self.compute_pairwise_loss(
+                    ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv, intrinsics_scaled)
 
                 photo_loss += (photo_loss1 + photo_loss2)
                 geometry_loss += (geometry_loss1 + geometry_loss2)
-                ssim_loss += (ssim_loss1 + ssim_loss2)
+                # ssim_loss += (ssim_loss1 + ssim_loss2)
 
         smooth_loss = utils.compute_smooth_loss(
             tgt_depth, tgt_img, ref_depths, ref_imgs)
@@ -261,13 +308,13 @@ class MonoWarper(object):
 
         return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
-    def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose):
+    def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsics):
 
         ref_img_warped, valid_mask, projected_depth, computed_depth = self.inverse_warp(
-            ref_img, tgt_depth, ref_depth, pose)
+            ref_img, tgt_depth, ref_depth, pose, intrinsics)
 
         # Robotcar bottom pixels are occluded
-        valid_mask[..., -50:, :] = 0
+        # valid_mask[..., -50:, :] = 0
 
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
 
@@ -280,13 +327,14 @@ class MonoWarper(object):
             valid_mask = auto_mask * valid_mask
 
         if self.with_ssim == True:
+            # ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
             ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
             # diff_img = (0.60 * diff_img + 0.40 * ssim_map)
-            ssim_loss = torch.Tensor([0]).to(device)
+            # ssim_loss = torch.Tensor([0]).to(device)
             # ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
             diff_img = (0.15 * diff_img + 0.85 * ssim_map)
-        else:
-            ssim_loss = torch.Tensor([0]).to(device)
+        # else:
+            # ssim_loss = torch.Tensor([0]).to(device)
 
         if self.with_mask == True:
             weight_mask = (1 - diff_depth)
@@ -296,21 +344,30 @@ class MonoWarper(object):
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
         geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)
 
-        return reconstruction_loss, geometry_consistency_loss, ssim_loss, ref_img_warped, valid_mask
+        return reconstruction_loss, geometry_consistency_loss, ref_img_warped, valid_mask
 
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
     mask = valid_mask.expand_as(diff)
-    # thr_mask = diff.numel()//10  # at least a third of the input must be valid
-    thr_mask = 1e4
-    if mask.sum() > thr_mask:
+    if mask.sum() > 10000:
         mean_value = (diff * mask).sum() / mask.sum()
     else:
         mean_value = torch.tensor(0).float().to(device)
-        # mean_value = torch.tensor(diff.numel()*10).float().to(device)
-        mean_value = diff.sum() / (mask.sum()+1e-12)
     return mean_value
+
+# # compute mean value given a binary mask
+# def mean_on_mask(diff, valid_mask):
+#     mask = valid_mask.expand_as(diff)
+#     # thr_mask = diff.numel()//10  # at least a third of the input must be valid
+#     thr_mask = 1e4
+#     if mask.sum() > thr_mask:
+#         mean_value = (diff * mask).sum() / mask.sum()
+#     else:
+#         mean_value = torch.tensor(0).float().to(device)
+#         # mean_value = torch.tensor(diff.numel()*10).float().to(device)
+#         mean_value = diff.sum() / (mask.sum()+1e-12)
+#     return mean_value
 
 
 def set_id_grid(h, w):

@@ -3,6 +3,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import utils_warp as utils
+
+
 pixel_coords = None
 
 device = torch.device(
@@ -152,7 +155,7 @@ class MonoWarper(object):
     """Inverse warper class
     """
 
-    def __init__(self, max_scales, dataset, batch_size, with_auto_mask=True, with_ssim=True, with_mask=True, padding_mode='zeros'):
+    def __init__(self, max_scales, dataset, with_auto_mask=True, with_ssim=True, with_mask=True, padding_mode='zeros'):
         global device
         self.dataset = dataset
         self.padding_mode = padding_mode
@@ -160,38 +163,8 @@ class MonoWarper(object):
         self.with_mask = with_mask
         self.with_auto_mask = with_auto_mask
         self.max_scales = max_scales
-        if self.dataset == 'radiate':
-            fx = 3.379191448899105e+02
-            fy = 3.386957068549526e+02
-            cx = 3.417366010946575e+02
-            cy = 2.007359735313929e+02
-            h, w = 376, 672
-            scale_x = 640.0/w
-            scale_y = 384.0/h
-            h, w = 384, 640
-        elif self.dataset == 'robotcar':
-            # fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
-            fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
-            h, w = 960, 1280
-            scale_x = 640.0/w
-            scale_y = 384.0/h
-            h, w = 384, 640
-        #self.pixel_coords_hom = set_id_grid(h, w)
-        self.intrinsics = torch.eye(3, device=device, dtype=torch.float) + 1e-6
-        # k = k.view(1, 4, 4).repeat(pinholes.shape[0], 1, 1)  # Nx4x4
-        # fill output with pinhole values
-        self.intrinsics[..., 0, 0] = fx
-        self.intrinsics[..., 0, 2] = cx
-        self.intrinsics[..., 1, 1] = fy
-        self.intrinsics[..., 1, 2] = cy
-        # Resize the intrinsics
-        self.intrinsics[0] *= scale_x
-        self.intrinsics[1] *= scale_y
-        self.intrinsics_inv = self.intrinsics.inverse()  # [4,4]
-        self.intrinsics = self.intrinsics.repeat(batch_size, 1, 1)
-        self.intrinsics_inv = self.intrinsics_inv.repeat(batch_size, 1, 1)
 
-    def pixel2cam(self, depth):
+    def pixel2cam(self, depth, intrinsics_inv):
         global pixel_coords
         """Transform coordinates in the pixel frame to the camera frame.
         Args:
@@ -205,75 +178,9 @@ class MonoWarper(object):
             set_id_grid(depth)
         current_pixel_coords = pixel_coords[:, :, :h, :w].expand(
             b, 3, h, w).reshape(b, 3, -1)  # [B, 3, H*W]
-        cam_coords = (self.intrinsics_inv @
+        cam_coords = (intrinsics_inv @
                       current_pixel_coords).reshape(b, 3, h, w)
         return cam_coords * depth.unsqueeze(1)
-
-    def cam2pixel(self, cam_coords, proj_c2p_rot, proj_c2p_tr):
-        """Transform coordinates in the camera frame to the pixel frame.
-        Args:
-            cam_coords: pixel coordinates defined in the first camera coordinates system -- [B, 4, H, W]
-            proj_c2p_rot: rotation matrix of cameras -- [B, 3, 4]
-            proj_c2p_tr: translation vectors of cameras -- [B, 3, 1]
-        Returns:
-            array of [-1,1] coordinates -- [B, 2, H, W]
-        """
-        b, _, h, w = cam_coords.size()
-        cam_coords_flat = cam_coords.reshape(b, 3, -1)  # [B, 3, H*W]
-        if proj_c2p_rot is not None:
-            pcoords = proj_c2p_rot @ cam_coords_flat
-        else:
-            pcoords = cam_coords_flat
-
-        if proj_c2p_tr is not None:
-            pcoords = pcoords + proj_c2p_tr  # [B, 3, H*W]
-        X = pcoords[:, 0]
-        Y = pcoords[:, 1]
-        Z = pcoords[:, 2].clamp(min=1e-3)
-
-        # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W]
-        X_norm = 2*(X / Z)/(w-1) - 1
-        Y_norm = 2*(Y / Z)/(h-1) - 1  # Idem [B, H*W]
-
-        pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
-        return pixel_coords.reshape(b, h, w, 2)
-
-    def inverse_warp(self, img, depth, pose, rotation_mode='euler'):
-        """
-        Inverse warp a source image to the target image plane.
-        Args:
-            img: the source image (where to sample pixels) -- [B, 3, H, W]
-            depth: depth map of the target image -- [B, H, W]
-            pose: 6DoF pose parameters from target to source -- [B, 6]
-            intrinsics: camera intrinsic matrix -- [B, 3, 3]
-        Returns:
-            projected_img: Source image warped to the target image plane
-            valid_points: Boolean array indicating point validity
-        """
-        check_sizes(img, 'img', 'B3HW')
-        check_sizes(depth, 'depth', 'BHW')
-        check_sizes(pose, 'pose', 'B6')
-        check_sizes(self.intrinsics, 'intrinsics', 'B33')
-
-        batch_size, _, img_height, img_width = img.size()
-
-        cam_coords = self.pixel2cam(depth)  # [B,3,H,W]
-
-        pose_mat = pose_vec2mat(pose, rotation_mode)  # [B,3,4]
-
-        # Get projection matrix for tgt camera frame to source pixel frame
-        proj_cam_to_src_pixel = self.intrinsics @ pose_mat  # [B, 3, 4]
-
-        rot, tr = proj_cam_to_src_pixel[:, :,
-                                        :3], proj_cam_to_src_pixel[:, :, -1:]
-        src_pixel_coords = self.cam2pixel(
-            cam_coords, rot, tr)  # [B,H,W,2]
-        projected_img = F.grid_sample(
-            img, src_pixel_coords, padding_mode=self.padding_mode)
-
-        valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
-
-        return projected_img, valid_points
 
     def cam2pixel2(self, cam_coords, proj_c2p_rot, proj_c2p_tr):
         """Transform coordinates in the camera frame to the pixel frame.
@@ -310,7 +217,7 @@ class MonoWarper(object):
         pixel_coords = torch.stack([X_norm, Y_norm], dim=2)  # [B, H*W, 2]
         return pixel_coords.reshape(b, h, w, 2), Z.reshape(b, 1, h, w)
 
-    def inverse_warp2(self, img, depth, ref_depth, pose):
+    def inverse_warp2(self, img, depth, ref_depth, pose, intrinsics):
         """
         Inverse warp a source image to the target image plane.
         Args:
@@ -329,17 +236,17 @@ class MonoWarper(object):
         check_sizes(depth, 'depth', 'B1HW')
         check_sizes(ref_depth, 'ref_depth', 'B1HW')
         check_sizes(pose, 'pose', 'B6')
-        check_sizes(self.intrinsics, 'intrinsics', 'B33')
+        check_sizes(intrinsics, 'intrinsics', 'B33')
 
         batch_size, _, img_height, img_width = img.size()
 
         cam_coords = self.pixel2cam(depth.squeeze(
-            1))  # [B,3,H,W]
+            1), intrinsics.inverse())  # [B,3,H,W]
 
         pose_mat = pose_vec2mat(pose)  # [B,3,4]
 
         # Get projection matrix for tgt camera frame to source pixel frame
-        proj_cam_to_src_pixel = self.intrinsics @ pose_mat  # [B, 3, 4]
+        proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
 
         rot, tr = proj_cam_to_src_pixel[:, :,
                                         :3], proj_cam_to_src_pixel[:, :, -1:]
@@ -359,7 +266,7 @@ class MonoWarper(object):
     # photometric loss
     # geometry consistency loss
 
-    def compute_photo_and_geometry_loss(self, tgt_img, ref_imgs, tgt_depth, ref_depths, poses, poses_inv):
+    def compute_photo_and_geometry_loss(self, tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv):
 
         photo_loss = 0
         geometry_loss = 0
@@ -385,7 +292,7 @@ class MonoWarper(object):
                 b, _, h, w = tgt_img.size()
                 tgt_img_scaled = tgt_img
                 ref_img_scaled = ref_img
-                #intrinsic_scaled = self.intrinsics
+                intrinsics_scaled = intrinsics
                 if s == 0:
                     tgt_depth_scaled = tgt_depth[s]
                     ref_depth_scaled = ref_depth[s]
@@ -396,25 +303,25 @@ class MonoWarper(object):
                         ref_depth[s], (h, w), mode='nearest')
 
                 photo_loss1, geometry_loss1, ref_img_warped, valid_mask = self.compute_pairwise_loss(
-                    tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose)
+                    tgt_img_scaled, ref_img_scaled, tgt_depth_scaled, ref_depth_scaled, pose, intrinsics_scaled)
                 photo_loss2, geometry_loss2, _, _ = self.compute_pairwise_loss(
-                    ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv)
+                    ref_img_scaled, tgt_img_scaled, ref_depth_scaled, tgt_depth_scaled, pose_inv, intrinsics_scaled)
 
                 photo_loss += (photo_loss1 + photo_loss2)
                 geometry_loss += (geometry_loss1 + geometry_loss2)
 
-        smooth_loss = self.compute_smooth_loss(
+        smooth_loss = utils.compute_smooth_loss(
             tgt_depth, tgt_img, ref_depths, ref_imgs)
 
         ssim_loss = torch.Tensor([0]).to(device)
 
         return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
 
-    def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose):
+    def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsics):
         global device
 
         ref_img_warped, valid_mask, projected_depth, computed_depth = self.inverse_warp2(
-            ref_img, tgt_depth, ref_depth, pose)
+            ref_img, tgt_depth, ref_depth, pose,  intrinsics)
 
         diff_img = (tgt_img - ref_img_warped).abs().clamp(0, 1)
 
@@ -451,34 +358,3 @@ class MonoWarper(object):
             mean_value = torch.tensor(0).float().to(device)
             #mean_value = diff.sum() / (mask.sum()+1e-12)
         return mean_value
-
-    def compute_smooth_loss(self, tgt_depth, tgt_img, ref_depths, ref_imgs):
-        def get_smooth_loss(disp, img):
-            """Computes the smoothness loss for a disparity image
-            The color image is used for edge-aware smoothness
-            """
-
-            # normalize
-            mean_disp = disp.mean(2, True).mean(3, True)
-            norm_disp = disp / (mean_disp + 1e-7)
-            disp = norm_disp
-
-            grad_disp_x = torch.abs(disp[:, :, :, :-1] - disp[:, :, :, 1:])
-            grad_disp_y = torch.abs(disp[:, :, :-1, :] - disp[:, :, 1:, :])
-
-            grad_img_x = torch.mean(
-                torch.abs(img[:, :, :, :-1] - img[:, :, :, 1:]), 1, keepdim=True)
-            grad_img_y = torch.mean(
-                torch.abs(img[:, :, :-1, :] - img[:, :, 1:, :]), 1, keepdim=True)
-
-            grad_disp_x *= torch.exp(-grad_img_x)
-            grad_disp_y *= torch.exp(-grad_img_y)
-
-            return grad_disp_x.mean() + grad_disp_y.mean()
-
-        loss = get_smooth_loss(tgt_depth[0], tgt_img)
-
-        for ref_depth, ref_img in zip(ref_depths, ref_imgs):
-            loss += get_smooth_loss(ref_depth[0], ref_img)
-
-        return loss

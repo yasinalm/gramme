@@ -443,10 +443,10 @@ def inv_rigid_tform(pose):
 
     inv_pose = pose.clone()
 
-    R = pose[..., :3, :3].transpose(-2, -1) # [..., 3,3]
-    T = -pose[..., :3, 3:4] # [..., 3,1]
-    T = R @ T # [..., 3,1]
-    
+    R = pose[..., :3, :3].transpose(-2, -1)  # [..., 3,3]
+    T = -pose[..., :3, 3:4]  # [..., 3,1]
+    T = R @ T  # [..., 3,1]
+
     inv_pose[..., :3, :3] = R
     inv_pose[..., :3, 3:4] = T
     return inv_pose
