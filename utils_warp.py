@@ -1,5 +1,6 @@
 from __future__ import division
 import torch
+import numpy as np
 
 
 def compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs):
@@ -64,3 +65,15 @@ def camera_matrix(pinholes, eps=1e-6):
     k[..., 1, 1] = pinholes[2]  # fy
     k[..., 1, 2] = pinholes[3]  # cy
     return k
+
+
+def get_intrinsics_matrix(dataset):
+    intrinsics = np.eye(3, dtype=np.float32)+1e-6
+    if dataset == 'robotcar':
+        fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
+        intrinsics[0, 0] = fx
+        intrinsics[0, 2] = cx
+        intrinsics[1, 1] = fy
+        intrinsics[1, 2] = cy
+
+    return intrinsics

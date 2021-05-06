@@ -6,3 +6,5 @@ tensorboardX
 blessings
 progressbar2
 scikit-image
+seaborn
+tqdm

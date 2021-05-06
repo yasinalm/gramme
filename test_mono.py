@@ -1,5 +1,5 @@
 from radar_eval.eval_utils import getTraj
-from datasets.sequence_folders import SequenceFolder
+from datasets.sequence_folders_mono import SequenceFolder
 import custom_transforms_mono as T
 import utils
 from inverse_warp_vo import MonoWarper
@@ -16,6 +16,10 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser(description='Script for visualizing depth map and masks',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('data', metavar='DIR', help='path to dataset')
+# parser.add_argument('--pretrained-disp', required=True, dest='pretrained_disp',
+#                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
+parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
+                    metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N',
@@ -38,10 +42,6 @@ parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
 parser.add_argument("--sequence", default='2019-01-10-14-36-48-radar-oxford-10k-partial',
                     type=str, help="sequence to test")
-# parser.add_argument('--pretrained-disp', required=True, dest='pretrained_disp',
-#                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
-parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
-                    metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--with-gt', action='store_true',
                     help='Evaluate with ground-truth')
 
@@ -98,8 +98,8 @@ def main():
     # create model
     print("=> creating model")
     # disp_net = models.DispResNet(
-    #     args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNetMono(18, args.with_pretrain).to(device)
+    #     args.resnet_layers, False).to(device)
+    pose_net = models.PoseResNetMono(18, False).to(device)
 
     # load parameters
     # print("=> using pre-trained weights for DispResNet")

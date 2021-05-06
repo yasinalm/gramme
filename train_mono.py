@@ -17,7 +17,7 @@ import utils
 from radar_eval.eval_utils import getTraj
 from datasets.sequence_folders_mono import SequenceFolder
 #from datasets.pair_folders import PairFolder
-from inverse_warp_vo import MonoWarper
+from inverse_warp_vo2 import MonoWarper
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -178,7 +178,7 @@ def main():
     if args.epoch_size == 0:
         args.epoch_size = len(train_loader)
 
-    # create model
+    # create warper
     print("=> creating loss object")
     mono_warper = MonoWarper(
         max_scales=args.num_scales,

@@ -8,6 +8,8 @@ from PIL import Image
 from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
 from .robotcar_camera.camera_model import CameraModel
 
+import utils_warp as utils
+
 
 class SequenceFolder(data.Dataset):
     """A sequence data loader where the files are arranged in this way:
@@ -20,13 +22,14 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, seed=None, train=True, sequence_length=3, transform=None, skip_frames=1):
+    def __init__(self, root, dataset='robotcar', seed=None, train=True, sequence_length=3, transform=None, skip_frames=1):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
+        self.dataset = dataset
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder[:-1]
-                       for folder in open(scene_list_path)]
+        self.scenes = [self.root/folder.strip()
+                       for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.transform = transform
         self.train = train
         self.k = skip_frames
@@ -42,12 +45,7 @@ class SequenceFolder(data.Dataset):
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
-            intrinsics = np.eye(4, dtype=np.float32)+1e-6
-            intrinsics[0, 0] = fx
-            intrinsics[0, 2] = cx
-            intrinsics[1, 1] = fy
-            intrinsics[1, 2] = cy
+            intrinsics = utils.get_intrinsics_matrix(self.dataset)
             #imgs = sorted(scene.files('*.png'))
             imgs = sorted(list((scene/'stereo/left').glob('*.png')))
 

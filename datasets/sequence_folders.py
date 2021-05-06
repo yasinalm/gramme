@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
 from .robotcar_camera.camera_model import CameraModel
+import utils_warp as utils
 import cv2
 from pathlib import Path
 from typing import List
@@ -73,6 +74,7 @@ class SequenceFolder(data.Dataset):
         self.shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
+            intrinsics = utils.get_intrinsics_matrix(self.dataset)
             # f_type = '*.csv' if self.dataset == 'hand' else '*.png'
             f_type = '*.png'
             imgs = sorted(list((scene/self.radar_folder).glob(f_type)))
@@ -152,6 +154,7 @@ class SequenceFolder(data.Dataset):
                         sample['vo_ref_imgs'] = [
                             # [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
                             imgs_mono[ref] for ref in mono_matches[1:]]
+                        sample['intrinsics'] = intrinsics
                     else:
                         continue
 
@@ -288,13 +291,17 @@ class SequenceFolder(data.Dataset):
                 vo_ref_imgs = [self.load_mono_img_as_float(
                     ref_img) for ref_img in sample['vo_ref_imgs']]
                 if self.mono_transform:
-                    vo_tgt_img = self.mono_transform(vo_tgt_img)
-                    vo_ref_imgs = [
-                        self.mono_transform(ref_img) for ref_img in vo_ref_imgs]
+                    imgs, intrinsics = self.mono_transform(
+                        [tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
+                    vo_tgt_img = imgs[0]
+                    vo_ref_imgs = imgs[1:]
+                    # vo_tgt_img = self.mono_transform(vo_tgt_img)
+                    # vo_ref_imgs = [
+                    #     self.mono_transform(ref_img) for ref_img in vo_ref_imgs]
             else:
                 vo_tgt_img = []
                 vo_ref_imgs = []
-            return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs
+            return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
         else:
             return tgt_img, ref_imgs
 

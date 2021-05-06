@@ -15,14 +15,14 @@ from torchvision.transforms.transforms import Resize
 
 import models
 
+import custom_transforms_mono as T
 import custom_transforms
 import utils
 from datasets.sequence_folders import SequenceFolder
 # from datasets.pair_folders import PairFolder
 from inverse_warp import Warper
-from inverse_warp_vo import MonoWarper
+from inverse_warp_vo2 import MonoWarper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
-# from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -70,6 +70,10 @@ parser.add_argument('--resnet-layers',  type=int, default=18,
                     choices=[18, 50], help='number of ResNet layers for depth estimation.')
 parser.add_argument('--num-scales', '--number-of-scales',
                     type=int, help='the number of scales', metavar='W', default=1)
+parser.add_argument('--img-height', type=int,
+                    help='resized mono image height', metavar='W', default=192)
+parser.add_argument('--img-width', type=int,
+                    help='resized mono image width', metavar='W', default=320)
 parser.add_argument('-p', '--photo-loss-weight', type=float,
                     help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-f', '--fft-loss-weight', type=float,
@@ -184,29 +188,40 @@ def main():
 
     mono_transform = None
     if args.with_vo:
-        mono_transform = [transforms.ToTensor()]
-        # Resize RADIATE dataset to make it divisible by 64, which is needed in resnet_encoder.
-        # if args.dataset == 'radiate':
-        #     imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
-        #     imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
-        #     normalize = transforms.Normalize(mean=imagenet_mean,
-        #                                      std=imagenet_std)
-        #     mono_transform.append(transforms.Resize((384, 640)))
-        #     mono_transform.append(normalize)
-        # elif args.dataset == 'robotcar':
-        #     imagenet_mean = utils.imagenet_mean
-        #     imagenet_std = utils.imagenet_std
-        #     normalize = transforms.Normalize(mean=imagenet_mean,
-        #                                      std=imagenet_std)
-        #     mono_transform.append(transforms.Resize((384, 640)))
-        #     mono_transform.append(normalize)
-        imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
-        imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
-        normalize = transforms.Normalize(mean=imagenet_mean,
-                                         std=imagenet_std)
-        mono_transform.append(transforms.Resize((192, 320)))
-        mono_transform.append(normalize)
-        mono_transform = transforms.Compose(mono_transform)
+        # mono_transform = [transforms.ToTensor()]
+        # # Resize RADIATE dataset to make it divisible by 64, which is needed in resnet_encoder.
+        # # if args.dataset == 'radiate':
+        # #     imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
+        # #     imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
+        # #     normalize = transforms.Normalize(mean=imagenet_mean,
+        # #                                      std=imagenet_std)
+        # #     mono_transform.append(transforms.Resize((384, 640)))
+        # #     mono_transform.append(normalize)
+        # # elif args.dataset == 'robotcar':
+        # #     imagenet_mean = utils.imagenet_mean
+        # #     imagenet_std = utils.imagenet_std
+        # #     normalize = transforms.Normalize(mean=imagenet_mean,
+        # #                                      std=imagenet_std)
+        # #     mono_transform.append(transforms.Resize((384, 640)))
+        # #     mono_transform.append(normalize)
+        # imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
+        # imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
+        # normalize = transforms.Normalize(mean=imagenet_mean,
+        #                                  std=imagenet_std)
+        # mono_transform.append(transforms.Resize((192, 320)))
+        # mono_transform.append(normalize)
+        # mono_transform = transforms.Compose(mono_transform)
+
+        imagenet_mean = utils.imagenet_mean
+        imagenet_std = utils.imagenet_std
+        img_size = (args.img_height, args.img_width)
+        mono_transform = T.Compose([
+            T.ToPILImage(),
+            T.CropBottom(),
+            T.Resize(img_size),
+            T.ToTensor(),
+            T.Normalize(imagenet_mean, imagenet_std)
+        ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     ro_params = {
@@ -291,8 +306,8 @@ def main():
     if args.with_vo:
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
-        vo_pose_net = models.PoseResNetv2(
-            args.dataset, args.resnet_layers, args.with_pretrain,
+        vo_pose_net = models.PoseResNetMono(
+            args.resnet_layers, args.with_pretrain,
             is_vo=True).to(device)
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
@@ -448,8 +463,10 @@ def train(
             # num_scales = 4, num_match=3
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
+            intrinsics = input[4]
             vo_tgt_img = vo_tgt_img.to(device)
             vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
+            intrinsics = intrinsics.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
@@ -480,7 +497,7 @@ def train(
             # It calculates the triple-wise losses of the sequence.
             (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
              mono_ref_img_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
-                vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
+                vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
             vo_photo_loss = 1.0*vo_photo_loss
