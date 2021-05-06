@@ -94,7 +94,7 @@ parser.add_argument('--masknet', type=str,
                     choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
 parser.add_argument('--with-vo', action='store_true',
                     help='with VO fusion')
-parser.add_argument('--pretrained-depth', dest='pretrained_depth',
+parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained DispResNet model')
 parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=None,
                     metavar='PATH', help='path to pre-trained VO Pose net model')
@@ -307,8 +307,7 @@ def main():
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
         vo_pose_net = models.PoseResNetMono(
-            args.resnet_layers, args.with_pretrain,
-            is_vo=True).to(device)
+            args.resnet_layers, args.with_pretrain).to(device)
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
@@ -324,9 +323,9 @@ def main():
         pose_net.load_state_dict(weights['state_dict'], strict=False)
 
     if args.with_vo:
-        if args.pretrained_depth:
+        if args.pretrained_disp:
             print("=> using pre-trained weights for VO DepthResNet")
-            weights = torch.load(args.pretrained_depth)
+            weights = torch.load(args.pretrained_disp)
             disp_net.load_state_dict(weights['state_dict'], strict=False)
         if args.pretrained_vo_pose:
             print("=> using pre-trained weights for VO PoseNet")

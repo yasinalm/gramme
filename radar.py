@@ -1,7 +1,11 @@
 
 from typing import AnyStr, Tuple
 import numpy as np
-import cv2
+from PIL import Image
+#import cv2
+
+import torch.nn.functional as F
+import torch
 
 
 def load_radar(example_path: AnyStr, dataset: AnyStr) -> np.ndarray:
@@ -14,7 +18,9 @@ def load_radar(example_path: AnyStr, dataset: AnyStr) -> np.ndarray:
 
     skip_header = 11 if dataset == 'robotcar' else 0
 
-    raw_example_data = cv2.imread(example_path, cv2.IMREAD_GRAYSCALE)
+    raw_example_data = Image.open(example_path)
+    raw_example_data = np.array(raw_example_data)
+    # raw_example_data = cv2.imread(example_path, cv2.IMREAD_GRAYSCALE)
     if dataset == 'radiate' or dataset == 'hand':
         raw_example_data = np.transpose(raw_example_data)
     fft_data = raw_example_data[:, skip_header:].astype(
@@ -143,7 +149,21 @@ def radar_polar_to_cartesian(angleResolutionInRad: float, fft_data: np.ndarray, 
         fft_data = np.concatenate((fft_data[-1:], fft_data, fft_data[:1]), 0)
         sample_v = sample_v + 1
 
-    polar_to_cart_warp = np.stack((sample_u, sample_v), -1)
-    cart_img = np.expand_dims(
-        cv2.remap(fft_data, polar_to_cart_warp, None, cv2.INTER_LINEAR), 0)
+    # polar_to_cart_warp = np.stack((sample_u, sample_v), -1)
+    # cart_img = np.expand_dims(
+    #     cv2.remap(fft_data, polar_to_cart_warp, None, cv2.INTER_LINEAR), 0)
+
+    # Alternative to cv2.remap
+    h, w = fft_data.shape[:2]
+    polar_to_cart_warp = np.stack((2*sample_u/w-1, 2*sample_v/h-1), -1)
+    # print(polar_to_cart_warp)
+    # [H,W,C] -> [C,H,W] for F.grid_map
+    fft_data = np.squeeze(fft_data)[None, ...]
+    # print(polar_to_cart_warp.shape)
+
+    # grid_sample need [N,C,H,W] format
+    cart_img = F.grid_sample(torch.Tensor(fft_data[None, ...]), torch.Tensor(
+        polar_to_cart_warp[None, ...])).numpy()
+    cart_img = np.squeeze(cart_img, axis=0)  # Remove N
+
     return cart_img

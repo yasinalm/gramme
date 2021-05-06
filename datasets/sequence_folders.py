@@ -6,7 +6,7 @@ from PIL import Image
 from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
 from .robotcar_camera.camera_model import CameraModel
 import utils_warp as utils
-import cv2
+# import cv2
 from pathlib import Path
 from typing import List
 import random
@@ -179,11 +179,14 @@ class SequenceFolder(data.Dataset):
         if self.dataset == 'robotcar':
             img = demosaic(img, 'gbrg')
             img = self.cam_model.undistort(img)
-        img = img.astype(np.float32) / 255.
+        img = img.astype(np.uint8)
+        # img = img.astype(np.float32) / 255.
         return img
 
     def load_cart_as_float(self, path):
-        raw_data = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        raw_data = Image.open(path)
+        raw_data = np.array(raw_data)
+        # raw_data = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
         cart_img = raw_data.astype(np.float32)[np.newaxis, :, :] / 255.
         cart_img[cart_img < 0.2] = 0
 
@@ -292,7 +295,7 @@ class SequenceFolder(data.Dataset):
                     ref_img) for ref_img in sample['vo_ref_imgs']]
                 if self.mono_transform:
                     imgs, intrinsics = self.mono_transform(
-                        [tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
+                        [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
                     vo_tgt_img = imgs[0]
                     vo_ref_imgs = imgs[1:]
                     # vo_tgt_img = self.mono_transform(vo_tgt_img)

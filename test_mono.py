@@ -131,14 +131,14 @@ def main():
         torch.cuda.synchronize()
         t_del += time.time() - inf_t0
 
-        all_poses.append(poses)
-        all_inv_poses.append(poses_inv)
+        all_poses.append(torch.stack(poses))
+        all_inv_poses.append(torch.stack(poses_inv))
 
     # Total time for forward and backward poses
     print(
         'Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2))))
 
-    if args.with_gt is not None:
+    if args.with_gt:
         print('Mono evaluation with GT is not supported yet!')
         # ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
