@@ -124,7 +124,8 @@ class DispResNet(nn.Module):
         features = self.encoder(x)
         outputs = self.decoder(features)
 
-        if self.training:
-            return outputs
-        else:
-            return outputs[0]
+        # if self.training:
+        #     return outputs
+        # else:
+        #     return outputs[0]
+        return outputs

@@ -28,6 +28,8 @@ parser = argparse.ArgumentParser(description='SfM',
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
+parser.add_argument('--skip-frames', type=int, metavar='N',
+                    help='gap between frames', default=1)
 parser.add_argument('-j', '--workers', default=4, type=int,
                     metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int,
@@ -84,8 +86,8 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
                     help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
                          ' zeros will null gradients outside target image.'
                          ' border will only null gradients of the coordinate outside (x or y)')
-parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation. \
-                    You need to store it in npy 2D arrays see data/kitti_raw_loader.py for an example')
+parser.add_argument('--gt-file', metavar='DIR',
+                    help='path to ground truth validation file')
 
 
 # best_error = -1
@@ -111,9 +113,7 @@ def main():
     cudnn.benchmark = True
 
     training_writer = SummaryWriter(args.save_path)
-    val_writer = None
-    if args.log_output:
-        val_writer = SummaryWriter(args.save_path/'valid')
+    val_writer = SummaryWriter(args.save_path/'valid')
 
     # Data loading code
     # normalize = custom_transforms.Normalize(mean=[0.45, 0.45, 0.45],
@@ -230,7 +230,7 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader, disp_net, pose_net,
-                           optimizer, args.epoch_size, logger, training_writer, mono_warper)
+                           optimizer, logger, training_writer, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -263,7 +263,7 @@ def main():
     logger.epoch_bar.finish()
 
 
-def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger, train_writer, mono_warper):
+def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_writer, mono_warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -366,7 +366,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         if i % args.print_freq == 0:
             logger.train_writer.write(
                 'Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
-        if i >= epoch_size - 1:
+        if i >= args.epoch_size - 1:
             break
 
         n_iter += 1
@@ -399,14 +399,13 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
-        intrinsics_inv = intrinsics_inv.to(device)
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        all_poses.append(poses)
-        all_inv_poses.append(poses_inv)
+        all_poses.append(torch.stack(poses))
+        all_inv_poses.append(torch.stack(poses_inv))
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
          ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
@@ -439,6 +438,9 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         if i % args.print_freq == 0:
             logger.valid_writer.write(
                 'valid: Time {} Loss {}'.format(batch_time, losses))
+
+        if i > 100:
+            break
 
     if log_outputs:
         # Log predicted relative poses in histograms
