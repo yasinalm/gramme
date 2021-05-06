@@ -60,6 +60,10 @@ parser.add_argument('--resnet-layers',  type=int, default=18,
                     choices=[18, 50], help='number of ResNet layers for depth estimation.')
 parser.add_argument('--num-scales', '--number-of-scales',
                     type=int, help='the number of scales', metavar='W', default=1)
+parser.add_argument('--img-height', type=int,
+                    help='resized image height', metavar='W', default=192)
+parser.add_argument('--img-width', type=int,
+                    help='resized image width', metavar='W', default=320)
 parser.add_argument('-p', '--photo-loss-weight', type=float,
                     help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-s', '--smooth-loss-weight', type=float,
@@ -121,7 +125,7 @@ def main():
     # mean_imgnet, std_imgnet = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
     imagenet_mean = utils.imagenet_mean
     imagenet_std = utils.imagenet_std
-    img_size = (192, 320)
+    img_size = (args.img_height, args.img_width)
     train_transform = T.Compose([
         T.ToPILImage(),
         T.CropBottom(),

@@ -1,9 +1,9 @@
-from radar_eval.eval_odometry import EvalOdom
-from radar_eval.eval_utils import RadarEvalOdom, getTraj
+from radar_eval.eval_utils import getTraj
 from datasets.sequence_folders import SequenceFolder
-import custom_transforms
-import models
+import custom_transforms_mono as T
 import utils
+from inverse_warp_vo import MonoWarper
+import models
 
 import argparse
 import time
@@ -30,28 +30,20 @@ parser.add_argument('--results-dir', default='results', metavar='PATH',
                     help='directory where to save predicted trajectories and stats')
 parser.add_argument('--resnet-layers',  type=int, default=18,
                     choices=[18, 50], help='number of ResNet layers for depth estimation')
-parser.add_argument('--with-pretrain', type=int,  default=0,
-                    help='with or without imagenet pretrain for resnet')
+parser.add_argument('--img-height', type=int,
+                    help='resized image height', metavar='W', default=192)
+parser.add_argument('--img-width', type=int,
+                    help='resized image width', metavar='W', default=320)
 parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
 parser.add_argument("--sequence", default='2019-01-10-14-36-48-radar-oxford-10k-partial',
                     type=str, help="sequence to test")
-# parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
+# parser.add_argument('--pretrained-disp', required=True, dest='pretrained_disp',
+#                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
                     metavar='PATH', help='path to pre-trained Pose net model')
 parser.add_argument('--with-gt', action='store_true',
                     help='Evaluate with ground-truth')
-# parser.add_argument('--gt-file', metavar='DIR', help='path to ground truth validation file')
-parser.add_argument('--radar-format', type=str,
-                    choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
-parser.add_argument('--range-res', type=float,
-                    help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
-parser.add_argument('--angle-res', type=float,
-                    help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
-parser.add_argument('--cart-res', type=float,
-                    help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
-parser.add_argument('--cart-pixels', type=int,
-                    help='Cartesian size in pixels (used for both height and width)', metavar='W', default=501)
 
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -65,51 +57,73 @@ def main():
     results_dir = Path(args.results_dir)/args.sequence
     results_dir.mkdir(parents=True)
 
-    print("=> fetching scenes in '{}'".format(args.data))
-    ds_transform = custom_transforms.Compose(
-        [custom_transforms.ArrayToTensor()])
+    imagenet_mean = utils.imagenet_mean
+    imagenet_std = utils.imagenet_std
+    img_size = (args.img_height, args.img_width)
 
+    valid_transform = T.Compose([
+        T.ToPILImage(),
+        T.CropBottom(),
+        T.Resize(img_size),
+        T.ToTensor(),
+        T.Normalize(imagenet_mean, imagenet_std)
+    ])
+
+    print("=> fetching scenes in '{}'".format(args.data))
     val_set = SequenceFolder(
         args.data,
-        transform=ds_transform,
+        transform=valid_transform,
         seed=args.seed,
         train=False,
-        sequence_length=args.sequence_length,
-        skip_frames=args.skip_frames,
-        dataset=args.dataset,
-        cart_resolution=args.cart_res,
-        cart_pixels=args.cart_pixels,
-        rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad=args.angle_res,
-        sequence=args.sequence,
-        radar_format=args.radar_format
+        sequence_length=args.sequence_length
     )
-
-    val_loader = torch.utils.data.DataLoader(
-        val_set, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
 
     nframes = len(val_set)
     print('{} samples found in {} valid scenes'.format(
         len(val_set), len(val_set.scenes)))
 
+    val_loader = torch.utils.data.DataLoader(
+        val_set, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=True
+    )
+
+    # create model
+    # print("=> creating loss object")
+    # mono_warper = MonoWarper(
+    #     max_scales=args.num_scales,
+    #     dataset=args.dataset,
+    #     # batch_size=args.batch_size,
+    #     padding_mode=args.padding_mode)
+
     # create model
     print("=> creating model")
-    weights_pose = torch.load(args.pretrained_pose)
-    pose_net = models.PoseResNet(
-        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
-    pose_net.load_state_dict(weights_pose['state_dict'], strict=False)
+    # disp_net = models.DispResNet(
+    #     args.resnet_layers, args.with_pretrain).to(device)
+    pose_net = models.PoseResNetMono(18, args.with_pretrain).to(device)
+
+    # load parameters
+    # print("=> using pre-trained weights for DispResNet")
+    # weights = torch.load(args.pretrained_disp)
+    # disp_net.load_state_dict(weights['state_dict'], strict=False)
+
+    print("=> using pre-trained weights for PoseResNet")
+    weights = torch.load(args.pretrained_pose)
+    pose_net.load_state_dict(weights['state_dict'], strict=False)
+
+    # disp_net = torch.nn.DataParallel(disp_net)
+    pose_net = torch.nn.DataParallel(pose_net)
+
     pose_net.eval()
+    # disp_net.eval()
 
     all_poses = []
     all_inv_poses = []
 
     t_del = 0
-    for i, (tgt_img, ref_imgs) in tqdm(enumerate(val_loader)):
-        #(tgt_img, ref_imgs) = val_it.next()
-
+    for i, (tgt_img, ref_imgs, intrinsics) in tqdm(enumerate(val_loader)):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
+        intrinsics = intrinsics.to(device)
 
         torch.cuda.synchronize()
         inf_t0 = time.time()
@@ -124,18 +138,21 @@ def main():
     print(
         'Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2))))
 
-    if args.with_gt:
-        print("=> converting odometry predictions to trajectory")
-        gt_file = Path(args.data, args.sequence, 'gt', 'radar_odometry.csv')
-        ro_eval = RadarEvalOdom(gt_file, args.dataset)
-        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses,
-                                                                                                      args.skip_frames)
-        # save_traj_plots_with_gt(results_dir, f_pred_xyz, ro_eval.gt)
-        print("=> evaluating the trajectory")
-        isPartialSequence = 'partial' in args.sequence
-        odom_eval = EvalOdom(isPartial=isPartialSequence)
-        odom_eval.eval(f_pred.cpu().numpy(),
-                       ro_eval.gt.cpu().numpy(), results_dir)
+    if args.with_gt is not None:
+        print('Mono evaluation with GT is not supported yet!')
+        # ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
+
+        # ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
+        #     all_poses, all_inv_poses, args.skip_frames)
+
+        # if log_outputs:
+        #     # Plot and log aligned trajectory
+        #     fig = utils.traj2Fig_withgt(
+        #         f_pred_xyz.squeeze(), ro_eval.gt[:, :3, 3].squeeze())
+        #     # fig2= utils.traj2Fig(f_pred[:,:3,3])
+        #     val_writer.add_figure('val/fig/traj_aligned_pred', fig, epoch)
+        #     # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
+
     else:
         b_pred_xyz, f_pred_xyz = getTraj(
             all_poses, all_inv_poses, args.skip_frames)
@@ -149,8 +166,9 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))
 
-    return torch.stack(poses), torch.stack(poses_inv)
+    return poses, poses_inv
 
 
 if __name__ == '__main__':
+
     main()

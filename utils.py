@@ -3,6 +3,8 @@ import PIL
 # from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from matplotlib import cm
 import matplotlib.pyplot as plt
+import seaborn as sn
+
 # import shutil
 import numpy as np
 import torch
@@ -10,11 +12,15 @@ import torch
 # import datetime
 # from collections import OrderedDict
 import matplotlib as mpl
-mpl.use('Agg')
+mpl.use('Agg')  # No x-server
 
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 
+# Seaborn settings
+# sns.set(style=\"whitegrid\", rc={\"font.size\":8,\"axes.titlesize\":8,\"axes.labelsize\":5})
+sn.set(style="whitegrid", font_scale=1.5)
+sn.set_palette("bright", n_colors=4, color_codes=True)
 
 # def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
 #     # Construct the list colormap, with interpolated values for higer resolution
@@ -146,6 +152,45 @@ def traj2Fig_withgt(pred_xyz, gt_xyz):
     # fig.canvas.draw()
 
     return fig
+
+
+def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz):
+    plt.figure(figsize=(16, 8))
+    plt.subplot(1, 2, 1)
+    ax = sn.lineplot(x=f_pred_xyz[:, 0].cpu().numpy(
+    ), y=f_pred_xyz[:, 1].cpu().numpy(), sort=False)
+    ax.set(title='Forward Trajectory', xlabel='X (m)', ylabel='Y (m)')
+    plt.subplot(1, 2, 2)
+    ax = sn.lineplot(x=b_pred_xyz[:, 0].cpu().numpy(
+    ), y=b_pred_xyz[:, 1].cpu().numpy(), sort=False, markers=True)
+    ax.set(title='Backward Trajectory', xlabel='X (m)', ylabel='Y (m)')
+
+    # Save fig
+    plt.tight_layout()
+    plt.savefig(results_dir/'ro_pred_nogt.pdf',
+                bbox_inches='tight', pad_inches=0)
+    plt.savefig(results_dir/'ro_pred_nogt.png',
+                bbox_inches='tight', pad_inches=0)
+
+
+def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
+    gt_xyz = gt[:, :3, 3].cpu().numpy()
+    # np_pred = 0.5*gt_xyz + 0.5*pred_xyz[0].cpu().numpy()
+    np_pred = pred_xyz[0].cpu()
+    fig, ax = plt.subplots(figsize=(8, 8))
+    sn.lineplot(x=np_pred[:, 0], y=np_pred[:, 1],
+                sort=False, ax=ax, label='Ours')
+    sn.lineplot(x=gt_xyz[:, 0], y=gt_xyz[:, 1],
+                sort=False, ax=ax, label='Ground-truth')
+
+    ax.set(xlabel='X (m)', ylabel='Y (m)')
+
+    # Save fig
+    plt.tight_layout()
+    plt.savefig(results_dir/'ro_pred_with_gt.pdf',
+                bbox_inches='tight', pad_inches=0)
+    plt.savefig(results_dir/'ro_pred_with_gt.png',
+                bbox_inches='tight', pad_inches=0)
 
 
 def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename='checkpoint.pth.tar'):
