@@ -308,6 +308,7 @@ def main():
             args.resnet_layers, args.with_pretrain).to(device)
         vo_pose_net = models.PoseResNetMono(
             args.resnet_layers, args.with_pretrain).to(device)
+        fuse_net = models.PoseFusionNet()
     pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
@@ -334,6 +335,7 @@ def main():
 
         disp_net = torch.nn.DataParallel(disp_net)
         vo_pose_net = torch.nn.DataParallel(vo_pose_net)
+        fuse_net = torch.nn.DataParallel(fuse_net)
 
     if args.with_masknet:
         mask_net = torch.nn.DataParallel(mask_net)
@@ -341,7 +343,8 @@ def main():
 
     print('=> setting adam solver')
     optim_params = [
-        {'params': pose_net.parameters(), 'lr': args.lr}
+        # {'params': pose_net.parameters(), 'lr': args.lr}
+        {'params': pose_net.parameters(), 'lr': 1e-7}
     ]
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
@@ -350,6 +353,8 @@ def main():
             {'params': disp_net.parameters(), 'lr': args.lr})
         optim_params.append(
             {'params': vo_pose_net.parameters(), 'lr': args.lr})
+        optim_params.append(
+            {'params': fuse_net.parameters(), 'lr': args.lr})
 
     optimizer = torch.optim.Adam(optim_params,
                                  betas=(args.momentum, args.beta),
@@ -374,7 +379,7 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader, mask_net,
-                           pose_net, disp_net, vo_pose_net, optimizer, logger, training_writer, warper, mono_warper)
+                           pose_net, disp_net, vo_pose_net, fuse_net, optimizer, logger, training_writer, warper, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -414,7 +419,7 @@ def main():
 
 def train(
         args, train_loader,
-        mask_net, pose_net, disp_net, vo_pose_net, optimizer,
+        mask_net, pose_net, disp_net, vo_pose_net, fuse_net, optimizer,
         logger, train_writer, warper, mono_warper):
     global n_iter, device
     batch_time = AverageMeter()
@@ -430,7 +435,9 @@ def train(
     if args.with_vo:
         disp_net.train()
         vo_pose_net.train()
-    pose_net.train(False)
+        fuse_net.train()
+    # pose_net.eval()
+    pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
@@ -454,7 +461,8 @@ def train(
             None for i in range(args.sequence_length-1)]
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        ro_poses, ro_poses_inv = compute_pose_with_inv(
+            pose_net, tgt_img, ref_imgs)
 
         vo_loss = 0
 
@@ -487,10 +495,15 @@ def train(
             # poses_inv[..., 2] = r
             # vo_poses_inv[..., 1] = r
 
-            # # t = (poses[..., 3:5] + vo_poses[..., [3, 5]])/2#
-            # vo_poses[..., 5] = -poses[..., 4]
-            # # t = (poses_inv[..., 3:5] + vo_poses_inv[..., [3, 5]])/2#
-            # vo_poses_inv[..., 5] = -poses_inv[..., 4]
+            t = (ro_poses[..., [3, 4]] + 20*vo_poses[..., [1, 2]])/2
+            vo_poses[..., [1, 2]] = t  # -poses[..., 4]
+            t = (ro_poses_inv[..., [3, 4]] +
+                 20*vo_poses_inv[..., [1, 2]])/2
+            vo_poses_inv[..., [1, 2]] = t  # -poses_inv[..., 4]
+
+            # # TODO: duzgun bir basit pose fusion dusun
+            # poses = fuse_net(ro_poses, vo_poses)
+            # poses_inv = fuse_net(ro_poses_inv, vo_poses_inv)
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
@@ -508,7 +521,7 @@ def train(
             # loss += vo_loss
 
         (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
-         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, ro_poses, ro_poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
@@ -551,11 +564,11 @@ def train(
             # train_writer.add_histogram(
             #     'train/radar/rot_pred-y', poses[..., 1], n_iter)
             train_writer.add_histogram(
-                'train/radar/rot_pred-z', poses[..., 2], n_iter)
+                'train/radar/rot_pred-z', ro_poses[..., 2], n_iter)
             train_writer.add_histogram(
-                'train/radar/trans_pred-x', poses[..., 3], n_iter)
+                'train/radar/trans_pred-x', ro_poses[..., 3], n_iter)
             train_writer.add_histogram(
-                'train/radar/trans_pred-y', poses[..., 4], n_iter)
+                'train/radar/trans_pred-y', ro_poses[..., 4], n_iter)
             # train_writer.add_histogram(
             #     'train/radar/trans_pred-z', poses[..., 5], n_iter)
 
@@ -574,11 +587,11 @@ def train(
                     'train/mono/trans_pred-z', vo_poses[..., 5], n_iter)
 
             train_writer.add_image(
-                'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
                 'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/radar/warped_ref_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
                 train_writer.add_image(
                     'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
@@ -586,7 +599,7 @@ def train(
                     'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
                 train_writer.add_image(
-                    'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
+                    'train/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), n_iter)
                 # train_writer.add_image(
                 #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
                 train_writer.add_image(
@@ -914,11 +927,11 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
 #     return tgt_depth, ref_depths
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [disp for disp in disp_net(tgt_img)]
+    tgt_depth = [20/disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [disp for disp in disp_net(ref_img)]
+        ref_depth = [20/disp for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
