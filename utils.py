@@ -194,10 +194,10 @@ def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
 
 
 def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename='checkpoint.pth.tar'):
-    file_prefixes = ['posenet']
+    file_prefixes = ['radar_posenet']
     states = [posenet_state]
     if masknet_state is not None:
-        file_prefixes.append('masknet')
+        file_prefixes.append('radar_masknet')
         states.append(masknet_state)
     for (prefix, state) in zip(file_prefixes, states):
         torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))
@@ -208,11 +208,11 @@ def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename=
     #                         save_path/'{}_best.pth.tar'.format(prefix))
 
 
-def save_checkpoint_mono(save_path, dispnet_state, exp_pose_state, step, filename='checkpoint.pth.tar'):
-    file_prefixes = ['dispnet', 'exp_pose']
-    states = [dispnet_state, exp_pose_state]
+def save_checkpoint_mono(save_path, dispnet_state, vo_pose_state, epoch, filename='checkpoint.pth.tar'):
+    file_prefixes = ['mono_dispnet', 'mono_posenet']
+    states = [dispnet_state, vo_pose_state]
     for (prefix, state) in zip(file_prefixes, states):
-        torch.save(state, save_path/'{}_{}{}'.format(prefix, step, filename))
+        torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))
 
     # if is_best:
     #     for prefix in file_prefixes:

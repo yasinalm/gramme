@@ -404,12 +404,23 @@ def main():
                 'epoch': n_iter + 1,
                 'state_dict': mask_net.module.state_dict()
             }
-        utils.save_checkpoint(
-            args.save_path, mask_ckpt_dict, {
+        if args.with_vo:
+            vo_pose_ckpt_dict = {
                 'epoch': epoch + 1,
-                'state_dict': pose_net.module.state_dict()
-            },
-            epoch=epoch)
+                'state_dict': vo_pose_net.module.state_dict()
+            }
+            disp_ckpt_dict = {
+                'epoch': epoch + 1,
+                'state_dict': disp_net.module.state_dict()
+            }
+            utils.save_checkpoint_mono(
+                args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, epoch=epoch)
+        ro_pose_ckpt_dict = {
+            'epoch': epoch + 1,
+            'state_dict': pose_net.module.state_dict()
+        }
+        utils.save_checkpoint(
+            args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict, epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -465,7 +476,6 @@ def train(
             pose_net, tgt_img, ref_imgs)
 
         vo_loss = 0
-
         if args.with_vo:
             # num_scales = 4, num_match=3
             vo_tgt_img = input[2]  # [B,3,H,W]
@@ -533,84 +543,6 @@ def train(
 
         loss = radar_loss + vo_loss
 
-        # TODO: is there any pretty way of logging?
-        if log_losses:
-            train_writer.add_scalar(
-                'train/radar/photometric_error', rec_loss.item(), n_iter)
-            train_writer.add_scalar(
-                'train/radar/geometry_consistency_loss', geometry_consistency_loss.item(), n_iter)
-            train_writer.add_scalar(
-                'train/radar/fft_loss', fft_loss.item(), n_iter)
-            train_writer.add_scalar(
-                'train/radar/ssim_loss', ssim_loss.item(), n_iter)
-            train_writer.add_scalar(
-                'train/radar/total_loss', radar_loss.item(), n_iter)
-            train_writer.add_scalar('train/total_loss', loss.item(), n_iter)
-
-            if args.with_vo:
-                train_writer.add_scalar(
-                    'train/mono/photometric_error', vo_photo_loss.item(), n_iter)
-                train_writer.add_scalar(
-                    'train/mono/disparity_smoothness_loss', vo_smooth_loss.item(), n_iter)
-                train_writer.add_scalar(
-                    'train/mono/geometry_consistency_loss', vo_geometry_loss.item(), n_iter)
-                train_writer.add_scalar(
-                    'train/mono/ssim_loss', vo_ssim_loss.item(), n_iter)
-                train_writer.add_scalar(
-                    'train/mono/total_loss', vo_loss.item(), n_iter)
-
-            # train_writer.add_histogram(
-            #     'train/radar/rot_pred-x', poses[..., 0], n_iter)
-            # train_writer.add_histogram(
-            #     'train/radar/rot_pred-y', poses[..., 1], n_iter)
-            train_writer.add_histogram(
-                'train/radar/rot_pred-z', ro_poses[..., 2], n_iter)
-            train_writer.add_histogram(
-                'train/radar/trans_pred-x', ro_poses[..., 3], n_iter)
-            train_writer.add_histogram(
-                'train/radar/trans_pred-y', ro_poses[..., 4], n_iter)
-            # train_writer.add_histogram(
-            #     'train/radar/trans_pred-z', poses[..., 5], n_iter)
-
-            if args.with_vo:
-                train_writer.add_histogram(
-                    'train/mono/rot_pred-x', vo_poses[..., 0], n_iter)
-                train_writer.add_histogram(
-                    'train/mono/rot_pred-y', vo_poses[..., 1], n_iter)
-                train_writer.add_histogram(
-                    'train/mono/rot_pred-z', vo_poses[..., 2], n_iter)
-                train_writer.add_histogram(
-                    'train/mono/trans_pred-x', vo_poses[..., 3], n_iter)
-                train_writer.add_histogram(
-                    'train/mono/trans_pred-y', vo_poses[..., 4], n_iter)
-                train_writer.add_histogram(
-                    'train/mono/trans_pred-z', vo_poses[..., 5], n_iter)
-
-            train_writer.add_image(
-                'train/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/radar/warped_ref_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            if args.with_masknet:
-                train_writer.add_image(
-                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-                train_writer.add_image(
-                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
-            if args.with_vo:
-                train_writer.add_image(
-                    'train/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), n_iter)
-                # train_writer.add_image(
-                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
-                train_writer.add_image(
-                    'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
-                # train_writer.add_image(
-                #     'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
-                train_writer.add_image(
-                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='gist_heat'), n_iter)
-                train_writer.add_image(
-                    'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
-
         # record loss and EPE
         losses_it = [
             loss.item(), rec_loss.item(), geometry_consistency_loss.item(
@@ -631,52 +563,6 @@ def train(
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i > 0 and i % 500 == 0:
-            # Up to you to chose the most relevant error to measure your model's performance,
-            # careful some measures are to maximize (such as a1,a2,a3)
-            # decisive_error = loss.item()
-
-            # # remember lowest error and save checkpoint
-            # is_best = decisive_error < best_error
-            # best_error = min(best_error, decisive_error)
-            # is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
-            mask_ckpt_dict = None
-            if args.with_masknet:
-                mask_ckpt_dict = {
-                    'epoch': n_iter + 1,
-                    'state_dict': mask_net.module.state_dict()
-                }
-            utils.save_checkpoint(
-                args.save_path, mask_ckpt_dict, {
-                    'n_iter': n_iter + 1,
-                    'state_dict': pose_net.module.state_dict()
-                })
-
-            train_writer.add_image(
-                'train/radar/input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            train_writer.add_image(
-                'train/radar/warped_input', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
-            if args.with_masknet:
-                train_writer.add_image(
-                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
-                train_writer.add_image(
-                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
-            if args.with_vo:
-                train_writer.add_image(
-                    'train/mono/input', utils.tensor2array(vo_tgt_img[0]), n_iter)
-                # train_writer.add_image(
-                #     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0][0]), n_iter)
-                train_writer.add_image(
-                    'train/mono/warped_input', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
-                train_writer.add_image(
-                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='magma'), n_iter)
-                train_writer.add_image(
-                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='bone'), n_iter)
-                train_writer.add_image(
-                    'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
-
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             # writer.writerow([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
@@ -693,6 +579,82 @@ def train(
                                      for name, error in zip(error_names, errors))
             logger.train_writer.write(
                 'Train: Batch time {} Data time {} '.format(batch_time, data_time, losses) + error_string)
+
+            for error, name in zip(errors, error_names):
+                train_writer.add_scalar('train/'+name, error, n_iter)
+
+        # TODO: is there any pretty way of logging?
+        if log_losses:
+            tags = ['rot_pred-x', 'rot_pred-y', 'rot_pred-z',
+                    'trans_pred-x', 'trans_pred-y', 'trans_pred-z']
+
+            for i, tag in enumerate(tags):
+                train_writer.add_histogram(
+                    'train/radar/'+tag, ro_poses[..., i], n_iter)
+
+            if args.with_vo:
+                for i, tag in enumerate(tags):
+                    train_writer.add_histogram(
+                        'train/mono/'+tag, vo_poses[..., i], n_iter)
+
+            train_writer.add_image(
+                'train/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/radar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_masknet:
+                train_writer.add_image(
+                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                train_writer.add_image(
+                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+            if args.with_vo:
+                train_writer.add_image(
+                    'train/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), n_iter)
+                train_writer.add_image(
+                    'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
+                train_writer.add_image(
+                    'train/mono/warped_ref', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
+                train_writer.add_image(
+                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), n_iter)
+                train_writer.add_image(
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='viridis'), n_iter)
+                train_writer.add_image(
+                    'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
+
+        if i > 0 and i % 500 == 0:
+            # Up to you to chose the most relevant error to measure your model's performance,
+            # careful some measures are to maximize (such as a1,a2,a3)
+            # decisive_error = loss.item()
+
+            # # remember lowest error and save checkpoint
+            # is_best = decisive_error < best_error
+            # best_error = min(best_error, decisive_error)
+            # is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
+            mask_ckpt_dict = None
+            if args.with_masknet:
+                mask_ckpt_dict = {
+                    'n_iter': n_iter + 1,
+                    'state_dict': mask_net.module.state_dict()
+                }
+            if args.with_vo:
+                vo_pose_ckpt_dict = {
+                    'n_iter': n_iter + 1,
+                    'state_dict': vo_pose_net.module.state_dict()
+                }
+                disp_ckpt_dict = {
+                    'n_iter': n_iter + 1,
+                    'state_dict': disp_net.module.state_dict()
+                }
+                utils.save_checkpoint_mono(
+                    args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict)
+            ro_pose_ckpt_dict = {
+                'n_iter': n_iter + 1,
+                'state_dict': pose_net.module.state_dict()
+            }
+            utils.save_checkpoint(
+                args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict)
+
         if i >= args.train_size - 1:
             break
 
@@ -743,27 +705,30 @@ def validate(
             None for i in range(args.sequence_length-1)]
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        all_poses.append(poses)
-        all_inv_poses.append(poses_inv)
+        ro_poses, ro_poses_inv = compute_pose_with_inv(
+            pose_net, tgt_img, ref_imgs)
+        all_poses.append(ro_poses)
+        all_inv_poses.append(ro_poses_inv)
 
         (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
          projected_imgs, projected_masks) = warper.compute_db_loss(
-            tgt_img, ref_imgs, tgt_mask, ref_masks, poses, poses_inv)
+            tgt_img, ref_imgs, tgt_mask, ref_masks, ro_poses, ro_poses_inv)
 
         rec_loss = w1*rec_loss
         geometry_consistency_loss = w2*geometry_consistency_loss
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
         radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
-        loss = radar_loss
 
+        vo_loss = 0
         if args.with_vo:
             # num_scales = 4, num_match=3
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
+            intrinsics = input[4]
             vo_tgt_img = vo_tgt_img.to(device)
             vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
+            intrinsics = intrinsics.to(device)
             # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
@@ -772,17 +737,23 @@ def validate(
 
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
-            vo_poses, vo_poses_inv = compute_mono_pose_with_inv(
+            vo_poses, vo_poses_inv = compute_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-            all_poses_mono.append(poses)
-            all_inv_poses_mono.append(poses_inv)
+            t = (ro_poses[..., [3, 4]] + 20*vo_poses[..., [1, 2]])/2
+            vo_poses[..., [1, 2]] = t
+            t = (ro_poses_inv[..., [3, 4]] +
+                 20*vo_poses_inv[..., [1, 2]])/2
+            vo_poses_inv[..., [1, 2]] = t
+
+            all_poses_mono.append(vo_poses)
+            all_inv_poses_mono.append(vo_poses_inv)
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
             (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
              mono_ref_img_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
-                vo_tgt_img, vo_ref_imgs, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
+                vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
             vo_photo_loss = 1.0*vo_photo_loss
@@ -790,20 +761,33 @@ def validate(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
-            loss += vo_loss
+        loss = radar_loss + vo_loss
 
         if log_outputs and i in log_ind:
-            # if epoch == 0:
             val_writer.add_image(
-                'val/img/input', utils.tensor2array(tgt_img[0], colormap='bone'), epoch)
+                'val/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), epoch)
             val_writer.add_image(
-                'val/img/warped_input', utils.tensor2array(projected_imgs[0][0], colormap='bone'), epoch)
+                'val/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
+            val_writer.add_image(
+                'val/radar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
             if args.with_masknet:
                 val_writer.add_image(
-                    'val/img/warped_mask', utils.tensor2array(projected_masks[0][0], colormap='bone'), epoch)
+                    'val/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), epoch)
                 val_writer.add_image(
-                    'val/img/tgt_mask', utils.tensor2array(tgt_mask[0], colormap='bone'), epoch)
+                    'val/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), epoch)
+            if args.with_vo:
+                val_writer.add_image(
+                    'val/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), epoch)
+                val_writer.add_image(
+                    'val/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), epoch)
+                val_writer.add_image(
+                    'val/mono/warped_ref', utils.tensor2array(mono_ref_img_warped[0]), epoch)
+                val_writer.add_image(
+                    'val/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), epoch)
+                val_writer.add_image(
+                    'val/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='viridis'), epoch)
+                val_writer.add_image(
+                    'val/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), epoch)
 
         losses_it = [loss.item(), rec_loss.item(), geometry_consistency_loss.item(
         ), fft_loss.item(), ssim_loss.item()]
@@ -825,22 +809,19 @@ def validate(
     if log_outputs:
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1)  # [seq_length, N, 6]
-        val_writer.add_histogram(
-            'val/rot_pred-z', all_poses_t[..., 2], epoch)
-        val_writer.add_histogram(
-            'val/trans_pred-x', all_poses_t[..., 3], epoch)
-        val_writer.add_histogram(
-            'val/trans_pred-y', all_poses_t[..., 4], epoch)
+        tags = ['rot_pred-x', 'rot_pred-y', 'rot_pred-z',
+                'trans_pred-x', 'trans_pred-y', 'trans_pred-z']
+
+        for i, tag in enumerate(tags):
+            val_writer.add_histogram(
+                'val/radar/'+tag, all_poses_t[..., i], epoch)
 
         if args.with_vo:
             all_poses_mono_t = torch.cat(
                 all_poses_mono, 1)
-            val_writer.add_histogram(
-                'val/mono/rot_pred-z', all_poses_mono_t[..., 2], n_iter)
-            val_writer.add_histogram(
-                'val/mono/trans_pred-x', all_poses_mono_t[..., 3], n_iter)
-            val_writer.add_histogram(
-                'val/mono/trans_pred-y', all_poses_mono_t[..., 4], n_iter)
+            for i, tag in enumerate(tags):
+                val_writer.add_histogram(
+                    'val/mono/'+tag, all_poses_mono_t[..., i], epoch)
 
     logger.valid_bar.update(args.val_size)
 
@@ -859,8 +840,8 @@ def validate(
         for error, name in zip(errors, error_names):
             val_writer.add_scalar('val/'+name, error, epoch)
 
-    # TODO: Plot mono pose results
     if args.gt_file is not None:
+        # TODO: Plot mono pose results with ground-truth
         ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
         ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
@@ -871,7 +852,8 @@ def validate(
             fig = utils.traj2Fig_withgt(
                 f_pred_xyz.squeeze(), ro_eval.gt[:, :3, 3].squeeze())
             # fig2= utils.traj2Fig(f_pred[:,:3,3])
-            val_writer.add_figure('val/fig/traj_aligned_pred', fig, epoch)
+            val_writer.add_figure(
+                'val/fig/radar/traj_aligned_pred', fig, epoch)
             # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
 
     else:
@@ -882,8 +864,19 @@ def validate(
             # Plot and log predicted trajectory
             b_fig = utils.traj2Fig(b_pred_xyz)
             f_fig = utils.traj2Fig(f_pred_xyz)
-            val_writer.add_figure('val/fig/b_traj_pred', b_fig, epoch)
-            val_writer.add_figure('val/fig/f_traj_pred', f_fig, epoch)
+            val_writer.add_figure('val/fig/radar/b_traj_pred', b_fig, epoch)
+            val_writer.add_figure('val/fig/radar/f_traj_pred', f_fig, epoch)
+
+        if args.with_vo:
+            b_pred_xyz_mono, f_pred_xyz_mono = getTraj(
+                all_poses_mono, all_inv_poses_mono, args.skip_frames)
+
+            if log_outputs:
+                # Plot and log predicted trajectory
+                b_fig = utils.traj2Fig(b_pred_xyz_mono)
+                f_fig = utils.traj2Fig(f_pred_xyz_mono)
+                val_writer.add_figure('val/fig/mono/b_traj_pred', b_fig, epoch)
+                val_writer.add_figure('val/fig/mono/f_traj_pred', f_fig, epoch)
 
     return losses.avg[0]
 
