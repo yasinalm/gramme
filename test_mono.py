@@ -131,8 +131,14 @@ def main():
         torch.cuda.synchronize()
         t_del += time.time() - inf_t0
 
-        all_poses.append(torch.stack(poses))
-        all_inv_poses.append(torch.stack(poses_inv))
+        poses = torch.stack(poses)
+        poses_inv = torch.stack(poses_inv)
+
+        # Chaneg VO pose order to RO
+        all_poses.append(
+            torch.cat((poses[..., :3], poses[..., 3:]), -1))
+        all_inv_poses.append(
+            torch.cat((poses_inv[..., :3], poses_inv[..., 3:]), -1))
 
     # Total time for forward and backward poses
     print(

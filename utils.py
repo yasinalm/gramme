@@ -193,6 +193,11 @@ def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
                 bbox_inches='tight', pad_inches=0)
 
 
+def save_checkpoint_optim(save_path, optim_state, prefix='optim', epoch='', filename='checkpoint.pth.tar'):
+    torch.save(optim_state, save_path /
+               '{}_{}{}'.format(prefix, epoch, filename))
+
+
 def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename='checkpoint.pth.tar'):
     file_prefixes = ['radar_posenet']
     states = [posenet_state]
@@ -208,7 +213,7 @@ def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename=
     #                         save_path/'{}_best.pth.tar'.format(prefix))
 
 
-def save_checkpoint_mono(save_path, dispnet_state, vo_pose_state, epoch, filename='checkpoint.pth.tar'):
+def save_checkpoint_mono(save_path, dispnet_state, vo_pose_state, epoch='', filename='checkpoint.pth.tar'):
     file_prefixes = ['mono_dispnet', 'mono_posenet']
     states = [dispnet_state, vo_pose_state]
     for (prefix, state) in zip(file_prefixes, states):

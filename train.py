@@ -104,6 +104,8 @@ parser.add_argument('--pretrained-mask', dest='pretrained_mask',
                     default=None, metavar='PATH', help='path to pre-trained masknet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
                     metavar='PATH', help='path to pre-trained Pose net model')
+parser.add_argument('--pretrained-optim', dest='pretrained_optim', default=None,
+                    metavar='PATH', help='path to pre-trained optimizer state')
 parser.add_argument('--name', dest='name', type=str, required=True,
                     help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
@@ -358,6 +360,12 @@ def main():
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
 
+    if args.pretrained_optim:
+        print("=> using pre-trained weights for the optimizer")
+        weights = torch.load(args.pretrained_optim)
+        optimizer.load_state_dict(
+            weights['state_dict'], strict=False)
+
     with open(args.save_path/args.log_summary, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'validation_loss'])
@@ -399,7 +407,7 @@ def main():
         mask_ckpt_dict = None
         if args.with_masknet:
             mask_ckpt_dict = {
-                'epoch': n_iter + 1,
+                'epoch': epoch + 1,
                 'state_dict': mask_net.module.state_dict()
             }
         if args.with_vo:
@@ -417,8 +425,14 @@ def main():
             'epoch': epoch + 1,
             'state_dict': pose_net.module.state_dict()
         }
+        optim_ckpt_dict = {
+            'epoch': epoch + 1,
+            'state_dict': optimizer.state_dict()
+        }
         utils.save_checkpoint(
             args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict, epoch=epoch)
+        utils.save_checkpoint_optim(
+            args.save_path, optim_ckpt_dict, epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -456,6 +470,7 @@ def train(
     # Diger sequence leri atiyoruz. Data efficient degil. Daha akilli yol bul. collate_fn ile
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
+        save_checkpoints = i > 0 and n_iter % 1000 == 0
         tgt_img = input[0]
         ref_imgs = input[1]
 
@@ -583,15 +598,15 @@ def train(
 
         # TODO: is there any pretty way of logging?
         if log_losses:
-            tags = ['rot_pred-x', 'rot_pred-y', 'rot_pred-z',
-                    'trans_pred-x', 'trans_pred-y', 'trans_pred-z']
+            tags_rot = ['rot_pred-x', 'rot_pred-y', 'rot_pred-z']
+            tags_trans = ['trans_pred-x', 'trans_pred-y', 'trans_pred-z']
 
-            for i, tag in enumerate(tags):
+            for i, tag in enumerate(tags_rot+tags_trans):
                 train_writer.add_histogram(
                     'train/radar/'+tag, ro_poses[..., i], n_iter)
 
             if args.with_vo:
-                for i, tag in enumerate(tags):
+                for i, tag in enumerate(tags_trans+tags_rot):
                     train_writer.add_histogram(
                         'train/mono/'+tag, vo_poses[..., i], n_iter)
 
@@ -620,7 +635,7 @@ def train(
                 train_writer.add_image(
                     'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
-        if i > 0 and i % 500 == 0:
+        if save_checkpoints:
             # Up to you to chose the most relevant error to measure your model's performance,
             # careful some measures are to maximize (such as a1,a2,a3)
             # decisive_error = loss.item()
@@ -744,8 +759,11 @@ def validate(
                  20*vo_poses_inv[..., [1, 2]])/2
             vo_poses_inv[..., [1, 2]] = t
 
-            all_poses_mono.append(vo_poses)
-            all_inv_poses_mono.append(vo_poses_inv)
+            # Chaneg VO pose order to RO
+            all_poses_mono.append(
+                torch.cat((vo_poses[..., :3], vo_poses[..., 3:]), -1))
+            all_inv_poses_mono.append(
+                torch.cat((vo_poses_inv[..., :3], vo_poses_inv[..., 3:]), -1))
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.

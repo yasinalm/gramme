@@ -408,8 +408,14 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
-        all_poses.append(torch.stack(poses))
-        all_inv_poses.append(torch.stack(poses_inv))
+        poses = torch.stack(poses)
+        poses_inv = torch.stack(poses_inv)
+
+        # Chaneg VO pose order to RO
+        all_poses.append(
+            torch.cat((poses[..., :3], poses[..., 3:]), -1))
+        all_inv_poses.append(
+            torch.cat((poses_inv[..., :3], poses_inv[..., 3:]), -1))
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
          ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
