@@ -11,7 +11,6 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 from torchvision import transforms
-from torchvision.transforms.transforms import Resize
 
 import models
 
@@ -19,8 +18,7 @@ import custom_transforms_mono as T
 import custom_transforms
 import utils
 from datasets.sequence_folders import SequenceFolder
-# from datasets.pair_folders import PairFolder
-from inverse_warp import Warper
+from inverse_warp_radar import Warper
 from inverse_warp_vo2 import MonoWarper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
 from logger import TermLogger, AverageMeter
