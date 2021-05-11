@@ -23,7 +23,7 @@ parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N',
-                    help='gap between frames', default=5)
+                    help='gap between frames', default=4)
 parser.add_argument('-j', '--workers', default=4, type=int,
                     metavar='N', help='number of data loading workers')
 parser.add_argument('-b', '--batch-size', default=4,
@@ -119,30 +119,33 @@ def main():
     all_poses = []
     all_inv_poses = []
 
-    t_del = 0
+    # timings = []
+    # start = torch.cuda.Event(enable_timing=True)
+    # end = torch.cuda.Event(enable_timing=True)
     for i, (tgt_img, ref_imgs, intrinsics) in tqdm(enumerate(val_loader)):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
 
-        torch.cuda.synchronize()
-        inf_t0 = time.time()
+        # start.record()
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # end.record()
         torch.cuda.synchronize()
-        t_del += time.time() - inf_t0
+        # curr_time = start.elapsed_time(end)
+        # timings.append(curr_time)
 
         poses = torch.stack(poses)
         poses_inv = torch.stack(poses_inv)
 
         # Chaneg VO pose order to RO
         all_poses.append(
-            torch.cat((poses[..., :3], poses[..., 3:]), -1))
+            torch.cat((poses[..., 3:], poses[..., :3]), -1))
         all_inv_poses.append(
-            torch.cat((poses_inv[..., :3], poses_inv[..., 3:]), -1))
+            torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
 
     # Total time for forward and backward poses
-    print(
-        'Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2))))
+    # mean_inf = sum(timings)/(nframes*2)
+    # print('Average time for inference: {:.2f}sec'.format(mean_inf))
 
     if args.with_gt:
         print('Mono evaluation with GT is not supported yet!')

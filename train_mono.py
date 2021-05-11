@@ -413,9 +413,9 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
 
         # Chaneg VO pose order to RO
         all_poses.append(
-            torch.cat((poses[..., :3], poses[..., 3:]), -1))
+            torch.cat((poses[..., 3:], poses[..., :3]), -1))
         all_inv_poses.append(
-            torch.cat((poses_inv[..., :3], poses_inv[..., 3:]), -1))
+            torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
          ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(

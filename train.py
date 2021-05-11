@@ -459,8 +459,8 @@ def train(
         disp_net.train()
         vo_pose_net.train()
         fuse_net.train()
-    # pose_net.eval()
-    pose_net.train()
+    pose_net.eval()
+    # pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
@@ -509,19 +509,15 @@ def train(
             # poses_log = poses.clone().detach()
             # vo_poses_log = vo_poses.clone().detach()
 
-            # # r = (poses[..., 2] + vo_poses[..., 1])/2
-            # r = poses[..., 2]
-            # poses[..., 2] = r
-            # vo_poses[..., 1] = r
-            # # r = (poses_inv[..., 2] + vo_poses_inv[..., 1])/2
-            # r = poses_inv[..., 2]
-            # poses_inv[..., 2] = r
-            # vo_poses_inv[..., 1] = r
+            r = (ro_poses[..., 2] + vo_poses[..., 3])/2
+            vo_poses[..., 3] = r
+            r = (ro_poses_inv[..., 2] + vo_poses_inv[..., 3])/2
+            vo_poses_inv[..., 3] = r
 
-            t = (ro_poses[..., [3, 4]] + 20*vo_poses[..., [1, 2]])/2
+            t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             vo_poses[..., [1, 2]] = t  # -poses[..., 4]
             t = (ro_poses_inv[..., [3, 4]] +
-                 20*vo_poses_inv[..., [1, 2]])/2
+                 vo_poses_inv[..., [1, 2]])/2
             vo_poses_inv[..., [1, 2]] = t  # -poses_inv[..., 4]
 
             # # TODO: duzgun bir basit pose fusion dusun
@@ -543,8 +539,11 @@ def train(
             # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
             # loss += vo_loss
 
+        indices = torch.tensor([4, 5, 3, 1, 2, 0], device=device)
+        vo2radar_poses = torch.index_select(vo_poses, -1, indices)
+        vo2radar_poses_inv = torch.index_select(vo_poses_inv, -1, indices)
         (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
-         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, ro_poses, ro_poses_inv)
+         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2radar_poses, vo2radar_poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
@@ -690,8 +689,8 @@ def validate(
     if args.with_masknet:
         mask_net.eval()
     if args.with_vo:
-        disp_net.train()
-        vo_pose_net.train()
+        disp_net.eval()
+        vo_pose_net.eval()
     pose_net.eval()
 
     all_poses = []
@@ -753,17 +752,17 @@ def validate(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-            t = (ro_poses[..., [3, 4]] + 20*vo_poses[..., [1, 2]])/2
+            t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             vo_poses[..., [1, 2]] = t
             t = (ro_poses_inv[..., [3, 4]] +
-                 20*vo_poses_inv[..., [1, 2]])/2
+                 vo_poses_inv[..., [1, 2]])/2
             vo_poses_inv[..., [1, 2]] = t
 
             # Chaneg VO pose order to RO
             all_poses_mono.append(
-                torch.cat((vo_poses[..., :3], vo_poses[..., 3:]), -1))
+                torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
             all_inv_poses_mono.append(
-                torch.cat((vo_poses_inv[..., :3], vo_poses_inv[..., 3:]), -1))
+                torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
