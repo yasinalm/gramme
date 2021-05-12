@@ -104,6 +104,8 @@ parser.add_argument('--pretrained-mask', dest='pretrained_mask',
                     default=None, metavar='PATH', help='path to pre-trained masknet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
                     metavar='PATH', help='path to pre-trained Pose net model')
+parser.add_argument('--pretrained-fusenet', dest='pretrained_fusenet', default=None,
+                    metavar='PATH', help='path to pre-trained PoseFusionNet model')
 parser.add_argument('--pretrained-optim', dest='pretrained_optim', default=None,
                     metavar='PATH', help='path to pre-trained optimizer state')
 parser.add_argument('--name', dest='name', type=str, required=True,
@@ -325,11 +327,15 @@ def main():
 
     if args.with_vo:
         if args.pretrained_disp:
-            print("=> using pre-trained weights for VO DepthResNet")
+            print("=> using pre-trained weights for VO DispResNet")
             weights = torch.load(args.pretrained_disp)
             disp_net.load_state_dict(weights['state_dict'], strict=False)
         if args.pretrained_vo_pose:
             print("=> using pre-trained weights for VO PoseNet")
+            weights = torch.load(args.pretrained_vo_pose)
+            vo_pose_net.load_state_dict(weights['state_dict'], strict=False)
+        if args.pretrained_fusenet:
+            print("=> using pre-trained weights for PoseFusionNet")
             weights = torch.load(args.pretrained_vo_pose)
             vo_pose_net.load_state_dict(weights['state_dict'], strict=False)
 
@@ -364,7 +370,7 @@ def main():
         print("=> using pre-trained weights for the optimizer")
         weights = torch.load(args.pretrained_optim)
         optimizer.load_state_dict(
-            weights['state_dict'], strict=False)
+            weights['state_dict'])
 
     with open(args.save_path/args.log_summary, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
@@ -391,7 +397,7 @@ def main():
         # evaluate on validation set
         logger.reset_valid_bar()
         val_loss = validate(
-            args, val_loader, mask_net, pose_net, disp_net, vo_pose_net, epoch, logger, warper, mono_warper, val_writer)
+            args, val_loader, mask_net, pose_net, disp_net, vo_pose_net, fuse_net, epoch, logger, warper, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
         # Up to you to chose the most relevant error to measure your model's performance,
@@ -419,8 +425,12 @@ def main():
                 'epoch': epoch + 1,
                 'state_dict': disp_net.module.state_dict()
             }
+            fuse_ckpt_dict = {
+                'n_iter': epoch + 1,
+                'state_dict': fuse_net.module.state_dict()
+            }
             utils.save_checkpoint_mono(
-                args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, epoch=epoch)
+                args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
         ro_pose_ckpt_dict = {
             'epoch': epoch + 1,
             'state_dict': pose_net.module.state_dict()
@@ -506,23 +516,16 @@ def train(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-            # poses_log = poses.clone().detach()
-            # vo_poses_log = vo_poses.clone().detach()
+            # r = (ro_poses[..., 2] + vo_poses[..., 3])/2
+            # vo_poses[..., 3] = r
+            # r = (ro_poses_inv[..., 2] + vo_poses_inv[..., 3])/2
+            # vo_poses_inv[..., 3] = r
 
-            r = (ro_poses[..., 2] + vo_poses[..., 3])/2
-            vo_poses[..., 3] = r
-            r = (ro_poses_inv[..., 2] + vo_poses_inv[..., 3])/2
-            vo_poses_inv[..., 3] = r
-
-            t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
-            vo_poses[..., [1, 2]] = t  # -poses[..., 4]
-            t = (ro_poses_inv[..., [3, 4]] +
-                 vo_poses_inv[..., [1, 2]])/2
-            vo_poses_inv[..., [1, 2]] = t  # -poses_inv[..., 4]
-
-            # # TODO: duzgun bir basit pose fusion dusun
-            # poses = fuse_net(ro_poses, vo_poses)
-            # poses_inv = fuse_net(ro_poses_inv, vo_poses_inv)
+            # t = (ro_poses[..., [3, 4]] + 20*vo_poses[..., [1, 2]])/2
+            # vo_poses[..., [1, 2]] = t  # -poses[..., 4]
+            # t = (ro_poses_inv[..., [3, 4]] +
+            #      20*vo_poses_inv[..., [1, 2]])/2
+            # vo_poses_inv[..., [1, 2]] = t  # -poses_inv[..., 4]
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
@@ -536,14 +539,26 @@ def train(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            # TODO: radar ve mono loss lar ayri gayri takiliyorlar. henuz fusion yok ortada.
-            # loss += vo_loss
+            # TODO: duzgun bir basit pose fusion dusun
+            # Scale and project camera pose to radar frame
+            vo2radar_poses = fuse_net(vo_poses)
+            vo2radar_poses_inv = fuse_net(vo_poses_inv)
+            # L1 regularization on VO pose
+            vo2radar_poses = (ro_poses + vo2radar_poses)/2
+            vo2radar_poses_inv = (ro_poses_inv + vo2radar_poses_inv)/2
 
-        indices = torch.tensor([4, 5, 3, 1, 2, 0], device=device)
-        vo2radar_poses = torch.index_select(vo_poses, -1, indices)
-        vo2radar_poses_inv = torch.index_select(vo_poses_inv, -1, indices)
+            (rec_loss2, geometry_consistency_loss2, fft_loss2, ssim_loss2,
+             projected_imgs2, _) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2radar_poses, vo2radar_poses_inv)
+
+            vo2radar_loss = w1*rec_loss2 + w2 * \
+                geometry_consistency_loss2 + w3*fft_loss2 + w4*ssim_loss2
+            vo_loss += 2*vo2radar_loss
+
+        # indices = torch.tensor([4, 5, 3, 1, 2, 0], device=device)
+        # vo2radar_poses = torch.index_select(vo_poses, -1, indices)
+        # vo2radar_poses_inv = torch.index_select(vo_poses_inv, -1, indices)
         (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
-         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2radar_poses, vo2radar_poses_inv)
+         projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, ro_poses, ro_poses_inv)
 
         # loss_1, loss_3 = warper.compute_db_loss(tgt_img, ref_imgs, poses, poses_inv)
         # loss_2 = compute_smooth_loss(tgt_mask, tgt_img, ref_masks, ref_imgs)
@@ -609,6 +624,10 @@ def train(
                     train_writer.add_histogram(
                         'train/mono/'+tag, vo_poses[..., i], n_iter)
 
+                for i, tag in enumerate(tags_rot+tags_trans):
+                    train_writer.add_histogram(
+                        'train/mono2radar/'+tag, vo2radar_poses[..., i], n_iter)
+
             train_writer.add_image(
                 'train/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
@@ -634,6 +653,9 @@ def train(
                 train_writer.add_image(
                     'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
+                train_writer.add_image(
+                    'train/radar/warped_ref_from_mono', utils.tensor2array(projected_imgs2[0][0], max_value=1.0, colormap='bone'), n_iter)
+
         if save_checkpoints:
             # Up to you to chose the most relevant error to measure your model's performance,
             # careful some measures are to maximize (such as a1,a2,a3)
@@ -658,8 +680,12 @@ def train(
                     'n_iter': n_iter + 1,
                     'state_dict': disp_net.module.state_dict()
                 }
+                fuse_ckpt_dict = {
+                    'n_iter': n_iter + 1,
+                    'state_dict': fuse_net.module.state_dict()
+                }
                 utils.save_checkpoint_mono(
-                    args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict)
+                    args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
             ro_pose_ckpt_dict = {
                 'n_iter': n_iter + 1,
                 'state_dict': pose_net.module.state_dict()
@@ -677,7 +703,7 @@ def train(
 
 @torch.no_grad()
 def validate(
-        args, val_loader, mask_net, pose_net, disp_net, vo_pose_net,
+        args, val_loader, mask_net, pose_net, disp_net, vo_pose_net, fuse_net,
         epoch, logger, warper, mono_warper, val_writer):
     global device
     batch_time = AverageMeter()
@@ -752,17 +778,11 @@ def validate(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 vo_pose_net, vo_tgt_img, vo_ref_imgs)
 
-            t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
-            vo_poses[..., [1, 2]] = t
-            t = (ro_poses_inv[..., [3, 4]] +
-                 vo_poses_inv[..., [1, 2]])/2
-            vo_poses_inv[..., [1, 2]] = t
-
-            # Chaneg VO pose order to RO
-            all_poses_mono.append(
-                torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
-            all_inv_poses_mono.append(
-                torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
+            # t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
+            # vo_poses[..., [1, 2]] = t
+            # t = (ro_poses_inv[..., [3, 4]] +
+            #      vo_poses_inv[..., [1, 2]])/2
+            # vo_poses_inv[..., [1, 2]] = t
 
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
@@ -775,6 +795,17 @@ def validate(
             vo_smooth_loss = 0.1*vo_smooth_loss
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
+
+            vo2radar_poses = fuse_net(vo_poses)
+            vo2radar_poses_inv = fuse_net(vo_poses_inv)
+
+            # Change VO pose order to RO
+            # all_poses_mono.append(
+            #     torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
+            # all_inv_poses_mono.append(
+            #     torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
+            all_poses_mono.append(vo2radar_poses)
+            all_inv_poses_mono.append(vo2radar_poses_inv)
 
         loss = radar_loss + vo_loss
 
