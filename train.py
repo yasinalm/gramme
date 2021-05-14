@@ -304,15 +304,25 @@ def main():
         else:
             raise NotImplementedError(
                 'The chosen MaskNet is not implemented! Given: {}'.format(args.masknet))
-    disp_net = vo_pose_net = None
+
+    radar_pose_net = models.PoseResNet(
+        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
+
+    disp_net = camera_pose_net = None
+    radar_pose_features = None
+    camera_pose_features = None
     if args.with_vo:
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
-        vo_pose_net = models.PoseResNetMono(
+        camera_pose_net = models.PoseResNetMono(
             args.resnet_layers, args.with_pretrain).to(device)
         fuse_net = models.PoseFusionNet()
-    pose_net = models.PoseResNet(
-        args.dataset, args.resnet_layers, args.with_pretrain).to(device)
+        attention_net = models.AttentionNet()
+
+        camera_pose_net.encoder.register_forward_hook(
+            get_activation(camera_pose_features))
+        radar_pose_net.encoder.register_forward_hook(
+            get_activation(radar_pose_features))
 
     # load parameters
     if args.with_masknet and args.pretrained_mask:
@@ -323,7 +333,7 @@ def main():
     if args.pretrained_pose:
         print("=> using pre-trained weights for PoseNet")
         weights = torch.load(args.pretrained_pose)
-        pose_net.load_state_dict(weights['state_dict'], strict=False)
+        radar_pose_net.load_state_dict(weights['state_dict'], strict=False)
 
     if args.with_vo:
         if args.pretrained_disp:
@@ -333,24 +343,27 @@ def main():
         if args.pretrained_vo_pose:
             print("=> using pre-trained weights for VO PoseNet")
             weights = torch.load(args.pretrained_vo_pose)
-            vo_pose_net.load_state_dict(weights['state_dict'], strict=False)
+            camera_pose_net.load_state_dict(
+                weights['state_dict'], strict=False)
         if args.pretrained_fusenet:
             print("=> using pre-trained weights for PoseFusionNet")
             weights = torch.load(args.pretrained_vo_pose)
-            vo_pose_net.load_state_dict(weights['state_dict'], strict=False)
+            camera_pose_net.load_state_dict(
+                weights['state_dict'], strict=False)
 
         disp_net = torch.nn.DataParallel(disp_net)
-        vo_pose_net = torch.nn.DataParallel(vo_pose_net)
+        camera_pose_net = torch.nn.DataParallel(camera_pose_net)
         fuse_net = torch.nn.DataParallel(fuse_net)
+        attention_net = torch.nn.DataParallel(attention_net)
 
     if args.with_masknet:
         mask_net = torch.nn.DataParallel(mask_net)
-    pose_net = torch.nn.DataParallel(pose_net)
+    radar_pose_net = torch.nn.DataParallel(radar_pose_net)
 
     print('=> setting adam solver')
     optim_params = [
-        # {'params': pose_net.parameters(), 'lr': args.lr}
-        {'params': pose_net.parameters(), 'lr': 1e-7}
+        # {'params': radar_pose_net.parameters(), 'lr': args.lr}
+        {'params': radar_pose_net.parameters(), 'lr': 1e-7}
     ]
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
@@ -358,9 +371,11 @@ def main():
         optim_params.append(
             {'params': disp_net.parameters(), 'lr': args.lr})
         optim_params.append(
-            {'params': vo_pose_net.parameters(), 'lr': args.lr})
+            {'params': camera_pose_net.parameters(), 'lr': args.lr})
         optim_params.append(
             {'params': fuse_net.parameters(), 'lr': args.lr})
+        optim_params.append(
+            {'params': attention_net.parameters(), 'lr': args.lr})
 
     optimizer = torch.optim.Adam(optim_params,
                                  betas=(args.momentum, args.beta),
@@ -391,13 +406,16 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader, mask_net,
-                           pose_net, disp_net, vo_pose_net, fuse_net, optimizer, logger, training_writer, warper, mono_warper)
+                           radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
+                           attention_net, camera_pose_features, radar_pose_features,
+                           logger, training_writer, warper, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
         logger.reset_valid_bar()
         val_loss = validate(
-            args, val_loader, mask_net, pose_net, disp_net, vo_pose_net, fuse_net, epoch, logger, warper, mono_warper, val_writer)
+            args, val_loader, mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net,
+            epoch, logger, warper, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
         # Up to you to chose the most relevant error to measure your model's performance,
@@ -419,7 +437,7 @@ def main():
         if args.with_vo:
             vo_pose_ckpt_dict = {
                 'epoch': epoch + 1,
-                'state_dict': vo_pose_net.module.state_dict()
+                'state_dict': camera_pose_net.module.state_dict()
             }
             disp_ckpt_dict = {
                 'epoch': epoch + 1,
@@ -433,7 +451,7 @@ def main():
                 args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
         ro_pose_ckpt_dict = {
             'epoch': epoch + 1,
-            'state_dict': pose_net.module.state_dict()
+            'state_dict': radar_pose_net.module.state_dict()
         }
         optim_ckpt_dict = {
             'epoch': epoch + 1,
@@ -452,7 +470,8 @@ def main():
 
 def train(
         args, train_loader,
-        mask_net, pose_net, disp_net, vo_pose_net, fuse_net, optimizer,
+        mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
+        attention_net, camera_pose_features, radar_pose_features,
         logger, train_writer, warper, mono_warper):
     global n_iter, device
     batch_time = AverageMeter()
@@ -467,10 +486,10 @@ def train(
         mask_net.train()
     if args.with_vo:
         disp_net.train()
-        vo_pose_net.train()
+        camera_pose_net.train()
         fuse_net.train()
-    pose_net.eval()
-    # pose_net.train()
+    radar_pose_net.eval()
+    # radar_pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
@@ -496,7 +515,7 @@ def train(
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         ro_poses, ro_poses_inv = compute_pose_with_inv(
-            pose_net, tgt_img, ref_imgs)
+            radar_pose_net, tgt_img, ref_imgs)
 
         vo_loss = 0
         if args.with_vo:
@@ -514,7 +533,7 @@ def train(
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
             vo_poses, vo_poses_inv = compute_pose_with_inv(
-                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+                camera_pose_net, vo_tgt_img, vo_ref_imgs)
 
             # r = (ro_poses[..., 2] + vo_poses[..., 3])/2
             # vo_poses[..., 3] = r
@@ -540,12 +559,21 @@ def train(
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
             # TODO: duzgun bir basit pose fusion dusun
+            # Get the pose features from resnet_endocer for both radar and camera.
+            # Use forward hooks to get the intermediate output.
+            # Feed them into FC and SoftMax.
+            # Get KL difference and use it as weight on vo2radar_poses
+            # cam_conf 1x6 confidence score weight (asagidaki weight tam dogru degil duzelt)
+            # attention_map 100 filan boyutunda softmax, visualization icin
+            attention_map, cam_conf = attention_net(
+                camera_pose_features, radar_pose_features)
+
             # Scale and project camera pose to radar frame
             vo2radar_poses = fuse_net(vo_poses)
             vo2radar_poses_inv = fuse_net(vo_poses_inv)
             # L1 regularization on VO pose
-            vo2radar_poses = (ro_poses + vo2radar_poses)/2
-            vo2radar_poses_inv = (ro_poses_inv + vo2radar_poses_inv)/2
+            vo2radar_poses = (ro_poses + cam_conf*vo2radar_poses)/2
+            vo2radar_poses_inv = (ro_poses_inv + cam_conf*vo2radar_poses_inv)/2
 
             (rec_loss2, geometry_consistency_loss2, fft_loss2, ssim_loss2,
              projected_imgs2, _) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2radar_poses, vo2radar_poses_inv)
@@ -674,7 +702,7 @@ def train(
             if args.with_vo:
                 vo_pose_ckpt_dict = {
                     'n_iter': n_iter + 1,
-                    'state_dict': vo_pose_net.module.state_dict()
+                    'state_dict': camera_pose_net.module.state_dict()
                 }
                 disp_ckpt_dict = {
                     'n_iter': n_iter + 1,
@@ -688,7 +716,7 @@ def train(
                     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
             ro_pose_ckpt_dict = {
                 'n_iter': n_iter + 1,
-                'state_dict': pose_net.module.state_dict()
+                'state_dict': radar_pose_net.module.state_dict()
             }
             utils.save_checkpoint(
                 args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict)
@@ -703,7 +731,7 @@ def train(
 
 @torch.no_grad()
 def validate(
-        args, val_loader, mask_net, pose_net, disp_net, vo_pose_net, fuse_net,
+        args, val_loader, mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net,
         epoch, logger, warper, mono_warper, val_writer):
     global device
     batch_time = AverageMeter()
@@ -716,8 +744,8 @@ def validate(
         mask_net.eval()
     if args.with_vo:
         disp_net.eval()
-        vo_pose_net.eval()
-    pose_net.eval()
+        camera_pose_net.eval()
+    radar_pose_net.eval()
 
     all_poses = []
     all_inv_poses = []
@@ -744,7 +772,7 @@ def validate(
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         ro_poses, ro_poses_inv = compute_pose_with_inv(
-            pose_net, tgt_img, ref_imgs)
+            radar_pose_net, tgt_img, ref_imgs)
         all_poses.append(ro_poses)
         all_inv_poses.append(ro_poses_inv)
 
@@ -776,7 +804,7 @@ def validate(
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
             vo_poses, vo_poses_inv = compute_pose_with_inv(
-                vo_pose_net, vo_tgt_img, vo_ref_imgs)
+                camera_pose_net, vo_tgt_img, vo_ref_imgs)
 
             # t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             # vo_poses[..., [1, 2]] = t
@@ -1030,6 +1058,12 @@ def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
     # [B, 2, 3, 6], [B, 2, 3, 6]
     return torch.stack(poses), torch.stack(poses_inv)
+
+
+def get_activation(pose_features):
+    def pose_hook(module, input, output):
+        pose_features = output
+    return pose_hook
 
 
 def mono_collate_fn(batch):
