@@ -49,6 +49,7 @@ class SSIM(nn.Module):
 
 compute_ssim_loss = SSIM().to(device)
 
+
 class Warper(object):
     """Inverse warper class
     """
@@ -231,8 +232,8 @@ class Warper(object):
         # ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
         ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
         # ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
-        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
         ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
+        diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
         # # if with_mask == True:
         # weight_mask = (1 - diff_mask)

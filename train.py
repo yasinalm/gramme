@@ -552,7 +552,7 @@ def train(
 
             vo2radar_loss = w1*rec_loss2 + w2 * \
                 geometry_consistency_loss2 + w3*fft_loss2 + w4*ssim_loss2
-            vo_loss += 2*vo2radar_loss
+            vo_loss += 5*vo2radar_loss
 
         # indices = torch.tensor([4, 5, 3, 1, 2, 0], device=device)
         # vo2radar_poses = torch.index_select(vo_poses, -1, indices)
