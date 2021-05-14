@@ -75,7 +75,8 @@ def main():
         transform=valid_transform,
         seed=args.seed,
         train=False,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        skip_frames=args.skip_frames
     )
 
     nframes = len(val_set)
@@ -130,7 +131,7 @@ def main():
         # start.record()
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         # end.record()
-        torch.cuda.synchronize()
+        # torch.cuda.synchronize()
         # curr_time = start.elapsed_time(end)
         # timings.append(curr_time)
 
