@@ -565,15 +565,16 @@ def train(
             # Get KL difference and use it as weight on vo2radar_poses
             # cam_conf 1x6 confidence score weight (asagidaki weight tam dogru degil duzelt)
             # attention_map 100 filan boyutunda softmax, visualization icin
-            attention_map, cam_conf = attention_net(
-                camera_pose_features, radar_pose_features)
+
+            # attention_map, cam_conf = attention_net(
+            #     camera_pose_features, radar_pose_features)
 
             # Scale and project camera pose to radar frame
             vo2radar_poses = fuse_net(vo_poses)
             vo2radar_poses_inv = fuse_net(vo_poses_inv)
             # L1 regularization on VO pose
-            vo2radar_poses = (ro_poses + cam_conf*vo2radar_poses)/2
-            vo2radar_poses_inv = (ro_poses_inv + cam_conf*vo2radar_poses_inv)/2
+            # vo2radar_poses = (ro_poses + vo2radar_poses)/2
+            # vo2radar_poses_inv = (ro_poses_inv + vo2radar_poses_inv)/2
 
             (rec_loss2, geometry_consistency_loss2, fft_loss2, ssim_loss2,
              projected_imgs2, _) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2radar_poses, vo2radar_poses_inv)
