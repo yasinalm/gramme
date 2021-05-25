@@ -752,6 +752,8 @@ def validate(
     all_inv_poses = []
     all_poses_mono = []
     all_inv_poses_mono = []
+    all_poses_mono2radar = []
+    all_inv_poses_mono2radar = []
 
     # Randomly choose n indices to log images
     rng = np.random.default_rng()
@@ -807,6 +809,11 @@ def validate(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 camera_pose_net, vo_tgt_img, vo_ref_imgs)
 
+            all_poses_mono.append(
+                torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
+            all_inv_poses_mono.append(
+                torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
+
             # t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             # vo_poses[..., [1, 2]] = t
             # t = (ro_poses_inv[..., [3, 4]] +
@@ -833,8 +840,8 @@ def validate(
             #     torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
             # all_inv_poses_mono.append(
             #     torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
-            all_poses_mono.append(vo2radar_poses)
-            all_inv_poses_mono.append(vo2radar_poses_inv)
+            all_poses_mono2radar.append(vo2radar_poses)
+            all_inv_poses_mono2radar.append(vo2radar_poses_inv)
 
         loss = radar_loss + vo_loss
 
@@ -897,6 +904,11 @@ def validate(
             for i, tag in enumerate(tags):
                 val_writer.add_histogram(
                     'val/mono/'+tag, all_poses_mono_t[..., i], epoch)
+            all_poses_mono2radar_t = torch.cat(
+                all_poses_mono2radar, 1)
+            for i, tag in enumerate(tags):
+                val_writer.add_histogram(
+                    'val/mono_fused/'+tag, all_poses_mono2radar_t[..., i], epoch)
 
     logger.valid_bar.update(args.val_size)
 
@@ -945,13 +957,23 @@ def validate(
         if args.with_vo:
             b_pred_xyz_mono, f_pred_xyz_mono = getTraj(
                 all_poses_mono, all_inv_poses_mono, args.skip_frames)
-
             if log_outputs:
                 # Plot and log predicted trajectory
                 b_fig = utils.traj2Fig(b_pred_xyz_mono)
                 f_fig = utils.traj2Fig(f_pred_xyz_mono)
                 val_writer.add_figure('val/fig/mono/b_traj_pred', b_fig, epoch)
                 val_writer.add_figure('val/fig/mono/f_traj_pred', f_fig, epoch)
+
+            b_pred_xyz_mono2radar, f_pred_xyz_mono2radar = getTraj(
+                all_poses_mono2radar, all_inv_poses_mono2radar, args.skip_frames)
+            if log_outputs:
+                # Plot and log predicted trajectory
+                b_fig = utils.traj2Fig(b_pred_xyz_mono2radar)
+                f_fig = utils.traj2Fig(f_pred_xyz_mono2radar)
+                val_writer.add_figure(
+                    'val/fig/mono2radar/b_traj_pred', b_fig, epoch)
+                val_writer.add_figure(
+                    'val/fig/mono2radar/f_traj_pred', f_fig, epoch)
 
     return losses.avg[0]
 
