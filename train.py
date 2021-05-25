@@ -190,40 +190,24 @@ def main():
 
     mono_transform = None
     if args.with_vo:
-        # mono_transform = [transforms.ToTensor()]
-        # # Resize RADIATE dataset to make it divisible by 64, which is needed in resnet_encoder.
-        # # if args.dataset == 'radiate':
-        # #     imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
-        # #     imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
-        # #     normalize = transforms.Normalize(mean=imagenet_mean,
-        # #                                      std=imagenet_std)
-        # #     mono_transform.append(transforms.Resize((384, 640)))
-        # #     mono_transform.append(normalize)
-        # # elif args.dataset == 'robotcar':
-        # #     imagenet_mean = utils.imagenet_mean
-        # #     imagenet_std = utils.imagenet_std
-        # #     normalize = transforms.Normalize(mean=imagenet_mean,
-        # #                                      std=imagenet_std)
-        # #     mono_transform.append(transforms.Resize((384, 640)))
-        # #     mono_transform.append(normalize)
-        # imagenet_mean = utils.imagenet_mean  # [0.485, 0.456, 0.406]
-        # imagenet_std = utils.imagenet_std  # [0.229, 0.224, 0.225]
-        # normalize = transforms.Normalize(mean=imagenet_mean,
-        #                                  std=imagenet_std)
-        # mono_transform.append(transforms.Resize((192, 320)))
-        # mono_transform.append(normalize)
-        # mono_transform = transforms.Compose(mono_transform)
-
         imagenet_mean = utils.imagenet_mean
         imagenet_std = utils.imagenet_std
         img_size = (args.img_height, args.img_width)
-        mono_transform = T.Compose([
-            T.ToPILImage(),
-            T.CropBottom(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.dataset == 'robotcar':
+            mono_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        elif args.dataset == 'radiate':
+            mono_transform = T.Compose([
+                T.ToPILImage(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     ro_params = {
@@ -959,8 +943,8 @@ def validate(
                 all_poses_mono, all_inv_poses_mono, args.skip_frames)
             if log_outputs:
                 # Plot and log predicted trajectory
-                b_fig = utils.traj2Fig(b_pred_xyz_mono)
-                f_fig = utils.traj2Fig(f_pred_xyz_mono)
+                b_fig = utils.traj2Fig(b_pred_xyz_mono, axes=[2, 0])
+                f_fig = utils.traj2Fig(f_pred_xyz_mono, axes=[2, 0])
                 val_writer.add_figure('val/fig/mono/b_traj_pred', b_fig, epoch)
                 val_writer.add_figure('val/fig/mono/f_traj_pred', f_fig, epoch)
 

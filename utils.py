@@ -110,7 +110,7 @@ def traj2Img(pred_xyz):
     return img_plt
 
 
-def traj2Fig(pred_xyz):
+def traj2Fig(pred_xyz, axes=[0, 1]):
     """Make `matplotlib.pyplot.figure` from the 2D plot of a given trajectory.
 
     Args:
@@ -124,7 +124,7 @@ def traj2Fig(pred_xyz):
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.plot(pred_xyz[:, 0], pred_xyz[:, 1])
+    ax.plot(pred_xyz[:, ax[0]], pred_xyz[:, ax[1]])
     # fig.canvas.draw()
 
     return fig
@@ -154,15 +154,15 @@ def traj2Fig_withgt(pred_xyz, gt_xyz):
     return fig
 
 
-def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz):
+def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[0, 1]):
     plt.figure(figsize=(16, 8))
     plt.subplot(1, 2, 1)
-    ax = sn.lineplot(x=f_pred_xyz[:, 0].cpu().numpy(
-    ), y=f_pred_xyz[:, 1].cpu().numpy(), sort=False)
+    ax = sn.lineplot(x=f_pred_xyz[:, axes[0]].cpu().numpy(
+    ), y=f_pred_xyz[:, axes[1]].cpu().numpy(), sort=False)
     ax.set(title='Forward Trajectory', xlabel='X (m)', ylabel='Y (m)')
     plt.subplot(1, 2, 2)
-    ax = sn.lineplot(x=b_pred_xyz[:, 0].cpu().numpy(
-    ), y=b_pred_xyz[:, 1].cpu().numpy(), sort=False, markers=True)
+    ax = sn.lineplot(x=b_pred_xyz[:, axes[0]].cpu().numpy(
+    ), y=b_pred_xyz[:, axes[1]].cpu().numpy(), sort=False, markers=True)
     ax.set(title='Backward Trajectory', xlabel='X (m)', ylabel='Y (m)')
 
     # Save fig

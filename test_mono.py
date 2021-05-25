@@ -166,7 +166,7 @@ def main():
     else:
         b_pred_xyz, f_pred_xyz = getTraj(
             all_poses, all_inv_poses, args.skip_frames)
-        utils.save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz)
+        utils.save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[2, 0])
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
