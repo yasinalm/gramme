@@ -62,26 +62,26 @@ class MonoWarper(object):
         self.with_mask = with_mask
         self.with_auto_mask = with_auto_mask
         self.max_scales = max_scales
-        if self.dataset == 'radiate':
-            # fx = 3.379191448899105e+02
-            # fy = 3.386957068549526e+02
-            # cx = 3.417366010946575e+02
-            # cy = 2.007359735313929e+02
-            # h, w = 376, 672
-            # scale_x = 640.0/w
-            # scale_y = 384.0/h
-            h, w = 384, 640
-        elif self.dataset == 'robotcar':
-            # fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
-            # fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
-            # h, w = 960, 1280
-            # scale_x = 320.0/w
-            # scale_y = 192.0/h
-            h, w = 192, 320
-        else:
-            raise NotImplementedError(
-                'The chosen dataset is not implemented! Given: {}'.format(self.dataset))
-        self.pixel_coords_hom = set_id_grid(h, w)
+        # if self.dataset == 'radiate':
+        #     # fx = 3.379191448899105e+02
+        #     # fy = 3.386957068549526e+02
+        #     # cx = 3.417366010946575e+02
+        #     # cy = 2.007359735313929e+02
+        #     # h, w = 376, 672
+        #     # scale_x = 640.0/w
+        #     # scale_y = 384.0/h
+        #     h, w = 384, 640
+        # elif self.dataset == 'robotcar':
+        #     # fx, fy, cx, cy = 964.828979, 964.828979, 643.788025, 484.407990
+        #     # fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
+        #     # h, w = 960, 1280
+        #     # scale_x = 320.0/w
+        #     # scale_y = 192.0/h
+        #     h, w = 192, 320
+        # else:
+        #     raise NotImplementedError(
+        #         'The chosen dataset is not implemented! Given: {}'.format(self.dataset))
+        self.pixel_coords_hom = set_id_grid(192, 320)
         # self.intrinsics = utils.camera_matrix(
         #     torch.Tensor([fx, fy, cx, cy]).to(device))  # [4,4]
         # # Resize the intrinsics

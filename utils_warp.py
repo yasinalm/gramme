@@ -71,9 +71,18 @@ def get_intrinsics_matrix(dataset):
     intrinsics = np.eye(3, dtype=np.float32)+1e-6
     if dataset == 'robotcar':
         fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
-        intrinsics[0, 0] = fx
-        intrinsics[0, 2] = cx
-        intrinsics[1, 1] = fy
-        intrinsics[1, 2] = cy
+    elif dataset == 'radiate':
+        fx = 3.379191448899105e+02
+        fy = 3.386957068549526e+02
+        cx = 3.417366010946575e+02
+        cy = 2.007359735313929e+02
+    else:
+        raise NotImplementedError(
+            'The chosen dataset is not implemented! Given: {}'.format(dataset))
+
+    intrinsics[0, 0] = fx
+    intrinsics[0, 2] = cx
+    intrinsics[1, 1] = fy
+    intrinsics[1, 2] = cy
 
     return intrinsics

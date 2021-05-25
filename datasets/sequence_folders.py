@@ -87,15 +87,16 @@ class SequenceFolder(data.Dataset):
 
                 # Temporary fix to read stereo folder from non-dataroot directory.
                 # Delete the following lines once done. uncomment f_mt below.
-                temp_root = Path('/home/yasin/mmwave-raw/robotcar')
-                f_mt = temp_root/scene.name/'stereo.timestamps'
-                if not f_mt.is_file():
-                    continue
-                imgs_mono = sorted(
-                    list((temp_root/scene.name/self.mono_folder).glob(f_type)))
-
-                # imgs_mono = sorted(
-                #     list((scene/self.mono_folder).glob(f_type)))
+                if self.dataset == 'robotcar':
+                    temp_root = Path('/home/yasin/mmwave-raw/robotcar')
+                    f_mt = temp_root/scene.name/'stereo.timestamps'
+                    if not f_mt.is_file():
+                        continue
+                    imgs_mono = sorted(
+                        list((temp_root/scene.name/self.mono_folder).glob(f_type)))
+                elif self.dataset == 'radiate':
+                    imgs_mono = sorted(
+                        list((scene/self.mono_folder).glob(f_type)))
                 if len(imgs) < sequence_length:
                     continue
 
