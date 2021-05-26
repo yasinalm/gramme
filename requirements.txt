@@ -1,4 +1,4 @@
-torch >= 1.8.0
+pytorch >= 1.8.0
 torchvision >= 0.9
 matplotlib
 scipy
@@ -6,7 +6,7 @@ argparse
 tensorboardX
 blessings
 progressbar2
-scikit-image
+#scikit-image
 seaborn
 tqdm
 colour-demosaicing
