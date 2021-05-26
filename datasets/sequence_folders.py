@@ -180,7 +180,7 @@ class SequenceFolder(data.Dataset):
         if self.dataset == 'robotcar':
             img = demosaic(img, 'gbrg')
             img = self.cam_model.undistort(img)
-        img = img.astype(np.uint8)
+        img = np.array(img).astype(np.uint8)
         # img = img.astype(np.float32) / 255.
         return img
 
