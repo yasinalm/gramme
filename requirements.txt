@@ -9,3 +9,4 @@ progressbar2
 scikit-image
 seaborn
 tqdm
+colour-demosaicing
