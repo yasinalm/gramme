@@ -300,8 +300,8 @@ def main():
             args.resnet_layers, args.with_pretrain).to(device)
         camera_pose_net = models.PoseResNetMono(
             args.resnet_layers, args.with_pretrain).to(device)
-        fuse_net = models.PoseFusionNet()
-        attention_net = models.AttentionNet()
+        fuse_net = models.PoseFusionNet().to(device)
+        attention_net = models.AttentionNet().to(device)
 
         camera_pose_net.encoder.register_forward_hook(
             get_activation(camera_pose_features))
@@ -346,8 +346,8 @@ def main():
 
     print('=> setting adam solver')
     optim_params = [
-        # {'params': radar_pose_net.parameters(), 'lr': args.lr}
-        {'params': radar_pose_net.parameters(), 'lr': 1e-7}
+        {'params': radar_pose_net.parameters(), 'lr': args.lr}
+        # {'params': radar_pose_net.parameters(), 'lr': 1e-7}
     ]
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
@@ -472,8 +472,8 @@ def train(
         disp_net.train()
         camera_pose_net.train()
         fuse_net.train()
-    radar_pose_net.eval()
-    # radar_pose_net.train()
+    # radar_pose_net.eval()
+    radar_pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
@@ -484,8 +484,8 @@ def train(
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
         save_checkpoints = i > 0 and n_iter % 1000 == 0
-        tgt_img = input[0]
-        ref_imgs = input[1]
+        tgt_img = input[0] # [B,1,H,W]
+        ref_imgs = input[1] # [2,B,1,H,W]
 
         # measure data loading time
         data_time.update(time.time() - end)
