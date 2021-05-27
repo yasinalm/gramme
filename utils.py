@@ -124,7 +124,7 @@ def traj2Fig(pred_xyz, axes=[0, 1]):
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.plot(pred_xyz[:, ax[0]], pred_xyz[:, ax[1]])
+    ax.plot(pred_xyz[:, axes[0]], pred_xyz[:, axes[1]])
     # fig.canvas.draw()
 
     return fig
