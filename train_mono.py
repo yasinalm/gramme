@@ -165,6 +165,7 @@ def main():
     print("=> fetching scenes in '{}'".format(args.data))
     train_set = SequenceFolder(
         args.data,
+        dataset=args.dataset,
         transform=train_transform,
         seed=args.seed,
         train=True,
@@ -174,6 +175,7 @@ def main():
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
         args.data,
+        dataset=args.dataset,
         transform=valid_transform,
         seed=args.seed,
         train=False,
