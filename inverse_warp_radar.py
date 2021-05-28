@@ -300,13 +300,13 @@ def mean_on_mask(diff, valid_mask):
     # thr_mask = 6e4*diff.shape[0]
     if mask.sum() > thr_mask:
         mask_diff = diff * mask
-        l1 = mask_diff.sum() / mask.sum()
+        l1 = mask_diff.sum() / (mask.sum()+1e-6)
         # l2 = mask_diff.square().sum() / mask.sum()
     else:
         # l1 = torch.tensor(1e3).float().to(device)
         # l2 = torch.tensor(0).float().to(device)
         mask_diff = diff
-        l1 = mask_diff.sum() / mask.sum()
+        l1 = mask_diff.sum() / (mask.sum()+1e-6)
 
     l = l1  # +l2
     return l

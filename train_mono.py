@@ -126,23 +126,41 @@ def main():
     imagenet_mean = utils.imagenet_mean
     imagenet_std = utils.imagenet_std
     img_size = (args.img_height, args.img_width)
-    train_transform = T.Compose([
-        T.ToPILImage(),
-        T.CropBottom(),
-        T.Resize(img_size),
-        T.RandomHorizontalFlip(),
-        T.RandomScaleCrop(),
-        T.ToTensor(),
-        T.Normalize(imagenet_mean, imagenet_std)
-    ])
+    if args.dataset == 'robotcar':
+        train_transform = T.Compose([
+            T.ToPILImage(),
+            T.CropBottom(),
+            T.Resize(img_size),
+            T.RandomHorizontalFlip(),
+            T.RandomScaleCrop(),
+            T.ToTensor(),
+            T.Normalize(imagenet_mean, imagenet_std)
+        ])
 
-    valid_transform = T.Compose([
-        T.ToPILImage(),
-        T.CropBottom(),
-        T.Resize(img_size),
-        T.ToTensor(),
-        T.Normalize(imagenet_mean, imagenet_std)
-    ])
+        valid_transform = T.Compose([
+            T.ToPILImage(),
+            T.CropBottom(),
+            T.Resize(img_size),
+            T.ToTensor(),
+            T.Normalize(imagenet_mean, imagenet_std)
+        ])
+    elif args.dataset == 'radiate':
+        train_transform = T.Compose([
+            T.ToPILImage(),
+            T.Resize(img_size),
+            T.RandomHorizontalFlip(),
+            T.RandomScaleCrop(),
+            T.ToTensor(),
+            T.Normalize(imagenet_mean, imagenet_std)
+        ])
+
+        valid_transform = T.Compose([
+            T.ToPILImage(),
+            T.Resize(img_size),
+            T.ToTensor(),
+            T.Normalize(imagenet_mean, imagenet_std)
+        ])
+    
 
     print("=> fetching scenes in '{}'".format(args.data))
     train_set = SequenceFolder(
@@ -333,9 +351,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'train/mono/warped_ref', utils.tensor2array(ref_img_warped[0]), n_iter)
 
             train_writer.add_image('train/mono/disp', utils.tensor2array(
-                1/tgt_depth[0][0], max_value=None, colormap='magma'), n_iter)
+                1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
             train_writer.add_image('train/mono/depth', utils.tensor2array(
-                tgt_depth[0][0], max_value=None, colormap='gist_heat'), n_iter)
+                tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
             train_writer.add_image(
                 'train/mono/warped_mask', utils.tensor2array(valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 

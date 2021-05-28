@@ -33,7 +33,9 @@ class SequenceFolder(data.Dataset):
         self.transform = transform
         self.train = train
         self.k = skip_frames
-        self.cam_model = CameraModel()
+        self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
+        if dataset == 'robotcar':
+            self.cam_model = CameraModel()
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -47,7 +49,7 @@ class SequenceFolder(data.Dataset):
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(self.dataset)
             #imgs = sorted(scene.files('*.png'))
-            imgs = sorted(list((scene/'stereo/left').glob('*.png')))
+            imgs = sorted(list((scene/self.mono_folder).glob('*.png')))
 
             if len(imgs) < sequence_length:
                 continue
@@ -66,9 +68,11 @@ class SequenceFolder(data.Dataset):
         img = Image.open(path)
         # img = img.convert("RGB")
         # img = np.array(img)
-        img = demosaic(img, 'gbrg')
-        img = self.cam_model.undistort(img)
-        img = img.astype(np.uint8)
+        if self.dataset == 'robotcar':
+            img = demosaic(img, 'gbrg')
+            img = self.cam_model.undistort(img)
+        img = np.array(img).astype(np.uint8)
+        # img = img.astype(np.uint8)
         return img
 
     def __getitem__(self, index):
