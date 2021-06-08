@@ -16,8 +16,9 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, dataset='robotcar',
-                 seed=None, train=True, sequence_length=3, transform=None, skip_frames=1):
+    def __init__(self, root, dataset, lo_params,
+                 seed=None, train=True, sequence_length=3, transform=None, skip_frames=1
+                 ):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -25,7 +26,8 @@ class SequenceFolder(data.Dataset):
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder.strip()
                        for folder in open(scene_list_path) if not folder.strip().startswith("#")]
-        self.cart_pixels = 512
+        self.cart_pixels = lo_params['cart_pixels']
+        # self.cart_pixels = 512
         # self.max_range = 100.0 if dataset == 'radiate' else 50.0
         # self.cart_resolution = self.max_range/self.cart_pixels
         self.transform = transform

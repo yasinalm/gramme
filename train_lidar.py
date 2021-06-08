@@ -181,7 +181,7 @@ def main():
     else:
         train_transform = custom_transforms.Compose(
             [custom_transforms.ArrayToTensor(),
-             # transforms.RandomRotation(10)
+             transforms.RandomRotation(10)
              ])
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
@@ -208,13 +208,9 @@ def main():
             ])
 
     print("=> fetching scenes in '{}'".format(args.data))
-    # ro_params = {
-    #     'cart_resolution': args.cart_res,
-    #     'cart_pixels': args.cart_pixels,
-    #     'rangeResolutionsInMeter': args.range_res,
-    #     'angleResolutionInRad': args.angle_res,
-    #     'radar_format': args.radar_format
-    # }
+    lo_params = {
+        'cart_pixels': args.cart_pixels,
+    }
     train_set = SequenceFolder(
         args.data,
         transform=train_transform,
@@ -223,7 +219,7 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        # ro_params=ro_params,
+        lo_params=lo_params,
         # load_mono=args.with_vo,
         # mono_transform=mono_transform
     )
