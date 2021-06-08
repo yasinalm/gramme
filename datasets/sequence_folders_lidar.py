@@ -28,7 +28,7 @@ class SequenceFolder(data.Dataset):
                        for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.cart_pixels = lo_params['cart_pixels']
         # self.cart_pixels = 512
-        # self.max_range = 100.0 if dataset == 'radiate' else 50.0
+        self.max_range = 80.0  # if dataset == 'radiate' else 50.0
         # self.cart_resolution = self.max_range/self.cart_pixels
         self.transform = transform
         self.train = train
@@ -96,12 +96,16 @@ class SequenceFolder(data.Dataset):
         power_sum, _, _ = np.histogram2d(
             x=data[0], y=data[1],
             bins=[self.cart_pixels, self.cart_pixels],
-            weights=data[3], normed=False
+            weights=data[3], normed=False,
+            range=[[-self.max_range, self.max_range],
+                   [-self.max_range, self.max_range]]
         )
         # Calculate the number of points in each pixel
         power_count, _, _ = np.histogram2d(
             x=data[0], y=data[1],
-            bins=[self.cart_pixels, self.cart_pixels]
+            bins=[self.cart_pixels, self.cart_pixels],
+            range=[[-self.max_range, self.max_range],
+                   [-self.max_range, self.max_range]]
         )
         # Calculate the mean of power return in each pixel.
         # histogram2d does either sums or finds the number of poitns, no average.
