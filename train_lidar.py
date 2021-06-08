@@ -17,7 +17,7 @@ import models
 import custom_transforms_mono as T
 import custom_transforms
 import utils
-from datasets.sequence_folders import SequenceFolder
+from datasets.sequence_folders_lidar import SequenceFolder
 from inverse_warp_radar import Warper
 from inverse_warp_vo2 import MonoWarper
 from radar_eval.eval_utils import getTraj, RadarEvalOdom
@@ -208,13 +208,13 @@ def main():
             ])
 
     print("=> fetching scenes in '{}'".format(args.data))
-    ro_params = {
-        'cart_resolution': args.cart_res,
-        'cart_pixels': args.cart_pixels,
-        'rangeResolutionsInMeter': args.range_res,
-        'angleResolutionInRad': args.angle_res,
-        'radar_format': args.radar_format
-    }
+    # ro_params = {
+    #     'cart_resolution': args.cart_res,
+    #     'cart_pixels': args.cart_pixels,
+    #     'rangeResolutionsInMeter': args.range_res,
+    #     'angleResolutionInRad': args.angle_res,
+    #     'radar_format': args.radar_format
+    # }
     train_set = SequenceFolder(
         args.data,
         transform=train_transform,
@@ -223,9 +223,9 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        ro_params=ro_params,
-        load_mono=args.with_vo,
-        mono_transform=mono_transform
+        # ro_params=ro_params,
+        # load_mono=args.with_vo,
+        # mono_transform=mono_transform
     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -237,9 +237,9 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        ro_params=ro_params,
-        load_mono=args.with_vo,
-        mono_transform=mono_transform
+        # ro_params=ro_params,
+        # load_mono=args.with_vo,
+        # mono_transform=mono_transform
     )
 
     print('{} samples found in {} train scenes'.format(
@@ -291,6 +291,7 @@ def main():
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
     disp_net = camera_pose_net = None
+    fuse_net = attention_net = None
     radar_pose_features = None
     camera_pose_features = None
     if args.with_vo:

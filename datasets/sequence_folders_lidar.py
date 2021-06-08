@@ -1,14 +1,8 @@
 import torch.utils.data as data
 import numpy as np
-#from imageio import imread
 from pathlib import Path
 import random
-
-from PIL import Image
-from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
-from .robotcar_camera.camera_model import CameraModel
-
-import utils_warp as utils
+import lidar
 
 
 class SequenceFolder(data.Dataset):
@@ -32,13 +26,13 @@ class SequenceFolder(data.Dataset):
         self.scenes = [self.root/folder.strip()
                        for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.cart_pixels = 512
-        self.max_range = 100.0 if dataset == 'radiate' else 50.0
-        self.cart_resolution = self.max_range/self.cart_pixels
+        # self.max_range = 100.0 if dataset == 'radiate' else 50.0
+        # self.cart_resolution = self.max_range/self.cart_pixels
         self.transform = transform
         self.train = train
         self.k = skip_frames
-        self.lidar_folder = 'velo_lidar' if dataset == 'radiate' else 'lms_front'
-        self.lidar_ext = '*.csv' if dataset == 'radiate' else '*.bin'
+        self.lidar_folder = 'velo_lidar' if dataset == 'radiate' else 'velodyne_left'
+        self.lidar_ext = '*.csv' if dataset == 'radiate' else '*.png'
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -49,7 +43,7 @@ class SequenceFolder(data.Dataset):
                             demi_length * self.k + 1, self.k))
         shifts.pop(demi_length)
         for scene in self.scenes:
-            imgs = sorted(list((scene/self.mono_folder).glob(self.lidar_ext)))
+            imgs = sorted(list((scene/self.lidar_folder).glob(self.lidar_ext)))
 
             if len(imgs) < sequence_length:
                 continue
@@ -64,8 +58,9 @@ class SequenceFolder(data.Dataset):
 
     def load_bin(self, path):
         data = np.fromfile(path, dtype=np.float32)
-        ptcld = data.reshape((4, -1))  # [4,N] x,y,z,I
-        ptcld = ptcld[[0, 1, 3], :]
+        # .transpose()  # [3,N] x,y,I
+        ptcld = data.reshape((len(data) // 3, 3))  # [N,4] x,y,z,I
+        # ptcld = ptcld[[0, 1, 3], :]
         return ptcld
 
     def load_csv(self, path):
@@ -74,16 +69,36 @@ class SequenceFolder(data.Dataset):
         data = data[[0, 1, 3], :]
         return data
 
+    def load_robotcar_velo(self, path):
+        ranges, intensities, angles, approximate_timestamps = lidar.load_velodyne_raw(
+            path)
+        # [4,N] x,y,z,I
+        ptcld = lidar.velodyne_raw_to_pointcloud(ranges, intensities, angles)
+
+        # Convert reflectance to colour values in [0,1]
+        reflectance = ptcld[3, :]
+        colours = (reflectance - reflectance.min()) / \
+            (reflectance.max() - reflectance.min())
+        colours = 1 / (1 + np.exp(-10 * (colours - colours.mean())))
+        ptcld[3, :] = colours
+
+        img = self.ptc2img(ptcld)
+        return img
+
     def ptc2img(self, data):
+        if data.shape[0] != 4:
+            raise ValueError("Input must be [4,N]. Got {}".format(
+                data.shape))
+
         # Calculate the sum of power returns that fall into the same 2D image pixel
-        power_sum = np.histogram2d(
-            x=data[:, 0], y=data[:, 1],
+        power_sum, _, _ = np.histogram2d(
+            x=data[0], y=data[1],
             bins=[self.cart_pixels, self.cart_pixels],
-            weights=data[:2], normed=False
+            weights=data[3], normed=False
         )
         # Calculate the number of points in each pixel
-        power_count = np.histogram2d(
-            x=data[:, 0], y=data[:, 1],
+        power_count, _, _ = np.histogram2d(
+            x=data[0], y=data[1],
             bins=[self.cart_pixels, self.cart_pixels]
         )
         # Calculate the mean of power return in each pixel.
@@ -92,12 +107,17 @@ class SequenceFolder(data.Dataset):
             power_sum, power_count,
             out=np.zeros_like(power_sum), where=power_count != 0
         )
+        img = img.astype(np.float32)[np.newaxis, :, :]  # / 255.
+        img[img < 0.2] = 0
+        #img = np.nan_to_num(img, nan=1e-6)
+        # if np.isnan(np.min(img)):
+        #     print('NaN detected in input!')
         return img
 
     def load_lidar(self, path):
         data = self.load_csv(
-            path) if self.dataset == 'radiate' else self.load_bin(path)
-        data = self.ptc2img(data)
+            path) if self.dataset == 'radiate' else self.load_robotcar_velo(path)
+        # data = self.ptc2img(data)
         return data
 
     def __getitem__(self, index):
@@ -106,9 +126,9 @@ class SequenceFolder(data.Dataset):
         ref_imgs = [self.load_lidar(ref_img)
                     for ref_img in sample['ref_imgs']]
         if self.transform is not None:
-            imgs = self.transform([tgt_img] + ref_imgs)
-            tgt_img = imgs[0]
-            ref_imgs = imgs[1:]
+            # imgs = self.transform([tgt_img] + ref_imgs)
+            tgt_img = self.transform(tgt_img)  # imgs[0]
+            ref_imgs = [self.transform(img) for img in ref_imgs]  # imgs[1:]
         return tgt_img, ref_imgs
 
     def __len__(self):
