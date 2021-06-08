@@ -233,7 +233,7 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        # ro_params=ro_params,
+        lo_params=lo_params,
         # load_mono=args.with_vo,
         # mono_transform=mono_transform
     )
