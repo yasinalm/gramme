@@ -31,7 +31,7 @@ class CameraModel:
 
     """
 
-    def __init__(self):
+    def __init__(self, model_name='stereo_wide_left'):
         """Loads a camera model from disk.
 
         Args:
@@ -46,7 +46,7 @@ class CameraModel:
         self.G_camera_image = None
         self.bilinear_lut = None
 
-        self.model_name = 'stereo_wide_left'
+        self.model_name = model_name
 
         self.__load_intrinsics()
         self.__load_lut()
