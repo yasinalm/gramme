@@ -270,15 +270,16 @@ def main():
         # remember lowest error and save checkpoint
         # is_best = decisive_error < best_error
         # best_error = min(best_error, decisive_error)
-        utils.save_checkpoint_mono(
-            args.save_path, {
-                'epoch': epoch + 1,
-                'state_dict': disp_net.module.state_dict()
-            }, {
-                'epoch': epoch + 1,
-                'state_dict': pose_net.module.state_dict()
-            },
-            epoch)
+        pose_dict = {
+            'epoch': epoch + 1,
+            'state_dict': disp_net.module.state_dict()
+        }
+        disp_dict = {
+            'epoch': epoch + 1,
+            'state_dict': pose_net.module.state_dict()
+        }
+        utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
+                                   ['stereo_pose', 'stereo_disp'], epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -373,15 +374,16 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         end = time.time()
 
         if i > 0 and i % 500 == 0:
-            utils.save_checkpoint_mono(
-                args.save_path, {
-                    'iter': n_iter,
-                    'state_dict': disp_net.module.state_dict()
-                }, {
-                    'iter': n_iter,
-                    'state_dict': pose_net.module.state_dict()
-                },
-                step=n_iter)
+            pose_dict = {
+                'iter': n_iter,
+                'state_dict': disp_net.module.state_dict()
+            }
+            disp_dict = {
+                'iter': n_iter,
+                'state_dict': pose_net.module.state_dict()
+            }
+            utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
+                                       ['stereo_pose', 'stereo_disp'])
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')

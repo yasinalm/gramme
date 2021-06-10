@@ -223,3 +223,8 @@ def save_checkpoint_mono(save_path, dispnet_state, vo_pose_state, fusenet_state,
     #     for prefix in file_prefixes:
     #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
     #                         save_path/'{}_model_best.pth.tar'.format(prefix))
+
+
+def save_checkpoint_list(save_path, state_dicts, file_prefixes, epoch='', filename='checkpoint.pth.tar'):
+    for (prefix, state) in zip(file_prefixes, state_dicts):
+        torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))

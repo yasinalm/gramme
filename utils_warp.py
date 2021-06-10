@@ -91,12 +91,12 @@ def get_intrinsics_matrix(dataset):
 def get_rightTleft(dataset):
     rightTleft = np.zeros(6, dtype=np.float32)
     if dataset == 'robotcar':
-        ty = 0.239983
+        tx = -0.239983
     elif dataset == 'radiate':
-        ty = 0.0
+        tx = 0.0
     else:
         raise NotImplementedError(
             'The chosen dataset is not implemented! Given: {}'.format(dataset))
 
-    rightTleft[1] = ty
+    rightTleft[0] = tx
     return rightTleft
