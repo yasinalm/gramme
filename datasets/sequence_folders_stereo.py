@@ -60,7 +60,9 @@ class SequenceFolder(data.Dataset):
             for i in range(demi_length * self.k, len(left_imgs)-demi_length * self.k):
                 sample = {'intrinsics': intrinsics,
                           'rightTleft': rightTleft,
-                          'tgt': left_imgs[i], 'ref_imgs': [right_imgs[i]]}
+                          'tgt': left_imgs[i], 'ref_imgs': []}
+                if self.train:
+                    sample['ref_imgs'].append(right_imgs[i])
                 for j in shifts:
                     sample['ref_imgs'].append(left_imgs[i+j])
                 sequence_set.append(sample)

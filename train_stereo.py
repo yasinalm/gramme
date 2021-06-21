@@ -272,11 +272,11 @@ def main():
         # best_error = min(best_error, decisive_error)
         pose_dict = {
             'epoch': epoch + 1,
-            'state_dict': disp_net.module.state_dict()
+            'state_dict': pose_net.module.state_dict()
         }
         disp_dict = {
             'epoch': epoch + 1,
-            'state_dict': pose_net.module.state_dict()
+            'state_dict': disp_net.module.state_dict()
         }
         utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
                                    ['stereo_pose', 'stereo_disp'], epoch)
@@ -527,8 +527,8 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
 
         if log_outputs:
             # Plot and log predicted trajectory
-            b_fig = utils.traj2Fig(b_pred_xyz)
-            f_fig = utils.traj2Fig(f_pred_xyz)
+            b_fig = utils.traj2Fig(b_pred_xyz, axes=[2, 0])
+            f_fig = utils.traj2Fig(f_pred_xyz, axes=[2, 0])
             val_writer.add_figure('val/fig/b_traj_pred', b_fig, epoch)
             val_writer.add_figure('val/fig/f_traj_pred', f_fig, epoch)
 
@@ -548,7 +548,7 @@ def compute_depth(disp_net, tgt_img, ref_imgs):
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
     poses = [rightTleft]
-    poses_inv = [-rightTleft]
+    poses_inv = [-(rightTleft.detach().clone())]
     for ref_img in ref_imgs[1:]:
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))

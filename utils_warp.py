@@ -91,7 +91,7 @@ def get_intrinsics_matrix(dataset):
 def get_rightTleft(dataset):
     rightTleft = np.zeros(6, dtype=np.float32)
     if dataset == 'robotcar':
-        tx = -0.239983
+        tx = 0.239983
     elif dataset == 'radiate':
         tx = 0.0
     else:
