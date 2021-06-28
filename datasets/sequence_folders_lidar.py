@@ -79,10 +79,15 @@ class SequenceFolder(data.Dataset):
 
         # Convert reflectance to colour values in [0,1]
         reflectance = ptcld[3, :]
-        colours = (reflectance - reflectance.min()) / \
-            (reflectance.max() - reflectance.min())
-        colours = 1 / (1 + np.exp(-10 * (colours - colours.mean())))
-        ptcld[3, :] = colours
+        if reflectance.size != 0:
+            colours = (reflectance - reflectance.min()) / \
+                (reflectance.max() - reflectance.min())
+            colours = 1 / (1 + np.exp(-10 * (colours - colours.mean())))
+            ptcld[3, :] = colours
+
+        # Filter points at close range
+        # ptcld = ptcld[:, np.logical_and(
+        #     np.abs(ptcld[0]) > 4.0, np.abs(ptcld[1]) > 4.0)]
 
         img = self.ptc2img(ptcld)
         return img

@@ -458,9 +458,9 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
                 'val/mono/warped_ref', utils.tensor2array(ref_img_warped[0]), n_iter)
 
             val_writer.add_image('val/mono/disp', utils.tensor2array(
-                1/tgt_depth[0][0], max_value=None, colormap='magma'), n_iter)
+                1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
             val_writer.add_image('val/mono/depth', utils.tensor2array(
-                tgt_depth[0][0], max_value=None, colormap='gist_heat'), n_iter)
+                tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
             val_writer.add_image(
                 'val/mono/warped_mask', utils.tensor2array(valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 

@@ -6,7 +6,7 @@ import numpy as np
 
 # Hard coded configuration to simplify parsing code
 hdl32e_range_resolution = 0.002  # m / pixel
-hdl32e_minimum_range = 1.0
+hdl32e_minimum_range = 6.0
 hdl32e_elevations = np.array([-0.1862, -0.1628, -0.1396, -0.1164, -0.0930,
                               -0.0698, -0.0466, -0.0232, 0., 0.0232, 0.0466, 0.0698,
                               0.0930, 0.1164, 0.1396, 0.1628, 0.1862, 0.2094, 0.2327,
