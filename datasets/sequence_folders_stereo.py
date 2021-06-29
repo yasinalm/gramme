@@ -27,7 +27,7 @@ class SequenceFolder(data.Dataset):
         random.seed(seed)
         self.root = Path(root)
         self.dataset = dataset
-        scene_list_path = self.root/'train_stereo.txt' if train else self.root/'val.txt'
+        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder.strip()
                        for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         self.transform = transform
@@ -85,8 +85,9 @@ class SequenceFolder(data.Dataset):
     def __getitem__(self, index):
         sample = self.samples[index]
         tgt_img = self.load_as_float(sample['tgt'], self.cam_model_left)
-        ref_imgs = [self.load_as_float(ref_img, self.cam_model_right)
-                    for ref_img in sample['ref_imgs']]
+        ref_imgs = [self.load_as_float(sample['ref_imgs'][0], self.cam_model_right)]
+        for ref_img in sample['ref_imgs'][1:]:
+            ref_imgs.append(self.load_as_float(ref_img, self.cam_model_left))
         if self.transform is not None:
             imgs, intrinsics = self.transform(
                 [tgt_img] + ref_imgs, np.copy(sample['intrinsics']))

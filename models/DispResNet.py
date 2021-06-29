@@ -87,7 +87,8 @@ class DepthDecoder(nn.Module):
                 self.num_ch_dec[s], self.num_output_channels)
 
         self.decoder = nn.ModuleList(list(self.convs.values()))
-        self.sigmoid = nn.Softplus()
+        # self.sigmoid = nn.Softplus()
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, input_features):
         self.outputs = []

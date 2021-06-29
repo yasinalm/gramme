@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from torch import nn
 
 import utils_warp as utils
+import loss_ssim
+
 
 
 pixel_coords = None
@@ -271,6 +273,8 @@ class MonoWarper(object):
         photo_loss = 0
         geometry_loss = 0
 
+        ref_imgs_warped = []
+
         num_scales = min(len(tgt_depth), self.max_scales)
         for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
             for s in range(num_scales):
@@ -310,12 +314,14 @@ class MonoWarper(object):
                 photo_loss += (photo_loss1 + photo_loss2)
                 geometry_loss += (geometry_loss1 + geometry_loss2)
 
+                ref_imgs_warped.append(ref_img_warped)
+
         smooth_loss = utils.compute_smooth_loss(
             tgt_depth, tgt_img, ref_depths, ref_imgs)
 
         ssim_loss = torch.Tensor([0]).to(device)
 
-        return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
+        return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_imgs_warped, valid_mask
 
     def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsics):
         global device
@@ -334,7 +340,8 @@ class MonoWarper(object):
             valid_mask = auto_mask
 
         if self.with_ssim == True:
-            ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
+            # ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
+            ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
             diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
         if self.with_mask == True:

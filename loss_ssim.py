@@ -94,7 +94,8 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11,
         (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
     )
 
-    return num / (den + eps)
+    # return num / (den + eps)
+    return torch.clamp((1 - num / (den + eps)) / 2, min=0, max=1) 
 
 
 def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,

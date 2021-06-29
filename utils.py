@@ -78,9 +78,9 @@ def tensor2array(tensor, max_value=None, colormap='magma'):
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
         # array = 119.4501 + tensor.numpy()*6.5258
-        array = imagenet_mean[:, None, None].to(tensor.device) + \
-            tensor*imagenet_std[:, None, None].to(tensor.device)
-        array = array.detach().cpu().numpy()
+        # array = imagenet_mean[:, None, None].to(tensor.device) + \
+        #     tensor*imagenet_std[:, None, None].to(tensor.device)
+        array = tensor.detach().cpu().numpy()
     return array
 
 

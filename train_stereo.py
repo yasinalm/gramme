@@ -134,7 +134,7 @@ def main():
             T.RandomHorizontalFlip(),
             T.RandomScaleCrop(),
             T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
+            # T.Normalize(imagenet_mean, imagenet_std)
         ])
 
         valid_transform = T.Compose([
@@ -142,7 +142,7 @@ def main():
             T.CropBottom(),
             T.Resize(img_size),
             T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
+            # T.Normalize(imagenet_mean, imagenet_std)
         ])
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
@@ -151,14 +151,14 @@ def main():
             T.RandomHorizontalFlip(),
             T.RandomScaleCrop(),
             T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
+            # T.Normalize(imagenet_mean, imagenet_std)
         ])
 
         valid_transform = T.Compose([
             T.ToPILImage(),
             T.Resize(img_size),
             T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
+            # T.Normalize(imagenet_mean, imagenet_std)
         ])
 
     print("=> fetching scenes in '{}'".format(args.data))
@@ -311,20 +311,36 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         intrinsics = intrinsics.to(device)
         rightTleft = rightTleft.to(device)
 
+        # assert ~torch.isnan(tgt_img).any()
+        # assert all([~torch.isnan(ref_img).any() for ref_img in ref_imgs])
+
+        # print(tgt_img.min())
+        # print(tgt_img.max())
+
+        # condition = [tgt_img.min()>=0]
+        # condition.append([tgt_img.max()<=1.0])
+        # for ref in ref_imgs:
+        #     print(ref.min())
+        #     print(ref.max())
+        #     condition.append([ref.min()>=0])
+        #     condition.append([ref.max()<=1.0])
+
+        # assert(all(condition)), "Not all images are in [0,1]"
+
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv_stereo(
             pose_net, tgt_img, ref_imgs, rightTleft)
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
-         ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+         ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
             tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv)
 
         loss = w1*photo_loss + w2*smooth_loss + \
             w3*geometry_loss  # + ssim_loss
 
         if log_losses:
-            poses = torch.cat(poses)
+            poses = torch.cat(poses[0:2])
             train_writer.add_histogram(
                 'train/mono/rot_pred-x', poses[..., 0], n_iter)
             train_writer.add_histogram(
@@ -348,11 +364,15 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'train/mono/total_loss', loss.item(), n_iter)
 
             train_writer.add_image(
-                'train/mono/input_tgt', utils.tensor2array(tgt_img[0]), n_iter)
+                'train/mono/input_tgt_left', utils.tensor2array(tgt_img[0]), n_iter)
             train_writer.add_image(
-                'train/mono/input_ref', utils.tensor2array(ref_imgs[0][0]), n_iter)
+                'train/mono/input_ref_right', utils.tensor2array(ref_imgs[0][0]), n_iter)
             train_writer.add_image(
-                'train/mono/warped_ref', utils.tensor2array(ref_img_warped[0]), n_iter)
+                'train/mono/warped_ref_right', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
+            train_writer.add_image(
+                'train/mono/input_ref', utils.tensor2array(ref_imgs[1][0]), n_iter)
+            train_writer.add_image(
+                'train/mono/warped_ref', utils.tensor2array(ref_imgs_warped[1][0]), n_iter)
 
             train_writer.add_image('train/mono/disp', utils.tensor2array(
                 1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
@@ -376,11 +396,11 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         if i > 0 and i % 500 == 0:
             pose_dict = {
                 'iter': n_iter,
-                'state_dict': disp_net.module.state_dict()
+                'state_dict': pose_net.module.state_dict()
             }
             disp_dict = {
                 'iter': n_iter,
-                'state_dict': pose_net.module.state_dict()
+                'state_dict': disp_net.module.state_dict()
             }
             utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
                                        ['stereo_pose', 'stereo_disp'])
@@ -441,7 +461,7 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
             torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
-         ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+         ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
             tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv)
 
         loss = w1*photo_loss + w2*smooth_loss + \
@@ -455,7 +475,7 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
             val_writer.add_image(
                 'val/mono/input_ref', utils.tensor2array(ref_imgs[0][0]), n_iter)
             val_writer.add_image(
-                'val/mono/warped_ref', utils.tensor2array(ref_img_warped[0]), n_iter)
+                'val/mono/warped_ref', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
 
             val_writer.add_image('val/mono/disp', utils.tensor2array(
                 1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
@@ -536,15 +556,28 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depth = [disp_to_depth(disp) for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
 
+def disp_to_depth(disp):
+    """Convert network's sigmoid output into depth prediction
+    The formula for this conversion is given in the 'additional considerations'
+    section of the paper.
+    """
+    # min_depth = 0.1
+    # max_depth = 100.0
+    # min_disp = 1 / max_depth
+    # max_disp = 1 / min_depth
+    # scaled_disp = min_disp + (max_disp - min_disp) * disp
+    # depth = 1 / scaled_disp
+    depth = 1./disp
+    return depth
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
     poses = [rightTleft]

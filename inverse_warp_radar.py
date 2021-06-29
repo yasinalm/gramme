@@ -230,8 +230,8 @@ class Warper(object):
             valid_mask = auto_mask * valid_mask  # element-wise # [B,1,H,W]
 
         # ssim_loss = loss_ssim.ssim(tgt_img, ref_img_warped, valid_mask)
-        ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
-        # ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
+        # ssim_map = compute_ssim_loss(tgt_img, ref_img_warped)
+        ssim_map = loss_ssim.ssim(tgt_img, ref_img_warped)
         ssim_loss = mean_on_mask(ssim_map, valid_mask)  # ssim_map.mean()
         diff_img = (0.15 * diff_img + 0.85 * ssim_map)
 
