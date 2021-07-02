@@ -1,3 +1,4 @@
+from preprocess.undistort_robotcar import preprocess
 import torch.utils.data as data
 import numpy as np
 #from imageio import imread
@@ -22,7 +23,8 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, dataset='robotcar', seed=None, train=True, sequence_length=3, transform=None, skip_frames=1):
+    def __init__(self, root, dataset='robotcar', seed=None, train=True, 
+    sequence_length=3, transform=None, skip_frames=1, preprocessed=False):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -33,11 +35,22 @@ class SequenceFolder(data.Dataset):
         self.transform = transform
         self.train = train
         self.k = skip_frames
-        self.stereo_left_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
-        self.stereo_right_folder = 'zed_right' if dataset == 'radiate' else 'stereo/right'
-        if dataset == 'robotcar':
-            self.cam_model_left = CameraModel()
-            self.cam_model_right = CameraModel('stereo_wide_right')
+        self.preprocessed = preprocessed
+        if dataset == 'radiate':
+            self.stereo_left_folder = 'zed_left' 
+            self.stereo_right_folder = 'zed_right'
+        elif dataset == 'robotcar':
+            if self.preprocessed:
+                self.stereo_left_folder ='stereo_undistorted/left'
+                self.stereo_right_folder ='stereo_undistorted/right'  
+            else:
+                self.stereo_left_folder ='stereo/left'
+                self.stereo_right_folder ='stereo/right'            
+                self.cam_model_left = CameraModel()
+                self.cam_model_right = CameraModel('stereo_wide_right')
+        else:
+            raise NotImplementedError(
+                'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -82,17 +95,35 @@ class SequenceFolder(data.Dataset):
         # img = img.astype(np.uint8)
         return img
 
+    def load_undistorted_as_float(self, path):
+        # img = imread(path).astype(np.float32)
+        img = Image.open(path)
+        # img = img.convert("RGB")
+        # img = np.array(img)
+        # img = np.array(img).astype(np.uint8)
+        # img = img.astype(np.uint8)
+        # print("{} _ {}".format(img.min(), img.max()))
+        # if np.isnan(img).any():
+        #     print("nan detected in input")
+        return img
+
     def __getitem__(self, index):
         sample = self.samples[index]
-        tgt_img = self.load_as_float(sample['tgt'], self.cam_model_left)
-        ref_imgs = [self.load_as_float(sample['ref_imgs'][0], self.cam_model_right)]
-        for ref_img in sample['ref_imgs'][1:]:
-            ref_imgs.append(self.load_as_float(ref_img, self.cam_model_left))
+        if self.preprocessed:
+            tgt_img = self.load_undistorted_as_float(sample['tgt'])
+            ref_imgs = [self.load_undistorted_as_float(ref_img) for ref_img in sample['ref_imgs']]
+        else:
+            tgt_img = self.load_as_float(sample['tgt'], self.cam_model_left)
+            ref_imgs = [self.load_as_float(sample['ref_imgs'][0], self.cam_model_right)]
+            for ref_img in sample['ref_imgs'][1:]:
+                ref_imgs.append(self.load_as_float(ref_img, self.cam_model_left))
         if self.transform is not None:
             imgs, intrinsics = self.transform(
                 [tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
             tgt_img = imgs[0]
             ref_imgs = imgs[1:]
+            # if any([np.isnan(np.array(img)).any() for img in imgs]):
+            #     print("getitem: nan detected in input")
         else:
             intrinsics = np.copy(sample['intrinsics'])
         if self.train:

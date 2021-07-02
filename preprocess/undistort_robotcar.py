@@ -49,36 +49,43 @@ if __name__ == '__main__':
     root = Path(args.data)
     save_dir = 'stereo_undistorted'
     scenes = [f for f in root.iterdir() if f.is_dir()]
+    # scenes = [Path('/media/storage/robotcar/2019-01-17-12-48-25-radar-oxford-10k')]
+    # scenes = scenes[24:]
+    print(scenes)
 
     stereo_left_folder = 'stereo/left'
     stereo_right_folder = 'stereo/right'
     cam_model_left = CameraModel()
     cam_model_right = CameraModel('stereo_wide_right')
 
-    for scene in tqdm(scenes):        
+    for scene in tqdm(scenes):
         left_imgs = sorted(
             list((scene/stereo_left_folder).glob('*.png')))
         right_imgs = sorted(
             list((scene/stereo_right_folder).glob('*.png')))
 
         save_stereo_dir = scene/save_dir
-        save_stereo_dir.mkdir()
+        save_stereo_dir.mkdir(exist_ok=True)
 
         save_stereo_dir_left = save_stereo_dir/'left'
-        save_stereo_dir_left.mkdir()
+        save_stereo_dir_left.mkdir(exist_ok=True)
         save_stereo_dir_right = save_stereo_dir/'right'
-        save_stereo_dir_right.mkdir()
+        save_stereo_dir_right.mkdir(exist_ok=True)
 
-        for path in left_imgs:
+        for path in tqdm(left_imgs, leave=False):
+            save_name = save_stereo_dir_left/path.name
+            if save_name.is_file():
+                continue
+
             img = load_as_float(path, cam_model_left)
             img = preprocess(img)
-
-            save_name = save_stereo_dir_left/path.name
             img.save(save_name)
         
-        for path in right_imgs:
+        for path in tqdm(right_imgs, leave=False):
+            save_name = save_stereo_dir_right/path.name
+            if save_name.is_file():
+                continue
+
             img = load_as_float(path, cam_model_right)
             img = preprocess(img)
-
-            save_name = save_stereo_dir_right/path.name
             img.save(save_name)

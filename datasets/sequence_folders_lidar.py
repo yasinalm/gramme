@@ -122,7 +122,8 @@ class SequenceFolder(data.Dataset):
             out=np.zeros_like(power_sum), where=power_count != 0
         )
         img = img.astype(np.float32)[np.newaxis, :, :]  # / 255.
-        img[img < 0.2] = 0
+        # img[img < 0.2] = 0
+        
         #img = np.nan_to_num(img, nan=1e-6)
         # if np.isnan(np.min(img)):
         #     print('NaN detected in input!')

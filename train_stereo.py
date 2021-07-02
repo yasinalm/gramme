@@ -80,6 +80,8 @@ parser.add_argument('--with-pretrain', type=int,  default=1,
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+parser.add_argument('--with-preprocessed', type=int, default=1,
+                    help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
@@ -127,23 +129,40 @@ def main():
     imagenet_std = utils.imagenet_std
     img_size = (args.img_height, args.img_width)
     if args.dataset == 'robotcar':
-        train_transform = T.Compose([
-            T.ToPILImage(),
-            T.CropBottom(),
-            T.Resize(img_size),
-            T.RandomHorizontalFlip(),
-            T.RandomScaleCrop(),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.with_preprocessed:
+            # TODO: transform stereo calibration
+            train_transform = T.Compose([
+                # T.ToPILImage(),
+                # T.RandomHorizontalFlip(),
+                # T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+            
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])            
+        else:
+            train_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(),
+                T.Resize(img_size),
+                T.RandomHorizontalFlip(),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
-        valid_transform = T.Compose([
-            T.ToPILImage(),
-            T.CropBottom(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+            valid_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
             T.ToPILImage(),
@@ -168,7 +187,8 @@ def main():
         transform=train_transform,
         seed=args.seed,
         train=True,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        preprocessed=args.with_preprocessed
     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -178,7 +198,8 @@ def main():
         transform=valid_transform,
         seed=args.seed,
         train=False,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        preprocessed=args.with_preprocessed
     )
 
     print('{} samples found in {} train scenes'.format(
@@ -313,6 +334,14 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
 
         # assert ~torch.isnan(tgt_img).any()
         # assert all([~torch.isnan(ref_img).any() for ref_img in ref_imgs])
+        
+        # if torch.isnan(tgt_img).any():
+        #     # print("nan detected in tgt_img")
+        #     continue
+
+        # if any([torch.isnan(ref_img).any() for ref_img in ref_imgs]):
+        #     # print("nan detected in ref_imgs")
+        #     continue
 
         # print(tgt_img.min())
         # print(tgt_img.max())

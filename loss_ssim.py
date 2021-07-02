@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11,
+def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 5,
          max_val: float = 1.0, eps: float = 1e-12) -> torch.Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
@@ -94,8 +94,10 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11,
         (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
     )
 
+    den = torch.clamp(den, min=eps)
+
     # return num / (den + eps)
-    return torch.clamp((1 - num / (den + eps)) / 2, min=0, max=1) 
+    return torch.clamp((1 - num / den) / 2, min=0, max=1) 
 
 
 def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
