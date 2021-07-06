@@ -90,7 +90,7 @@ class SequenceFolder(data.Dataset):
         #     np.abs(ptcld[0]) > 4.0, np.abs(ptcld[1]) > 4.0)]
 
         # Remove ground reflections
-        ptcld = ptcld[:,ptcld[2]<0]
+        # ptcld = ptcld[:,ptcld[2]<0]
 
         img = self.ptc2img(ptcld)
         return img

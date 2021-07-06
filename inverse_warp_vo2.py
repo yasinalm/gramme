@@ -258,7 +258,7 @@ class MonoWarper(object):
             img, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
 
         valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
-        valid_mask = valid_points.unsqueeze(1).float()
+        valid_mask = valid_points.unsqueeze(1).to(torch.float32) #.float()
 
         projected_depth = F.grid_sample(
             ref_depth, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
@@ -336,7 +336,7 @@ class MonoWarper(object):
 
         if self.with_auto_mask == True:
             auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
-                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float() * valid_mask
+                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).to(torch.float32) * valid_mask
             valid_mask = auto_mask
 
         if self.with_ssim == True:
@@ -362,6 +362,6 @@ class MonoWarper(object):
         if mask.sum() > 50000:
             mean_value = (diff * mask).sum() / mask.sum()
         else:
-            mean_value = torch.tensor(0).float().to(device)
+            mean_value = torch.tensor(0).to(device, dtype=torch.float32)
             #mean_value = diff.sum() / (mask.sum()+1e-12)
         return mean_value

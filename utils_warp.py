@@ -11,7 +11,8 @@ def compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs):
 
         # normalize
         mean_disp = disp.mean(2, True).mean(3, True)
-        norm_disp = disp / (mean_disp + 1e-7)
+        mean_disp = torch.clamp(mean_disp, min=1e-7)
+        norm_disp = disp / mean_disp
         disp = norm_disp
 
         grad_disp_x = torch.abs(disp[:, :, :, :-1] - disp[:, :, :, 1:])

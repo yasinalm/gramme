@@ -38,7 +38,7 @@ parser.add_argument('--epoch-size', default=0, type=int, metavar='N',
                     help='manual epoch size (will match dataset size if not set)')
 parser.add_argument('-b', '--batch-size', default=4,
                     type=int, metavar='N', help='mini-batch size')
-parser.add_argument('--lr', '--learning-rate', default=1e-4,
+parser.add_argument('--lr', '--learning-rate', default=1e-3,
                     type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
                     metavar='M', help='momentum for sgd, alpha parameter for adam')
@@ -112,6 +112,8 @@ def main():
     args.save_path = 'checkpoints'/save_path/timestamp
     print('=> will save everything to {}'.format(args.save_path))
     args.save_path.mkdir(parents=True)
+
+    torch.set_default_dtype(torch.float32)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -268,44 +270,46 @@ def main():
         len(train_loader), args.epoch_size), valid_size=len(val_loader))
     logger.epoch_bar.start()
 
-    for epoch in range(args.epochs):
-        logger.epoch_bar.update(epoch)
+    
+    with torch.cuda.amp.autocast(enabled=False):
+        for epoch in range(args.epochs):
+            logger.epoch_bar.update(epoch)
 
-        # train for one epoch
-        logger.reset_train_bar()
-        train_loss = train(args, train_loader, disp_net, pose_net,
-                           optimizer, logger, training_writer, mono_warper)
-        logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
+            # train for one epoch
+            logger.reset_train_bar()
+            train_loss = train(args, train_loader, disp_net, pose_net,
+                            optimizer, logger, training_writer, mono_warper)
+            logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
-        # evaluate on validation set
-        logger.reset_valid_bar()
-        val_loss = validate(
-            args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, val_writer)
-        logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
+            # evaluate on validation set
+            logger.reset_valid_bar()
+            val_loss = validate(
+                args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, val_writer)
+            logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
-        # decisive_error = errors[1]
-        # if best_error < 0:
-        #     best_error = decisive_error
+            # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+            # decisive_error = errors[1]
+            # if best_error < 0:
+            #     best_error = decisive_error
 
-        # remember lowest error and save checkpoint
-        # is_best = decisive_error < best_error
-        # best_error = min(best_error, decisive_error)
-        pose_dict = {
-            'epoch': epoch + 1,
-            'state_dict': pose_net.module.state_dict()
-        }
-        disp_dict = {
-            'epoch': epoch + 1,
-            'state_dict': disp_net.module.state_dict()
-        }
-        utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
-                                   ['stereo_pose', 'stereo_disp'], epoch)
+            # remember lowest error and save checkpoint
+            # is_best = decisive_error < best_error
+            # best_error = min(best_error, decisive_error)
+            pose_dict = {
+                'epoch': epoch + 1,
+                'state_dict': pose_net.module.state_dict()
+            }
+            disp_dict = {
+                'epoch': epoch + 1,
+                'state_dict': disp_net.module.state_dict()
+            }
+            utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
+                                    ['stereo_pose', 'stereo_disp'], epoch)
 
-        with open(args.save_path/args.log_summary, 'a') as csvfile:
-            writer = csv.writer(csvfile, delimiter='\t')
-            writer.writerow([train_loss])
-    logger.epoch_bar.finish()
+            with open(args.save_path/args.log_summary, 'a') as csvfile:
+                writer = csv.writer(csvfile, delimiter='\t')
+                writer.writerow([train_loss])
+        logger.epoch_bar.finish()
 
 
 def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_writer, mono_warper):
@@ -325,6 +329,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
     for i, (tgt_img, ref_imgs, intrinsics, rightTleft) in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
+        # print("{} _ {}".format(tgt_img.min(), tgt_img.max()))
         # measure data loading time
         data_time.update(time.time() - end)
         tgt_img = tgt_img.to(device)
@@ -343,8 +348,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         #     # print("nan detected in ref_imgs")
         #     continue
 
-        # print(tgt_img.min())
-        # print(tgt_img.max())
+        # print("{} _ {}".format(tgt_img.min(), tgt_img.max()))
 
         # condition = [tgt_img.min()>=0]
         # condition.append([tgt_img.max()<=1.0])
