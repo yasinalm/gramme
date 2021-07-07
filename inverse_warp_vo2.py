@@ -358,10 +358,11 @@ class MonoWarper(object):
 
     def mean_on_mask(self, diff, valid_mask):
         global device
-        mask = valid_mask.expand_as(diff)
-        if mask.sum() > 50000:
-            mean_value = (diff * mask).sum() / mask.sum()
-        else:
-            mean_value = torch.tensor(0).to(device, dtype=torch.float32)
-            #mean_value = diff.sum() / (mask.sum()+1e-12)
+        mask = valid_mask.expand_as(diff).clamp(min=1e-6)
+        mean_value = (diff * mask).sum() / mask.sum()
+        # if mask.sum() > 1e4*diff.shape[0]:
+        #     mean_value = (diff * mask).sum() / mask.sum()
+        # else:
+        #     # mean_value = torch.tensor(0).to(device, dtype=torch.float32)
+        #     mean_value = diff.sum() / (mask.sum()+1e-12)
         return mean_value

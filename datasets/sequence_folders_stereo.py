@@ -32,6 +32,7 @@ class SequenceFolder(data.Dataset):
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder.strip()
                        for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+        self.scenes = self.scenes[:len(self.scenes)//5]
         self.transform = transform
         self.train = train
         self.k = skip_frames
@@ -62,7 +63,7 @@ class SequenceFolder(data.Dataset):
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            intrinsics = utils.get_intrinsics_matrix(self.dataset)
+            intrinsics = utils.get_intrinsics_matrix(self.dataset, preprocessed=self.preprocessed)
             rightTleft = utils.get_rightTleft(self.dataset)
             #imgs = sorted(scene.files('*.png'))
             left_imgs = sorted(
@@ -118,16 +119,17 @@ class SequenceFolder(data.Dataset):
             for ref_img in sample['ref_imgs'][1:]:
                 ref_imgs.append(self.load_as_float(ref_img, self.cam_model_left))
         if self.transform is not None:
-            imgs, intrinsics = self.transform(
-                [tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
+            imgs, intrinsics, extrinsics = self.transform(
+                [tgt_img] + ref_imgs, np.copy(sample['intrinsics']), np.copy(sample['rightTleft']))
             tgt_img = imgs[0]
             ref_imgs = imgs[1:]
             # if any([np.isnan(np.array(img)).any() for img in imgs]):
             #     print("getitem: nan detected in input")
         else:
             intrinsics = np.copy(sample['intrinsics'])
+            extrinsics = np.copy(sample['rightTleft'])
         if self.train:
-            return tgt_img, ref_imgs, intrinsics, np.copy(sample['rightTleft'])
+            return tgt_img, ref_imgs, intrinsics, extrinsics
         else:
             return tgt_img, ref_imgs, intrinsics
 

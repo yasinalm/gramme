@@ -68,10 +68,20 @@ def camera_matrix(pinholes, eps=1e-6):
     return k
 
 
-def get_intrinsics_matrix(dataset):
+def get_intrinsics_matrix(dataset, preprocessed):
     intrinsics = np.eye(3, dtype=np.float32)+1e-6
     if dataset == 'robotcar':
         fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
+        if preprocessed:
+            scaled_h, scaled_w = 192, 320
+            in_h, in_w = 800, 1280
+            x_scaling = float(scaled_w)/in_w
+            y_scaling = float(scaled_h)/in_h
+
+            fx *= x_scaling
+            cx *= x_scaling
+            fy *= y_scaling
+            cy *= y_scaling
     elif dataset == 'radiate':
         fx = 3.379191448899105e+02
         fy = 3.386957068549526e+02

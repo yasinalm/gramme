@@ -132,11 +132,10 @@ def main():
     img_size = (args.img_height, args.img_width)
     if args.dataset == 'robotcar':
         if args.with_preprocessed:
-            # TODO: transform stereo calibration
             train_transform = T.Compose([
                 # T.ToPILImage(),
-                # T.RandomHorizontalFlip(),
-                # T.RandomScaleCrop(),
+                T.RandomHorizontalFlip(),
+                T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
@@ -388,6 +387,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'train/mono/trans_pred-z', poses[..., 5], n_iter)
 
             train_writer.add_scalar(
+                'train/mono/mean_depth', tgt_depth[0][0].mean(), n_iter)
+            
+            train_writer.add_scalar(
                 'train/mono/photometric_error', photo_loss.item(), n_iter)
             train_writer.add_scalar(
                 'train/mono/disparity_smoothness_loss', smooth_loss.item(), n_iter)
@@ -532,17 +534,17 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         # Log predicted relative poses in histograms
         all_poses_t = torch.cat(all_poses, 1)  # [seq_length, N, 6]
         val_writer.add_histogram(
-            'train/mono/rot_pred-x', all_poses_t[..., 0], n_iter)
+            'val/mono/rot_pred-x', all_poses_t[..., 0], n_iter)
         val_writer.add_histogram(
-            'train/mono/rot_pred-y', all_poses_t[..., 1], n_iter)
+            'val/mono/rot_pred-y', all_poses_t[..., 1], n_iter)
         val_writer.add_histogram(
-            'train/mono/rot_pred-z', all_poses_t[..., 2], n_iter)
+            'val/mono/rot_pred-z', all_poses_t[..., 2], n_iter)
         val_writer.add_histogram(
-            'train/mono/trans_pred-x', all_poses_t[..., 3], n_iter)
+            'val/mono/trans_pred-x', all_poses_t[..., 3], n_iter)
         val_writer.add_histogram(
-            'train/mono/trans_pred-y', all_poses_t[..., 4], n_iter)
+            'val/mono/trans_pred-y', all_poses_t[..., 4], n_iter)
         val_writer.add_histogram(
-            'train/mono/trans_pred-z', all_poses_t[..., 5], n_iter)
+            'val/mono/trans_pred-z', all_poses_t[..., 5], n_iter)
 
     logger.valid_bar.update(len(val_loader))
 
@@ -603,6 +605,7 @@ def disp_to_depth(disp):
     The formula for this conversion is given in the 'additional considerations'
     section of the paper.
     """
+    # Disp is already scaled in DispResNet.
     # min_depth = 0.1
     # max_depth = 100.0
     # min_disp = 1 / max_depth
@@ -614,7 +617,7 @@ def disp_to_depth(disp):
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
     poses = [rightTleft]
-    poses_inv = [-(rightTleft.detach().clone())]
+    poses_inv = [-(rightTleft.clone())]
     for ref_img in ref_imgs[1:]:
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))
