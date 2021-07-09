@@ -32,7 +32,7 @@ class SequenceFolder(data.Dataset):
         scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
         self.scenes = [self.root/folder.strip()
                        for folder in open(scene_list_path) if not folder.strip().startswith("#")]
-        self.scenes = self.scenes[:len(self.scenes)//5]
+        # self.scenes = self.scenes[:len(self.scenes)//10]
         self.transform = transform
         self.train = train
         self.k = skip_frames
@@ -118,6 +118,7 @@ class SequenceFolder(data.Dataset):
             ref_imgs = [self.load_as_float(sample['ref_imgs'][0], self.cam_model_right)]
             for ref_img in sample['ref_imgs'][1:]:
                 ref_imgs.append(self.load_as_float(ref_img, self.cam_model_left))
+        
         if self.transform is not None:
             imgs, intrinsics, extrinsics = self.transform(
                 [tgt_img] + ref_imgs, np.copy(sample['intrinsics']), np.copy(sample['rightTleft']))
@@ -128,6 +129,7 @@ class SequenceFolder(data.Dataset):
         else:
             intrinsics = np.copy(sample['intrinsics'])
             extrinsics = np.copy(sample['rightTleft'])
+        
         if self.train:
             return tgt_img, ref_imgs, intrinsics, extrinsics
         else:

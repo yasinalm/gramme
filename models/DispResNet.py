@@ -56,8 +56,8 @@ class DepthDecoder(nn.Module):
     def __init__(self, num_ch_enc, scales=range(4), num_output_channels=1, use_skips=True):
         super(DepthDecoder, self).__init__()
 
-        self.alpha = 10
-        self.beta = 0.01
+        # self.alpha = 1 # mono - 10, stereo 1
+        # self.beta = 0 # mono - 0.01, stereo - 0
 
         self.num_output_channels = num_output_channels
         self.use_skips = use_skips
@@ -104,7 +104,8 @@ class DepthDecoder(nn.Module):
             x = self.convs["upconv{}{}".format(i, 1)](x)
             if i in self.scales:
                 self.outputs.append(
-                    self.alpha * self.sigmoid(self.convs["dispconv{}".format(i)](x)) + self.beta)
+                    # self.alpha * self.sigmoid(self.convs["dispconv{}".format(i)](x)) + self.beta)
+                    self.sigmoid(self.convs["dispconv{}".format(i)](x)))
 
         self.outputs = self.outputs[::-1]
         return self.outputs

@@ -35,6 +35,7 @@ class SequenceFolder(data.Dataset):
         self.k = skip_frames
         self.lidar_folder = 'velo_lidar' if dataset == 'radiate' else 'velodyne_left'
         self.lidar_ext = '*.csv' if dataset == 'radiate' else '*.png'
+        self.ground_thr = -1.8 if dataset == 'radiate' else 1.0
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -58,42 +59,55 @@ class SequenceFolder(data.Dataset):
             random.shuffle(sequence_set)
         self.samples = sequence_set
 
-    def load_bin(self, path):
-        data = np.fromfile(path, dtype=np.float32)
-        # .transpose()  # [3,N] x,y,I
-        ptcld = data.reshape((len(data) // 3, 3))  # [N,4] x,y,z,I
-        # ptcld = ptcld[[0, 1, 3], :]
-        return ptcld
+    # def load_bin(self, path):
+    #     data = np.fromfile(path, dtype=np.float32)
+    #     # .transpose()  # [3,N] x,y,I
+    #     ptcld = data.reshape((len(data) // 3, 3))  # [N,4] x,y,z,I
+    #     # ptcld = ptcld[[0, 1, 3], :]
+    #     return ptcld
 
-    def load_csv(self, path):
+    def load_velodyne_csv(self, path):
         # x, y, z, intensity, ring
         data = np.genfromtxt(path, delimiter=',', dtype=np.float32)
-        data = data[[0, 1, 3], :]
-        return data
+        #data = data[[0, 1, 3], :]
+        return data[:,:4].transpose()
+
+    def load_radiate_velo(self, path):
+        ptcld = self.load_velodyne_csv(path)
+        ptcld[3, :] = self.reflectance2colour(ptcld)
+        # Remove ground reflections
+        ptcld = ptcld[:,ptcld[2]>self.ground_thr]
+
+        img = self.ptc2img(ptcld)
+        return img
 
     def load_robotcar_velo(self, path):
         ranges, intensities, angles, approximate_timestamps = lidar.load_velodyne_raw(
             path)
         # [4,N] x,y,z,I
         ptcld = lidar.velodyne_raw_to_pointcloud(ranges, intensities, angles)
-
-        # Convert reflectance to colour values in [0,1]
-        reflectance = ptcld[3, :]
-        if reflectance.size != 0:
-            colours = (reflectance - reflectance.min()) / \
-                (reflectance.max() - reflectance.min())
-            colours = 1 / (1 + np.exp(-10 * (colours - colours.mean())))
-            ptcld[3, :] = colours
+        ptcld[3, :] = self.reflectance2colour(ptcld)        
 
         # Filter points at close range
         # ptcld = ptcld[:, np.logical_and(
         #     np.abs(ptcld[0]) > 4.0, np.abs(ptcld[1]) > 4.0)]
 
         # Remove ground reflections
-        # ptcld = ptcld[:,ptcld[2]<0]
+        ptcld = ptcld[:,ptcld[2]<self.ground_thr]
 
         img = self.ptc2img(ptcld)
         return img
+
+    def reflectance2colour(self, ptcld):
+        # Convert reflectance to colour values in [0,1]
+        reflectance = ptcld[3, :]
+        if reflectance.size != 0:
+            colours = (reflectance - reflectance.min()) / \
+                (reflectance.max() - reflectance.min())
+            colours = 1 / (1 + np.exp(-10 * (colours - colours.mean())))
+            return colours
+        else:
+            return reflectance
 
     def ptc2img(self, data):
         if data.shape[0] != 4:
@@ -130,7 +144,7 @@ class SequenceFolder(data.Dataset):
         return img
 
     def load_lidar(self, path):
-        data = self.load_csv(
+        data = self.load_radiate_velo(
             path) if self.dataset == 'radiate' else self.load_robotcar_velo(path)
         # data = self.ptc2img(data)
         return data

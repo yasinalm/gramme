@@ -379,73 +379,72 @@ def main():
                         train_size=args.train_size, valid_size=args.val_size)
     logger.epoch_bar.start()
 
-    with torch.cuda.amp.autocast(enabled=False):
-        for epoch in range(args.epochs):
-            logger.epoch_bar.update(epoch)
+    for epoch in range(args.epochs):
+        logger.epoch_bar.update(epoch)
 
-            # train for one epoch
-            logger.reset_train_bar()
-            train_loss = train(args, train_loader, mask_net,
-                            radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
-                            attention_net, camera_pose_features, radar_pose_features,
-                            logger, training_writer, warper, mono_warper)
-            logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
+        # train for one epoch
+        logger.reset_train_bar()
+        train_loss = train(args, train_loader, mask_net,
+                        radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
+                        attention_net, camera_pose_features, radar_pose_features,
+                        logger, training_writer, warper, mono_warper)
+        logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
-            # evaluate on validation set
-            logger.reset_valid_bar()
-            val_loss = validate(
-                args, val_loader, mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net,
-                epoch, logger, warper, mono_warper, val_writer)
-            logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
+        # evaluate on validation set
+        logger.reset_valid_bar()
+        val_loss = validate(
+            args, val_loader, mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net,
+            epoch, logger, warper, mono_warper, val_writer)
+        logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-            # Up to you to chose the most relevant error to measure your model's performance,
-            # careful some measures are to maximize (such as a1,a2,a3)
-            # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
-            # decisive_error = errors[0]
-            # if best_error < 0:
-            #     best_error = decisive_error
+        # Up to you to chose the most relevant error to measure your model's performance,
+        # careful some measures are to maximize (such as a1,a2,a3)
+        # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
+        # decisive_error = errors[0]
+        # if best_error < 0:
+        #     best_error = decisive_error
 
-            # remember lowest error and save checkpoint
-            # is_best = decisive_error < best_error
-            # best_error = min(best_error, decisive_error)
-            mask_ckpt_dict = None
-            if args.with_masknet:
-                mask_ckpt_dict = {
-                    'epoch': epoch + 1,
-                    'state_dict': mask_net.module.state_dict()
-                }
-            if args.with_vo:
-                vo_pose_ckpt_dict = {
-                    'epoch': epoch + 1,
-                    'state_dict': camera_pose_net.module.state_dict()
-                }
-                disp_ckpt_dict = {
-                    'epoch': epoch + 1,
-                    'state_dict': disp_net.module.state_dict()
-                }
-                fuse_ckpt_dict = {
-                    'n_iter': epoch + 1,
-                    'state_dict': fuse_net.module.state_dict()
-                }
-                utils.save_checkpoint_mono(
-                    args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
-            ro_pose_ckpt_dict = {
+        # remember lowest error and save checkpoint
+        # is_best = decisive_error < best_error
+        # best_error = min(best_error, decisive_error)
+        mask_ckpt_dict = None
+        if args.with_masknet:
+            mask_ckpt_dict = {
                 'epoch': epoch + 1,
-                'state_dict': radar_pose_net.module.state_dict()
+                'state_dict': mask_net.module.state_dict()
             }
-            optim_ckpt_dict = {
+        if args.with_vo:
+            vo_pose_ckpt_dict = {
                 'epoch': epoch + 1,
-                'state_dict': optimizer.state_dict()
+                'state_dict': camera_pose_net.module.state_dict()
             }
-            utils.save_checkpoint(
-                args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict, epoch=epoch)
-            utils.save_checkpoint_optim(
-                args.save_path, optim_ckpt_dict, epoch=epoch)
+            disp_ckpt_dict = {
+                'epoch': epoch + 1,
+                'state_dict': disp_net.module.state_dict()
+            }
+            fuse_ckpt_dict = {
+                'n_iter': epoch + 1,
+                'state_dict': fuse_net.module.state_dict()
+            }
+            utils.save_checkpoint_mono(
+                args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
+        ro_pose_ckpt_dict = {
+            'epoch': epoch + 1,
+            'state_dict': radar_pose_net.module.state_dict()
+        }
+        optim_ckpt_dict = {
+            'epoch': epoch + 1,
+            'state_dict': optimizer.state_dict()
+        }
+        utils.save_checkpoint(
+            args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict, epoch=epoch)
+        utils.save_checkpoint_optim(
+            args.save_path, optim_ckpt_dict, epoch=epoch)
 
-            with open(args.save_path/args.log_summary, 'a') as csvfile:
-                writer = csv.writer(csvfile, delimiter='\t')
-                writer.writerow([train_loss])
-        logger.epoch_bar.finish()
+        with open(args.save_path/args.log_summary, 'a') as csvfile:
+            writer = csv.writer(csvfile, delimiter='\t')
+            writer.writerow([train_loss])
+    logger.epoch_bar.finish()
 
 
 def train(
@@ -1079,4 +1078,5 @@ def mono_collate_fn(batch):
 
 
 if __name__ == '__main__':
-    main()
+    with torch.cuda.amp.autocast(enabled=False):
+        main()

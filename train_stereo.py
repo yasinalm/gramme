@@ -270,45 +270,44 @@ def main():
     logger.epoch_bar.start()
 
     
-    with torch.cuda.amp.autocast(enabled=False):
-        for epoch in range(args.epochs):
-            logger.epoch_bar.update(epoch)
+    for epoch in range(args.epochs):
+        logger.epoch_bar.update(epoch)
 
-            # train for one epoch
-            logger.reset_train_bar()
-            train_loss = train(args, train_loader, disp_net, pose_net,
-                            optimizer, logger, training_writer, mono_warper)
-            logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
+        # train for one epoch
+        logger.reset_train_bar()
+        train_loss = train(args, train_loader, disp_net, pose_net,
+                        optimizer, logger, training_writer, mono_warper)
+        logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
-            # evaluate on validation set
-            logger.reset_valid_bar()
-            val_loss = validate(
-                args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, val_writer)
-            logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
+        # evaluate on validation set
+        logger.reset_valid_bar()
+        val_loss = validate(
+            args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, val_writer)
+        logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-            # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
-            # decisive_error = errors[1]
-            # if best_error < 0:
-            #     best_error = decisive_error
+        # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
+        # decisive_error = errors[1]
+        # if best_error < 0:
+        #     best_error = decisive_error
 
-            # remember lowest error and save checkpoint
-            # is_best = decisive_error < best_error
-            # best_error = min(best_error, decisive_error)
-            pose_dict = {
-                'epoch': epoch + 1,
-                'state_dict': pose_net.module.state_dict()
-            }
-            disp_dict = {
-                'epoch': epoch + 1,
-                'state_dict': disp_net.module.state_dict()
-            }
-            utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
-                                    ['stereo_pose', 'stereo_disp'], epoch)
+        # remember lowest error and save checkpoint
+        # is_best = decisive_error < best_error
+        # best_error = min(best_error, decisive_error)
+        pose_dict = {
+            'epoch': epoch + 1,
+            'state_dict': pose_net.module.state_dict()
+        }
+        disp_dict = {
+            'epoch': epoch + 1,
+            'state_dict': disp_net.module.state_dict()
+        }
+        utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
+                                ['stereo_pose', 'stereo_disp'], epoch)
 
-            with open(args.save_path/args.log_summary, 'a') as csvfile:
-                writer = csv.writer(csvfile, delimiter='\t')
-                writer.writerow([train_loss])
-        logger.epoch_bar.finish()
+        with open(args.save_path/args.log_summary, 'a') as csvfile:
+            writer = csv.writer(csvfile, delimiter='\t')
+            writer.writerow([train_loss])
+    logger.epoch_bar.finish()
 
 
 def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_writer, mono_warper):
@@ -612,6 +611,7 @@ def disp_to_depth(disp):
     # max_disp = 1 / min_depth
     # scaled_disp = min_disp + (max_disp - min_disp) * disp
     # depth = 1 / scaled_disp
+    # disp = disp.clamp(min=1e-3)
     depth = 1./disp
     return depth
 
@@ -636,4 +636,5 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
 
 if __name__ == '__main__':
-    main()
+    with torch.cuda.amp.autocast(enabled=False):
+        main()

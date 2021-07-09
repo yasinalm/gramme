@@ -532,16 +532,41 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
     return errors[0]
 
 
+# def compute_depth(disp_net, tgt_img, ref_imgs):
+#     tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+
+#     ref_depths = []
+#     for ref_img in ref_imgs:
+#         ref_depth = [1/disp for disp in disp_net(ref_img)]
+#         ref_depths.append(ref_depth)
+
+#     return tgt_depth, ref_depths
+
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depth = [disp_to_depth(disp) for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
 
+def disp_to_depth(disp):
+    """Convert network's sigmoid output into depth prediction
+    The formula for this conversion is given in the 'additional considerations'
+    section of the paper.
+    """
+    # Disp is not scaled in DispResNet.
+    min_depth = 0.1
+    max_depth = 100.0
+    min_disp = 1 / max_depth
+    max_disp = 1 / min_depth
+    scaled_disp = min_disp + (max_disp - min_disp) * disp
+    depth = 1 / scaled_disp
+    # disp = disp.clamp(min=1e-3)
+    # depth = 1./disp
+    return depth
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
     poses = []
