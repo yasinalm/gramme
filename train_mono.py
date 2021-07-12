@@ -80,6 +80,8 @@ parser.add_argument('--with-pretrain', type=int,  default=1,
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+parser.add_argument('--with-preprocessed', type=int, default=1,
+                    help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
@@ -127,23 +129,39 @@ def main():
     imagenet_std = utils.imagenet_std
     img_size = (args.img_height, args.img_width)
     if args.dataset == 'robotcar':
-        train_transform = T.Compose([
-            T.ToPILImage(),
-            T.CropBottom(),
-            T.Resize(img_size),
-            T.RandomHorizontalFlip(),
-            T.RandomScaleCrop(),
-            T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.with_preprocessed:
+            train_transform = T.Compose([
+                # T.ToPILImage(),
+                T.RandomHorizontalFlip(),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+            
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])            
+        else:
+            train_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(),
+                T.Resize(img_size),
+                T.RandomHorizontalFlip(),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
-        valid_transform = T.Compose([
-            T.ToPILImage(),
-            T.CropBottom(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
-        ])
+            valid_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
             T.ToPILImage(),
@@ -151,14 +169,14 @@ def main():
             T.RandomHorizontalFlip(),
             T.RandomScaleCrop(),
             T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
+            # T.Normalize(imagenet_mean, imagenet_std)
         ])
 
         valid_transform = T.Compose([
             T.ToPILImage(),
             T.Resize(img_size),
             T.ToTensor(),
-            T.Normalize(imagenet_mean, imagenet_std)
+            # T.Normalize(imagenet_mean, imagenet_std)
         ])
     
 
@@ -468,9 +486,6 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         if i % args.print_freq == 0:
             logger.valid_writer.write(
                 'valid: Time {} Loss {}'.format(batch_time, losses))
-
-        if i > 100:
-            break
 
     if log_outputs:
         # Log predicted relative poses in histograms

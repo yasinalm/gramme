@@ -19,10 +19,10 @@ class Compose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, images, intrinsics):
+    def __call__(self, images, intrinsics, extrinsics):
         for t in self.transforms:
-            images, intrinsics = t(images, intrinsics)
-        return images, intrinsics
+            images, intrinsics, extrinsics = t(images, intrinsics, extrinsics)
+        return images, intrinsics, extrinsics
 
     def __repr__(self):
         format_string = self.__class__.__name__ + '('
@@ -82,7 +82,7 @@ class ToTensor:
     .. _references: https://github.com/pytorch/vision/tree/master/references/segmentation
     """
 
-    def __call__(self, images, intrinsics):
+    def __call__(self, images, intrinsics, extrinsics):
         """
         Args:
             pic (PIL Image or numpy.ndarray): Image to be converted to tensor.
@@ -90,7 +90,7 @@ class ToTensor:
             Tensor: Converted image.
         """
         images = [F.to_tensor(pic) for pic in images]
-        return images, intrinsics
+        return images, intrinsics, extrinsics
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
@@ -109,7 +109,7 @@ class RandomHorizontalFlip(torch.nn.Module):
         super().__init__()
         self.p = p
 
-    def forward(self, images, intrinsics):
+    def forward(self, images, intrinsics, extrinsics):
         """
         Args:
             img (PIL Image or Tensor): Image to be flipped.
@@ -121,8 +121,9 @@ class RandomHorizontalFlip(torch.nn.Module):
             w, h = images[0].size
             output_intrinsics = np.copy(intrinsics)
             output_intrinsics[0, 2] = w - output_intrinsics[0, 2]
-            return images, output_intrinsics
-        return images, intrinsics
+            extrinsics *= -1
+            return images, output_intrinsics, extrinsics
+        return images, intrinsics, extrinsics
 
     def __repr__(self):
         return self.__class__.__name__ + '(p={})'.format(self.p)
@@ -136,7 +137,7 @@ class RandomScaleCrop(torch.nn.Module):
     Args:
     """
 
-    def forward(self, images, intrinsics):
+    def forward(self, images, intrinsics, extrinsics):
         """
         Args:
             img (PIL Image or Tensor): Image to be flipped.
@@ -162,7 +163,7 @@ class RandomScaleCrop(torch.nn.Module):
         output_intrinsics[0, 2] -= offset_x
         output_intrinsics[1, 2] -= offset_y
 
-        return cropped_images, output_intrinsics
+        return cropped_images, output_intrinsics, extrinsics
 
     def __repr__(self):
         return self.__class__.__name__ + '()'

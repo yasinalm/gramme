@@ -1,6 +1,6 @@
 from radar_eval.eval_utils import getTraj
-from datasets.sequence_folders_mono import SequenceFolder
-import custom_transforms_mono as T
+from datasets.sequence_folders_stereo import SequenceFolder
+import custom_transforms_stereo as T
 import utils
 from inverse_warp_vo import MonoWarper
 import models
@@ -119,7 +119,7 @@ def main():
     print("=> creating model")
     # disp_net = models.DispResNet(
     #     args.resnet_layers, False).to(device)
-    pose_net = models.PoseResNetMono(18, False).to(device)
+    pose_net = models.PoseResNetStereo(18, False).to(device)
 
     # load parameters
     # print("=> using pre-trained weights for DispResNet")

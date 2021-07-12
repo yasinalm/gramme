@@ -12,7 +12,7 @@ import torch.utils.data
 
 import models
 
-import custom_transforms_mono as T
+import custom_transforms_stereo as T
 import utils
 from radar_eval.eval_utils import getTraj
 from datasets.sequence_folders_stereo import SequenceFolder
@@ -86,6 +86,8 @@ parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
                     metavar='PATH', help='path to pre-trained Pose net model')
+parser.add_argument('--pretrained-optim', dest='pretrained_optim', default=None,
+                    metavar='PATH', help='path to pre-trained optimizer state')
 parser.add_argument('--name', dest='name', type=str, required=True,
                     help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
@@ -102,6 +104,7 @@ device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
+depth_scale = 100.0
 
 def main():
     global best_error, n_iter, device
@@ -231,7 +234,7 @@ def main():
     print("=> creating model")
     disp_net = models.DispResNet(
         args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNetMono(18, args.with_pretrain).to(device)
+    pose_net = models.PoseResNetStereo(18, args.with_pretrain).to(device)
 
     # load parameters
     if args.pretrained_disp:
@@ -256,6 +259,12 @@ def main():
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
 
+    if args.pretrained_optim:
+        print("=> using pre-trained weights for the optimizer")
+        weights = torch.load(args.pretrained_optim)
+        optimizer.load_state_dict(
+            weights['state_dict'])
+    
     with open(args.save_path/args.log_summary, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'validation_loss'])
@@ -301,8 +310,12 @@ def main():
             'epoch': epoch + 1,
             'state_dict': disp_net.module.state_dict()
         }
-        utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
-                                ['stereo_pose', 'stereo_disp'], epoch)
+        optim_dict = {
+            'epoch': epoch + 1,
+            'state_dict': optimizer.state_dict()
+        }
+        utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict, optim_dict],
+                                ['stereo_pose', 'stereo_disp', 'stereo_optim'], epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -318,7 +331,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
     w1, w2, w3 = args.photo_loss_weight, args.smooth_loss_weight, args.geometry_consistency_weight
 
     # switch to train mode
-    disp_net.train()
+    # disp_net.train()
+    disp_net.eval()
     pose_net.train()
 
     end = time.time()
@@ -330,8 +344,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         # print("{} _ {}".format(tgt_img.min(), tgt_img.max()))
         # measure data loading time
         data_time.update(time.time() - end)
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device),posinf=1, neginf=0)
+        ref_imgs = [torch.nan_to_num(img.to(device),posinf=1, neginf=0) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
         rightTleft = rightTleft.to(device)
 
@@ -371,19 +385,19 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
             w3*geometry_loss  # + ssim_loss
 
         if log_losses:
-            poses = torch.cat(poses[0:2])
+            poses = torch.cat(poses[0:2]) # Choose only previous source frames
             train_writer.add_histogram(
-                'train/mono/rot_pred-x', poses[..., 0], n_iter)
+                'train/mono/rot_pred-x', poses[..., 3], n_iter)
             train_writer.add_histogram(
-                'train/mono/rot_pred-y', poses[..., 1], n_iter)
+                'train/mono/rot_pred-y', poses[..., 4], n_iter)
             train_writer.add_histogram(
-                'train/mono/rot_pred-z', poses[..., 2], n_iter)
+                'train/mono/rot_pred-z', poses[..., 5], n_iter)
             train_writer.add_histogram(
-                'train/mono/trans_pred-x', poses[..., 3], n_iter)
+                'train/mono/trans_pred-x', depth_scale*poses[..., 0], n_iter)
             train_writer.add_histogram(
-                'train/mono/trans_pred-y', poses[..., 4], n_iter)
+                'train/mono/trans_pred-y', depth_scale*poses[..., 1], n_iter)
             train_writer.add_histogram(
-                'train/mono/trans_pred-z', poses[..., 5], n_iter)
+                'train/mono/trans_pred-z', depth_scale*poses[..., 2], n_iter)
 
             train_writer.add_scalar(
                 'train/mono/mean_depth', tgt_depth[0][0].mean(), n_iter)
@@ -436,8 +450,12 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'iter': n_iter,
                 'state_dict': disp_net.module.state_dict()
             }
-            utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict],
-                                       ['stereo_pose', 'stereo_disp'])
+            optim_dict = {
+                'epoch': n_iter,
+                'state_dict': optimizer.state_dict()
+            }
+            utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict, optim_dict],
+                                       ['stereo_pose', 'stereo_disp', 'stereo_optim'])
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -490,9 +508,9 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
 
         # Chaneg VO pose order to RO
         all_poses.append(
-            torch.cat((poses[..., 3:], poses[..., :3]), -1))
+            torch.cat((poses[..., 3:], depth_scale*poses[..., :3]), -1))
         all_inv_poses.append(
-            torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
+            torch.cat((poses_inv[..., 3:], depth_scale*poses_inv[..., :3]), -1))
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
          ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
@@ -525,9 +543,6 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         if i % args.print_freq == 0:
             logger.valid_writer.write(
                 'valid: Time {} Loss {}'.format(batch_time, losses))
-
-        if i > 100:
-            break
 
     if log_outputs:
         # Log predicted relative poses in histograms
@@ -604,20 +619,24 @@ def disp_to_depth(disp):
     The formula for this conversion is given in the 'additional considerations'
     section of the paper.
     """
-    # Disp is already scaled in DispResNet.
+    # Disp is not scaled in DispResNet.
     # min_depth = 0.1
     # max_depth = 100.0
     # min_disp = 1 / max_depth
     # max_disp = 1 / min_depth
     # scaled_disp = min_disp + (max_disp - min_disp) * disp
     # depth = 1 / scaled_disp
-    # disp = disp.clamp(min=1e-3)
+    # disp = disp.clamp(min=1e-2)
+    # id_disp = torch.rand(disp.shape).to(device)*1e-3
+    # disp = disp + id_disp
     depth = 1./disp
+    depth = depth.clamp(min=1e-3, max=500)
+    depth = depth/depth_scale
     return depth
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
-    poses = [rightTleft]
-    poses_inv = [-(rightTleft.clone())]
+    poses = [rightTleft/depth_scale]
+    poses_inv = [-(rightTleft.clone())/depth_scale]
     for ref_img in ref_imgs[1:]:
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))

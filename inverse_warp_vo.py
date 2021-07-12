@@ -11,45 +11,6 @@ import utils_warp as utils
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-
-class SSIM(nn.Module):
-    """Layer to compute the SSIM loss between a pair of images
-    """
-
-    def __init__(self):
-        super(SSIM, self).__init__()
-        self.mu_x_pool = nn.AvgPool2d(3, 1)
-        self.mu_y_pool = nn.AvgPool2d(3, 1)
-        self.sig_x_pool = nn.AvgPool2d(3, 1)
-        self.sig_y_pool = nn.AvgPool2d(3, 1)
-        self.sig_xy_pool = nn.AvgPool2d(3, 1)
-
-        self.refl = nn.ReflectionPad2d(1)
-
-        self.C1 = 0.01 ** 2
-        self.C2 = 0.03 ** 2
-
-    def forward(self, x, y):
-        x = self.refl(x)
-        y = self.refl(y)
-
-        mu_x = self.mu_x_pool(x)
-        mu_y = self.mu_y_pool(y)
-
-        sigma_x = self.sig_x_pool(x ** 2) - mu_x ** 2
-        sigma_y = self.sig_y_pool(y ** 2) - mu_y ** 2
-        sigma_xy = self.sig_xy_pool(x * y) - mu_x * mu_y
-
-        SSIM_n = (2 * mu_x * mu_y + self.C1) * (2 * sigma_xy + self.C2)
-        SSIM_d = (mu_x ** 2 + mu_y ** 2 + self.C1) * \
-            (sigma_x + sigma_y + self.C2)
-
-        return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
-
-
-compute_ssim_loss = SSIM().to(device)
-
-
 class MonoWarper(object):
     """Inverse warper class
     """
@@ -189,7 +150,7 @@ class MonoWarper(object):
             ref_img, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
 
         valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
-        valid_mask = valid_points.unsqueeze(1).float()
+        valid_mask = valid_points.unsqueeze(1).to(torch.float32)
 
         projected_depth = F.grid_sample(
             ref_depth, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
@@ -262,6 +223,8 @@ class MonoWarper(object):
         # ssim_loss = 0
         ssim_loss = torch.Tensor([0]).to(device)
 
+        ref_imgs_warped = []
+
         num_scales = min(len(tgt_depth), self.max_scales)
         for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
             for s in range(num_scales):
@@ -302,11 +265,13 @@ class MonoWarper(object):
                 geometry_loss += (geometry_loss1 + geometry_loss2)
                 # ssim_loss += (ssim_loss1 + ssim_loss2)
 
+                ref_imgs_warped.append(ref_img_warped)
+
         smooth_loss = utils.compute_smooth_loss(
             tgt_depth, tgt_img, ref_depths, ref_imgs)
         # smooth_loss = torch.Tensor([0]).to(device)
 
-        return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_img_warped, valid_mask
+        return photo_loss, smooth_loss, geometry_loss, ssim_loss, ref_imgs_warped, valid_mask
 
     def compute_pairwise_loss(self, tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsics):
 
@@ -323,7 +288,7 @@ class MonoWarper(object):
 
         if self.with_auto_mask == True:
             auto_mask = (diff_img.mean(dim=1, keepdim=True) < (
-                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).float()
+                tgt_img - ref_img).abs().mean(dim=1, keepdim=True)).to(torch.float32)
             valid_mask = auto_mask * valid_mask
 
         if self.with_ssim == True:
@@ -349,11 +314,13 @@ class MonoWarper(object):
 
 # compute mean value given a binary mask
 def mean_on_mask(diff, valid_mask):
-    mask = valid_mask.expand_as(diff)
-    if mask.sum() > 10000:
-        mean_value = (diff * mask).sum() / mask.sum()
-    else:
-        mean_value = torch.tensor(0).float().to(device)
+    mask = valid_mask.expand_as(diff).clamp(min=1e-6)
+    mean_value = (diff * mask).sum() / mask.sum()
+    # mask = valid_mask.expand_as(diff)
+    # if mask.sum() > 10000:
+    #     mean_value = (diff * mask).sum() / mask.sum()
+    # else:
+    #     mean_value = torch.tensor(0).float().to(device)
     return mean_value
 
 # # compute mean value given a binary mask
@@ -384,7 +351,7 @@ def set_id_grid(h, w):
     xy = torch.vstack((y, x, torch.ones_like(x)))
     xy = torch.transpose(xy, 0, 1)  # [N,3]
     pixel_coords_hom = tgm.convert_points_to_homogeneous(
-        xy).to(device).type(torch.float)  # [N,4]
+        xy).to(device).type(torch.float32)  # [N,4]
 
     # pixel_coords = torch.stack((j_range, i_range, ones), dim=1)  # [1, 3, H, W]
 
