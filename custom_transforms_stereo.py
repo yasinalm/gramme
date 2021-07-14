@@ -54,7 +54,7 @@ class Normalize(torch.nn.Module):
         self.std = std
         self.inplace = inplace
 
-    def forward(self, tensors: List[Tensor], intrinsics) -> Tensor:
+    def forward(self, tensors: List[Tensor], intrinsics, extrinsics) -> Tensor:
         """
         Args:
             tensor (Tensor): Tensor image to be normalized.
@@ -63,7 +63,7 @@ class Normalize(torch.nn.Module):
         """
         tensors = [F.normalize(tensor, self.mean, self.std, self.inplace)
                    for tensor in tensors]
-        return tensors, intrinsics
+        return tensors, intrinsics, extrinsics
 
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
@@ -243,7 +243,7 @@ class Resize(torch.nn.Module):
 
         self.interpolation = interpolation
 
-    def forward(self, images, intrinsics):
+    def forward(self, images, intrinsics, extrinsics):
         """
         Args:
             img (PIL Image): Image to be scaled.
@@ -264,7 +264,7 @@ class Resize(torch.nn.Module):
         images = [F.resize(img, self.size, self.interpolation)
                   for img in images]
 
-        return images, output_intrinsics
+        return images, output_intrinsics, extrinsics
 
     def __repr__(self):
         interpolate_str = self.interpolation.value
@@ -290,7 +290,7 @@ class ToPILImage:
     def __init__(self, mode=None):
         self.mode = mode
 
-    def __call__(self, images, intrinsics):
+    def __call__(self, images, intrinsics, extrinsics):
         """
         Args:
             pic (Tensor or numpy.ndarray): Image to be converted to PIL Image.
@@ -298,7 +298,7 @@ class ToPILImage:
             PIL Image: Image converted to PIL Image.
         """
         images = [F.to_pil_image(img, self.mode) for img in images]
-        return images, intrinsics
+        return images, intrinsics, extrinsics
 
     def __repr__(self):
         format_string = self.__class__.__name__ + '('

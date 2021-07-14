@@ -104,7 +104,7 @@ device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
-depth_scale = 200.0
+depth_scale = 200.0 # 200 robotcar, 1 radiate
 
 def main():
     global best_error, n_iter, device
@@ -169,7 +169,7 @@ def main():
         
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
-            T.ToPILImage(),
+            # T.ToPILImage(),
             T.Resize(img_size),
             T.RandomHorizontalFlip(),
             T.RandomScaleCrop(),
@@ -178,7 +178,7 @@ def main():
         ])
 
         valid_transform = T.Compose([
-            T.ToPILImage(),
+            # T.ToPILImage(),
             T.Resize(img_size),
             T.ToTensor(),
             # T.Normalize(imagenet_mean, imagenet_std)
@@ -627,7 +627,7 @@ def disp_to_depth(disp):
     # scaled_disp = min_disp + (max_disp - min_disp) * disp
     # depth = 1 / scaled_disp
     # disp = disp.clamp(min=1e-2)
-    id_disp = torch.rand(disp.shape).to(device)*1e-8
+    id_disp = torch.rand(disp.shape).to(device)*1e-12
     disp = disp + id_disp
     depth = 1./disp
     depth = depth.clamp(min=1e-3, max=500)

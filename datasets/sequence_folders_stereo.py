@@ -70,8 +70,10 @@ class SequenceFolder(data.Dataset):
                 list((scene/self.stereo_left_folder).glob('*.png')))
             right_imgs = sorted(
                 list((scene/self.stereo_right_folder).glob('*.png')))
+            # RADIATE dataset occasionally has missing images. Discard them.
+            len_imgs = min(len(left_imgs), len(right_imgs))
 
-            for i in range(demi_length * self.k, len(left_imgs)-demi_length * self.k):
+            for i in range(demi_length * self.k, len_imgs-demi_length * self.k):
                 sample = {'intrinsics': intrinsics,
                           'rightTleft': rightTleft,
                           'tgt': left_imgs[i], 'ref_imgs': []}
@@ -110,7 +112,7 @@ class SequenceFolder(data.Dataset):
 
     def __getitem__(self, index):
         sample = self.samples[index]
-        if self.preprocessed:
+        if self.dataset == 'radiate' or self.preprocessed:
             tgt_img = self.load_undistorted_as_float(sample['tgt'])
             ref_imgs = [self.load_undistorted_as_float(ref_img) for ref_img in sample['ref_imgs']]
         else:
