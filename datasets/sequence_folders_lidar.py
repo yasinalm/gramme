@@ -1,5 +1,6 @@
 import torch.utils.data as data
 import numpy as np
+import pandas as pd
 from pathlib import Path
 import random
 import lidar
@@ -68,9 +69,11 @@ class SequenceFolder(data.Dataset):
 
     def load_velodyne_csv(self, path):
         # x, y, z, intensity, ring
-        data = np.genfromtxt(path, delimiter=',', dtype=np.float32)
+        # data = np.genfromtxt(path, delimiter=',', dtype=np.float32)
+        data = pd.read_csv(path, usecols=[0,1,2,3], dtype=np.float32).to_numpy()
         #data = data[[0, 1, 3], :]
-        return data[:,:4].transpose()
+        # return data[:,:4].transpose()
+        return data.transpose()
 
     def load_radiate_velo(self, path):
         ptcld = self.load_velodyne_csv(path)

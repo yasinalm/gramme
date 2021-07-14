@@ -104,7 +104,7 @@ def get_rightTleft(dataset):
     if dataset == 'robotcar':
         rightTleft[0] = -0.239983
     elif dataset == 'radiate':
-        rightTleft[0] = 0.0
+        rightTleft[0] = -0.12
     else:
         raise NotImplementedError(
             'The chosen dataset is not implemented! Given: {}'.format(dataset))

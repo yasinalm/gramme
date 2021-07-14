@@ -23,7 +23,7 @@ parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N',
-                    help='gap between frames', default=4)
+                    help='gap between frames', default=1)
 parser.add_argument('-j', '--workers', default=4, type=int,
                     metavar='N', help='number of data loading workers')
 parser.add_argument('-b', '--batch-size', default=4,

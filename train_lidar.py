@@ -484,8 +484,8 @@ def train(
 
         # measure data loading time
         data_time.update(time.time() - end)
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device))
+        ref_imgs = [torch.nan_to_num(img.to(device)) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)
 
         # compute output
@@ -743,8 +743,8 @@ def validate(
     for i, input in enumerate(val_loader):
         tgt_img = input[0]
         ref_imgs = input[1]
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device))
+        ref_imgs = [torch.nan_to_num(img.to(device)) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)
         # intrinsics_inv = intrinsics_inv.to(device)
 
