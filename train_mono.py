@@ -333,7 +333,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
-         ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+         ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
             tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv)
 
         loss = w1*photo_loss + w2*smooth_loss + \
@@ -368,7 +368,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
             train_writer.add_image(
                 'train/mono/input_ref', utils.tensor2array(ref_imgs[0][0]), n_iter)
             train_writer.add_image(
-                'train/mono/warped_ref', utils.tensor2array(ref_img_warped[0]), n_iter)
+                'train/mono/warped_ref', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
 
             train_writer.add_image('train/mono/disp', utils.tensor2array(
                 1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)

@@ -533,7 +533,7 @@ def train(
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
             (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
-             mono_ref_img_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+             mono_ref_imgs_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
                 vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
@@ -658,7 +658,7 @@ def train(
                 train_writer.add_image(
                     'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
                 train_writer.add_image(
-                    'train/mono/warped_ref', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
+                    'train/mono/warped_ref', utils.tensor2array(mono_ref_imgs_warped[0][0]), n_iter)
                 train_writer.add_image(
                     'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), n_iter)
                 train_writer.add_image(
