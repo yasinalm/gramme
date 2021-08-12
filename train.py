@@ -412,39 +412,42 @@ def main():
         # remember lowest error and save checkpoint
         # is_best = decisive_error < best_error
         # best_error = min(best_error, decisive_error)
-        mask_ckpt_dict = None
         if args.with_masknet:
             mask_ckpt_dict = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'state_dict': mask_net.module.state_dict()
             }
+            utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
+                                ['radar_masknet'])
         if args.with_vo:
             vo_pose_ckpt_dict = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'state_dict': camera_pose_net.module.state_dict()
             }
             disp_ckpt_dict = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'state_dict': disp_net.module.state_dict()
             }
             fuse_ckpt_dict = {
-                'n_iter': epoch + 1,
+                'epoch': epoch,
                 'state_dict': fuse_net.module.state_dict()
-            }
-            utils.save_checkpoint_mono(
-                args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
+            }                 
+            # utils.save_checkpoint_mono(
+            #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
+            utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
+                                ['mono_dispnet', 'mono_posenet', 'mono_fusenet'],
+                                epoch=epoch)
         ro_pose_ckpt_dict = {
-            'epoch': epoch + 1,
+            'epoch': epoch,
             'state_dict': radar_pose_net.module.state_dict()
         }
-        optim_ckpt_dict = {
-            'epoch': epoch + 1,
+        optim_dict = {
+            'epoch': epoch,
             'state_dict': optimizer.state_dict()
-        }
-        utils.save_checkpoint(
-            args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict, epoch=epoch)
-        utils.save_checkpoint_optim(
-            args.save_path, optim_ckpt_dict, epoch=epoch)
+            }  
+        utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
+                                ['radar_posenet', 'radar_optim'],
+                                epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -678,33 +681,43 @@ def train(
             # is_best = decisive_error < best_error
             # best_error = min(best_error, decisive_error)
             # is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
-            mask_ckpt_dict = None
+            # mask_ckpt_dict = None
             if args.with_masknet:
                 mask_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': mask_net.module.state_dict()
                 }
+                utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
+                                    ['radar_masknet'])
             if args.with_vo:
                 vo_pose_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': camera_pose_net.module.state_dict()
                 }
                 disp_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': disp_net.module.state_dict()
                 }
                 fuse_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': fuse_net.module.state_dict()
-                }
-                utils.save_checkpoint_mono(
-                    args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
+                }                 
+                # utils.save_checkpoint_mono(
+                #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
+                utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
+                                    ['mono_dispnet', 'mono_posenet', 'mono_fusenet'])
             ro_pose_ckpt_dict = {
-                'n_iter': n_iter + 1,
+                'n_iter': n_iter,
                 'state_dict': radar_pose_net.module.state_dict()
             }
-            utils.save_checkpoint(
-                args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict)
+            optim_dict = {
+                'n_iter': n_iter,
+                'state_dict': optimizer.state_dict()
+                }  
+            utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
+                                    ['radar_posenet', 'radar_optim'])
+            # utils.save_checkpoint(
+            #     args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict)
 
         if i >= args.train_size - 1:
             break
@@ -807,7 +820,7 @@ def validate(
             # Pass all the corresponding monocular frames, pose and depth variables to the reconstruction module.
             # It calculates the triple-wise losses of the sequence.
             (vo_photo_loss, vo_smooth_loss, vo_geometry_loss, vo_ssim_loss,
-             mono_ref_img_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+             mono_ref_imgs_warped, mono_valid_mask) = mono_warper.compute_photo_and_geometry_loss(
                 vo_tgt_img, vo_ref_imgs, intrinsics, tgt_depth, ref_depths, vo_poses, vo_poses_inv)
 
             # vo_loss = w1*loss_1 + w2*loss_2 + w3*loss_3
@@ -847,7 +860,7 @@ def validate(
                 val_writer.add_image(
                     'val/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), epoch)
                 val_writer.add_image(
-                    'val/mono/warped_ref', utils.tensor2array(mono_ref_img_warped[0]), epoch)
+                    'val/mono/warped_ref', utils.tensor2array(mono_ref_imgs_warped[0][0]), epoch)
                 val_writer.add_image(
                     'val/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), epoch)
                 val_writer.add_image(

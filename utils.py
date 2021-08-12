@@ -193,36 +193,36 @@ def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
                 bbox_inches='tight', pad_inches=0)
 
 
-def save_checkpoint_optim(save_path, optim_state, prefix='optim', epoch='', filename='checkpoint.pth.tar'):
-    torch.save(optim_state, save_path /
-               '{}_{}{}'.format(prefix, epoch, filename))
+# def save_checkpoint_optim(save_path, optim_state, prefix='optim', epoch='', filename='checkpoint.pth.tar'):
+#     torch.save(optim_state, save_path /
+#                '{}_{}{}'.format(prefix, epoch, filename))
 
 
-def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename='checkpoint.pth.tar'):
-    file_prefixes = ['radar_posenet']
-    states = [posenet_state]
-    if masknet_state is not None:
-        file_prefixes.append('radar_masknet')
-        states.append(masknet_state)
-    for (prefix, state) in zip(file_prefixes, states):
-        torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))
+# def save_checkpoint(save_path, masknet_state, posenet_state, epoch='', filename='checkpoint.pth.tar'):
+#     file_prefixes = ['radar_posenet']
+#     states = [posenet_state]
+#     if masknet_state is not None:
+#         file_prefixes.append('radar_masknet')
+#         states.append(masknet_state)
+#     for (prefix, state) in zip(file_prefixes, states):
+#         torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))
 
-    # if is_best:
-    #     for prefix in file_prefixes:
-    #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
-    #                         save_path/'{}_best.pth.tar'.format(prefix))
+#     # if is_best:
+#     #     for prefix in file_prefixes:
+#     #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
+#     #                         save_path/'{}_best.pth.tar'.format(prefix))
 
 
-def save_checkpoint_mono(save_path, dispnet_state, vo_pose_state, fusenet_state, epoch='', filename='checkpoint.pth.tar'):
-    file_prefixes = ['mono_dispnet', 'mono_posenet', 'mono_fusenet']
-    states = [dispnet_state, vo_pose_state, fusenet_state]
-    for (prefix, state) in zip(file_prefixes, states):
-        torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))
+# def save_checkpoint_mono(save_path, dispnet_state, vo_pose_state, fusenet_state, epoch='', filename='checkpoint.pth.tar'):
+#     file_prefixes = ['mono_dispnet', 'mono_posenet', 'mono_fusenet']
+#     states = [dispnet_state, vo_pose_state, fusenet_state]
+#     for (prefix, state) in zip(file_prefixes, states):
+#         torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))
 
-    # if is_best:
-    #     for prefix in file_prefixes:
-    #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
-    #                         save_path/'{}_model_best.pth.tar'.format(prefix))
+#     # if is_best:
+#     #     for prefix in file_prefixes:
+#     #         shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
+#     #                         save_path/'{}_model_best.pth.tar'.format(prefix))
 
 
 def save_checkpoint_list(save_path, state_dicts, file_prefixes, epoch='', filename='checkpoint.pth.tar'):

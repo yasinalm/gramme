@@ -289,15 +289,21 @@ def main():
         # remember lowest error and save checkpoint
         # is_best = decisive_error < best_error
         # best_error = min(best_error, decisive_error)
-        utils.save_checkpoint_mono(
-            args.save_path, {
-                'epoch': epoch + 1,
-                'state_dict': disp_net.module.state_dict()
-            }, {
-                'epoch': epoch + 1,
-                'state_dict': pose_net.module.state_dict()
-            },
-            epoch)
+        disp_dict = {
+            'epoch': epoch,
+            'state_dict': disp_net.module.state_dict()
+        }
+        pose_dict = {
+            'epoch': epoch,
+            'state_dict': pose_net.module.state_dict()
+        }
+        optim_dict = {
+            'epoch': epoch,
+            'state_dict': optimizer.state_dict()
+        }
+        utils.save_checkpoint_list(args.save_path, [disp_dict, pose_dict, optim_dict],
+                                ['mono_dispnet', 'mono_posenet', 'mono_optim'],
+                                epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -390,15 +396,20 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         end = time.time()
 
         if i > 0 and i % 500 == 0:
-            utils.save_checkpoint_mono(
-                args.save_path, {
-                    'iter': n_iter,
-                    'state_dict': disp_net.module.state_dict()
-                }, {
-                    'iter': n_iter,
-                    'state_dict': pose_net.module.state_dict()
-                },
-                step=n_iter)
+            disp_dict = {
+                'iter': n_iter,
+                'state_dict': disp_net.module.state_dict()
+            }
+            pose_dict = {
+                'iter': n_iter,
+                'state_dict': pose_net.module.state_dict()
+            }
+            optim_dict = {
+                'iter': n_iter,
+                'state_dict': optimizer.state_dict()
+            }
+            utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict, optim_dict],
+                                    ['mono_dispnet', 'mono_posenet', 'mono_optim'])
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -456,7 +467,7 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
             torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
 
         (photo_loss, smooth_loss, geometry_loss, ssim_loss,
-         ref_img_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+         ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
             tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv)
 
         loss = w1*photo_loss + w2*smooth_loss + \
@@ -470,7 +481,7 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
             val_writer.add_image(
                 'val/mono/input_ref', utils.tensor2array(ref_imgs[0][0]), n_iter)
             val_writer.add_image(
-                'val/mono/warped_ref', utils.tensor2array(ref_img_warped[0]), n_iter)
+                'val/mono/warped_ref', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
 
             val_writer.add_image('val/mono/disp', utils.tensor2array(
                 1/tgt_depth[0][0], max_value=None, colormap='magma'), n_iter)
