@@ -187,7 +187,8 @@ def main():
         transform=train_transform,
         seed=args.seed,
         train=True,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        preprocessed=args.with_preprocessed
     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -197,7 +198,8 @@ def main():
         transform=valid_transform,
         seed=args.seed,
         train=False,
-        sequence_length=args.sequence_length
+        sequence_length=args.sequence_length,
+        preprocessed=args.with_preprocessed
     )
 
     print('{} samples found in {} train scenes'.format(
