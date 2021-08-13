@@ -164,7 +164,7 @@ def main():
         
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
-            T.ToPILImage(),
+            # T.ToPILImage(),
             T.Resize(img_size),
             T.RandomHorizontalFlip(),
             T.RandomScaleCrop(),
@@ -173,7 +173,7 @@ def main():
         ])
 
         valid_transform = T.Compose([
-            T.ToPILImage(),
+            # T.ToPILImage(),
             T.Resize(img_size),
             T.ToTensor(),
             # T.Normalize(imagenet_mean, imagenet_std)

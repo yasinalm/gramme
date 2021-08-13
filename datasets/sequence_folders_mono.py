@@ -93,7 +93,7 @@ class SequenceFolder(data.Dataset):
 
     def __getitem__(self, index):
         sample = self.samples[index]
-        if self.preprocessed:
+        if self.preprocessed or self.dataset == 'radiate':
             tgt_img = self.load_undistorted_as_float(sample['tgt'])
             ref_imgs = [self.load_undistorted_as_float(ref_img)
                         for ref_img in sample['ref_imgs']]
