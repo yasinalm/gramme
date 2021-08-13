@@ -137,12 +137,12 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-            
+
             valid_transform = T.Compose([
                 # T.ToPILImage(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
-            ])            
+            ])
         else:
             train_transform = T.Compose([
                 T.ToPILImage(),
@@ -161,7 +161,7 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-        
+
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
             # T.ToPILImage(),
@@ -178,7 +178,6 @@ def main():
             T.ToTensor(),
             # T.Normalize(imagenet_mean, imagenet_std)
         ])
-    
 
     print("=> fetching scenes in '{}'".format(args.data))
     train_set = SequenceFolder(
@@ -304,8 +303,8 @@ def main():
             'state_dict': optimizer.state_dict()
         }
         utils.save_checkpoint_list(args.save_path, [disp_dict, pose_dict, optim_dict],
-                                ['mono_dispnet', 'mono_posenet', 'mono_optim'],
-                                epoch=epoch)
+                                   ['mono_dispnet', 'mono_posenet', 'mono_optim'],
+                                   epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -379,9 +378,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'train/mono/warped_ref', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
 
             train_writer.add_image('train/mono/disp', utils.tensor2array(
-                1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
+                1/tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
             train_writer.add_image('train/mono/depth', utils.tensor2array(
-                tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
+                tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
             train_writer.add_image(
                 'train/mono/warped_mask', utils.tensor2array(valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
@@ -411,7 +410,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'state_dict': optimizer.state_dict()
             }
             utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict, optim_dict],
-                                    ['mono_dispnet', 'mono_posenet', 'mono_optim'])
+                                       ['mono_dispnet', 'mono_posenet', 'mono_optim'])
 
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -486,9 +485,9 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
                 'val/mono/warped_ref', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
 
             val_writer.add_image('val/mono/disp', utils.tensor2array(
-                1/tgt_depth[0][0], max_value=None, colormap='magma'), n_iter)
+                1/tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
             val_writer.add_image('val/mono/depth', utils.tensor2array(
-                tgt_depth[0][0], max_value=None, colormap='gist_heat'), n_iter)
+                tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
             val_writer.add_image(
                 'val/mono/warped_mask', utils.tensor2array(valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
@@ -580,6 +579,7 @@ def compute_depth(disp_net, tgt_img, ref_imgs):
 
     return tgt_depth, ref_depths
 
+
 def disp_to_depth(disp):
     """Convert network's sigmoid output into depth prediction
     The formula for this conversion is given in the 'additional considerations'
@@ -595,6 +595,7 @@ def disp_to_depth(disp):
     # disp = disp.clamp(min=1e-3)
     # depth = 1./disp
     return depth
+
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
     poses = []

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import torch
+from torchvision.utils import save_image
 from tqdm import tqdm
 
 
@@ -58,6 +59,8 @@ def main():
 
     results_dir = Path(args.results_dir)/args.sequence
     results_dir.mkdir(parents=True)
+    # results_depth_dir = results_dir/'depth'
+    # results_depth_dir.mkdir(parents=True)
 
     imagenet_mean = utils.imagenet_mean
     imagenet_std = utils.imagenet_std
@@ -69,7 +72,7 @@ def main():
                 # T.ToPILImage(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
-            ])            
+            ])
         else:
             valid_transform = T.Compose([
                 T.ToPILImage(),
@@ -78,10 +81,10 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-        
+
     elif args.dataset == 'radiate':
         valid_transform = T.Compose([
-            T.ToPILImage(),
+            # T.ToPILImage(),
             T.Resize(img_size),
             T.ToTensor(),
             # T.Normalize(imagenet_mean, imagenet_std)
@@ -148,6 +151,8 @@ def main():
         intrinsics = intrinsics.to(device)
 
         # start.record()
+        # tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
+        # tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         # end.record()
         # torch.cuda.synchronize()
@@ -163,12 +168,14 @@ def main():
         all_inv_poses.append(
             torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
 
+        # save_image(tgt_depth[0], results_depth_dir/'{0:05d}'.format(i))
+
     # Total time for forward and backward poses
     # mean_inf = sum(timings)/(nframes*2)
     # print('Average time for inference: {:.2f}sec'.format(mean_inf))
 
     if args.with_gt:
-        print('Mono evaluation with GT is not supported yet!')
+        print('on-the-fly, Mono evaluation with GT is not supported yet!')
         # ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
         # ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
@@ -196,6 +203,32 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses_inv.append(pose_net(ref_img, tgt_img))
 
     return poses, poses_inv
+
+# def compute_depth(disp_net, tgt_img, ref_imgs):
+#     tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
+
+#     ref_depths = []
+#     for ref_img in ref_imgs:
+#         ref_depth = [disp_to_depth(disp) for disp in disp_net(ref_img)]
+#         ref_depths.append(ref_depth)
+
+#     return tgt_depth, ref_depths
+
+# def disp_to_depth(disp):
+#     """Convert network's sigmoid output into depth prediction
+#     The formula for this conversion is given in the 'additional considerations'
+#     section of the paper.
+#     """
+#     # Disp is not scaled in DispResNet.
+#     min_depth = 0.1
+#     max_depth = 100.0
+#     min_disp = 1 / max_depth
+#     max_disp = 1 / min_depth
+#     scaled_disp = min_disp + (max_disp - min_disp) * disp
+#     depth = 1 / scaled_disp
+#     # disp = disp.clamp(min=1e-3)
+#     # depth = 1./disp
+#     return depth
 
 
 if __name__ == '__main__':

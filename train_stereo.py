@@ -104,7 +104,8 @@ device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
-depth_scale = 200.0 # 200 robotcar, 1 radiate
+depth_scale = 200.0  # 200 robotcar, 1 radiate
+
 
 def main():
     global best_error, n_iter, device
@@ -142,12 +143,12 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-            
+
             valid_transform = T.Compose([
                 # T.ToPILImage(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
-            ])            
+            ])
         else:
             train_transform = T.Compose([
                 T.ToPILImage(),
@@ -166,7 +167,7 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-        
+
     elif args.dataset == 'radiate':
         train_transform = T.Compose([
             # T.ToPILImage(),
@@ -264,7 +265,7 @@ def main():
         weights = torch.load(args.pretrained_optim)
         optimizer.load_state_dict(
             weights['state_dict'])
-    
+
     with open(args.save_path/args.log_summary, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'validation_loss'])
@@ -278,14 +279,13 @@ def main():
         len(train_loader), args.epoch_size), valid_size=len(val_loader))
     logger.epoch_bar.start()
 
-    
     for epoch in range(args.epochs):
         logger.epoch_bar.update(epoch)
 
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader, disp_net, pose_net,
-                        optimizer, logger, training_writer, mono_warper)
+                           optimizer, logger, training_writer, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
@@ -315,7 +315,7 @@ def main():
             'state_dict': optimizer.state_dict()
         }
         utils.save_checkpoint_list(args.save_path, [pose_dict, disp_dict, optim_dict],
-                                ['stereo_pose', 'stereo_disp', 'stereo_optim'], epoch)
+                                   ['stereo_pose', 'stereo_disp', 'stereo_optim'], epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -344,14 +344,15 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         # print("{} _ {}".format(tgt_img.min(), tgt_img.max()))
         # measure data loading time
         data_time.update(time.time() - end)
-        tgt_img = torch.nan_to_num(tgt_img.to(device),posinf=1, neginf=0)
-        ref_imgs = [torch.nan_to_num(img.to(device),posinf=1, neginf=0) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device), posinf=1, neginf=0)
+        ref_imgs = [torch.nan_to_num(
+            img.to(device), posinf=1, neginf=0) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
         rightTleft = rightTleft.to(device)
 
         # assert ~torch.isnan(tgt_img).any()
         # assert all([~torch.isnan(ref_img).any() for ref_img in ref_imgs])
-        
+
         # if torch.isnan(tgt_img).any():
         #     # print("nan detected in tgt_img")
         #     continue
@@ -385,7 +386,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
             w3*geometry_loss  # + ssim_loss
 
         if log_losses:
-            poses = torch.cat(poses[0:2]) # Choose only previous source frames
+            poses = torch.cat(poses[0:2])  # Choose only previous source frames
             train_writer.add_histogram(
                 'train/mono/rot_pred-x', poses[..., 3], n_iter)
             train_writer.add_histogram(
@@ -401,7 +402,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
 
             train_writer.add_scalar(
                 'train/mono/mean_depth', tgt_depth[0][0].mean(), n_iter)
-            
+
             train_writer.add_scalar(
                 'train/mono/photometric_error', photo_loss.item(), n_iter)
             train_writer.add_scalar(
@@ -614,6 +615,7 @@ def compute_depth(disp_net, tgt_img, ref_imgs):
 
     return tgt_depth, ref_depths
 
+
 def disp_to_depth(disp):
     """Convert network's sigmoid output into depth prediction
     The formula for this conversion is given in the 'additional considerations'
@@ -633,6 +635,7 @@ def disp_to_depth(disp):
     depth = depth.clamp(min=1e-3, max=500)
     depth = depth/depth_scale
     return depth
+
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
     poses = [rightTleft/depth_scale]
