@@ -141,9 +141,9 @@ def disp_to_depth(disp):
     max_depth = 100.0
     min_disp = 1 / max_depth
     max_disp = 1 / min_depth
+    disp = disp.clamp(min=1e-6)
     scaled_disp = min_disp + (max_disp - min_disp) * disp
     depth = 1 / scaled_disp
-    # disp = disp.clamp(min=1e-3)
     # depth = 1./disp
     return depth
 
