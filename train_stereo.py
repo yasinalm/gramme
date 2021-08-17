@@ -104,11 +104,11 @@ device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
-depth_scale = 200.0  # 200 robotcar, 1 radiate
+depth_scale = 1.0  # 200 robotcar, 1 radiate
 
 
 def main():
-    global best_error, n_iter, device
+    global depth_scale, best_error, n_iter, device
     args = parser.parse_args()
 
     timestamp = datetime.datetime.now().strftime("%m-%d-%H-%M")
@@ -135,6 +135,7 @@ def main():
     imagenet_std = utils.imagenet_std
     img_size = (args.img_height, args.img_width)
     if args.dataset == 'robotcar':
+        depth_scale = 200.0
         if args.with_preprocessed:
             train_transform = T.Compose([
                 # T.ToPILImage(),
@@ -169,6 +170,7 @@ def main():
             ])
 
     elif args.dataset == 'radiate':
+        depth_scale = 1.0
         train_transform = T.Compose([
             # T.ToPILImage(),
             T.Resize(img_size),
@@ -424,9 +426,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
                 'train/mono/warped_ref', utils.tensor2array(ref_imgs_warped[1][0]), n_iter)
 
             train_writer.add_image('train/mono/disp', utils.tensor2array(
-                1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
+                1/tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
             train_writer.add_image('train/mono/depth', utils.tensor2array(
-                tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
+                tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
             train_writer.add_image(
                 'train/mono/warped_mask', utils.tensor2array(valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
@@ -500,6 +502,10 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
 
+        tgt_img = torch.nan_to_num(tgt_img.to(device), posinf=1, neginf=0)
+        ref_imgs = [torch.nan_to_num(
+            img.to(device), posinf=1, neginf=0) for img in ref_imgs]
+
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
@@ -531,9 +537,9 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
                 'val/mono/warped_ref', utils.tensor2array(ref_imgs_warped[0][0]), n_iter)
 
             val_writer.add_image('val/mono/disp', utils.tensor2array(
-                1/tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
+                1/tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
             val_writer.add_image('val/mono/depth', utils.tensor2array(
-                tgt_depth[0][0], max_value=None, colormap='viridis'), n_iter)
+                tgt_depth[0][0], max_value=None, colormap='inferno'), n_iter)
             val_writer.add_image(
                 'val/mono/warped_mask', utils.tensor2array(valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
@@ -617,6 +623,7 @@ def compute_depth(disp_net, tgt_img, ref_imgs):
 
 
 def disp_to_depth(disp):
+    global depth_scale
     """Convert network's sigmoid output into depth prediction
     The formula for this conversion is given in the 'additional considerations'
     section of the paper.
@@ -636,8 +643,28 @@ def disp_to_depth(disp):
     depth = depth/depth_scale
     return depth
 
+# def disp_to_depth(disp):
+#     """Convert network's sigmoid output into depth prediction
+#     The formula for this conversion is given in the 'additional considerations'
+#     section of the paper.
+#     """
+#     # Disp is not scaled in DispResNet.
+#     min_depth = 0.1
+#     max_depth = 100.0
+#     min_disp = 1 / max_depth
+#     max_disp = 1 / min_depth
+#     scaled_disp = min_disp + (max_disp - min_disp) * disp
+#     id_disp = torch.rand(disp.shape).to(device)*1e-12
+#     scaled_disp = scaled_disp + id_disp
+#     depth = 1 / scaled_disp
+#     # disp = disp.clamp(min=1e-3)
+#     # depth = 1./disp
+#     depth = depth/depth_scale
+#     return depth
+
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
+    global depth_scale
     poses = [rightTleft/depth_scale]
     poses_inv = [-(rightTleft.clone())/depth_scale]
     for ref_img in ref_imgs[1:]:
