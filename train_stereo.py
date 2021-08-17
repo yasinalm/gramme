@@ -175,6 +175,8 @@ def main():
             # T.ToPILImage(),
             T.Resize(img_size),
             T.RandomHorizontalFlip(),
+            T.ColorJitter(brightness=0.5, contrast=0.5,
+                          saturation=0.5, hue=0.5),
             T.RandomScaleCrop(),
             T.ToTensor(),
             # T.Normalize(imagenet_mean, imagenet_std)

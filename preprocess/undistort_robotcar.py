@@ -1,18 +1,16 @@
-import sys
-sys.path.append('..')
+import sys  # nopep8
+sys.path.append('..')  # nopep8
 
-import argparse
-from pathlib import Path
-import numpy as np
-from tqdm import tqdm
-
-from PIL import Image
-from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
 from datasets.robotcar_camera.camera_model import CameraModel
+from colour_demosaicing import demosaicing_CFA_Bayer_bilinear as demosaic
+from PIL import Image
+from tqdm import tqdm
+import numpy as np
+from pathlib import Path
+import argparse
 
 
-
-parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
+parser = argparse.ArgumentParser(description='Undistort Robotcar Bumblebee XB3 images',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
@@ -29,6 +27,7 @@ def load_as_float(path, cam_model):
     img = Image.fromarray(img)
     return img
 
+
 def preprocess(img):
     # Crop bottom
     offset_y = 160
@@ -42,6 +41,7 @@ def preprocess(img):
     img = img.resize((width, height))
 
     return img
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -80,7 +80,7 @@ if __name__ == '__main__':
             img = load_as_float(path, cam_model_left)
             img = preprocess(img)
             img.save(save_name)
-        
+
         for path in tqdm(right_imgs, leave=False):
             save_name = save_stereo_dir_right/path.name
             if save_name.is_file():
