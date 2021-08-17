@@ -171,23 +171,38 @@ def main():
 
     elif args.dataset == 'radiate':
         depth_scale = 1.0
-        train_transform = T.Compose([
-            # T.ToPILImage(),
-            T.Resize(img_size),
-            T.RandomHorizontalFlip(),
-            T.ColorJitter(brightness=0.5, contrast=0.5,
-                          saturation=0.5, hue=0.5),
-            T.RandomScaleCrop(),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.with_preprocessed:
+            train_transform = T.Compose([
+                T.RandomHorizontalFlip(),
+                # T.ColorJitter(brightness=0.5, contrast=0.5,
+                #               saturation=0.5, hue=0.5),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
-        valid_transform = T.Compose([
-            # T.ToPILImage(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+            valid_transform = T.Compose([
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            train_transform = T.Compose([
+                # T.ToPILImage(),
+                T.Resize(img_size),
+                T.RandomHorizontalFlip(),
+                # T.ColorJitter(brightness=0.5, contrast=0.5,
+                #               saturation=0.5, hue=0.5),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     train_set = SequenceFolder(
@@ -641,28 +656,9 @@ def disp_to_depth(disp):
     id_disp = torch.rand(disp.shape).to(device)*1e-12
     disp = disp + id_disp
     depth = 1./disp
-    depth = depth.clamp(min=1e-3, max=500)
+    depth = depth.clamp(min=1e-3)
     depth = depth/depth_scale
     return depth
-
-# def disp_to_depth(disp):
-#     """Convert network's sigmoid output into depth prediction
-#     The formula for this conversion is given in the 'additional considerations'
-#     section of the paper.
-#     """
-#     # Disp is not scaled in DispResNet.
-#     min_depth = 0.1
-#     max_depth = 100.0
-#     min_disp = 1 / max_depth
-#     max_disp = 1 / min_depth
-#     scaled_disp = min_disp + (max_disp - min_disp) * disp
-#     id_disp = torch.rand(disp.shape).to(device)*1e-12
-#     scaled_disp = scaled_disp + id_disp
-#     depth = 1 / scaled_disp
-#     # disp = disp.clamp(min=1e-3)
-#     # depth = 1./disp
-#     depth = depth/depth_scale
-#     return depth
 
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):

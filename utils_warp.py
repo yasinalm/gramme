@@ -87,6 +87,16 @@ def get_intrinsics_matrix(dataset, preprocessed):
         fy = 3.386957068549526e+02
         cx = 3.417366010946575e+02
         cy = 2.007359735313929e+02
+        if preprocessed:
+            scaled_h, scaled_w = 192, 320
+            in_h, in_w = 376, 672
+            x_scaling = float(scaled_w)/in_w
+            y_scaling = float(scaled_h)/in_h
+
+            fx *= x_scaling
+            cx *= x_scaling
+            fy *= y_scaling
+            cy *= y_scaling
     else:
         raise NotImplementedError(
             'The chosen dataset is not implemented! Given: {}'.format(dataset))

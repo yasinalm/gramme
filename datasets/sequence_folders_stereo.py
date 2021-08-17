@@ -23,8 +23,8 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, dataset='robotcar', seed=None, train=True, 
-    sequence_length=3, transform=None, skip_frames=1, preprocessed=False):
+    def __init__(self, root, dataset='robotcar', seed=None, train=True,
+                 sequence_length=3, transform=None, skip_frames=1, preprocessed=False):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -38,15 +38,19 @@ class SequenceFolder(data.Dataset):
         self.k = skip_frames
         self.preprocessed = preprocessed
         if dataset == 'radiate':
-            self.stereo_left_folder = 'zed_left' 
-            self.stereo_right_folder = 'zed_right'
+            if self.preprocessed:
+                self.stereo_left_folder = 'stereo_undistorted/left'
+                self.stereo_right_folder = 'stereo_undistorted/right'
+            else:
+                self.stereo_left_folder = 'zed_left'
+                self.stereo_right_folder = 'zed_right'
         elif dataset == 'robotcar':
             if self.preprocessed:
-                self.stereo_left_folder ='stereo_undistorted/left'
-                self.stereo_right_folder ='stereo_undistorted/right'  
+                self.stereo_left_folder = 'stereo_undistorted/left'
+                self.stereo_right_folder = 'stereo_undistorted/right'
             else:
-                self.stereo_left_folder ='stereo/left'
-                self.stereo_right_folder ='stereo/right'            
+                self.stereo_left_folder = 'stereo/left'
+                self.stereo_right_folder = 'stereo/right'
                 self.cam_model_left = CameraModel()
                 self.cam_model_right = CameraModel('stereo_wide_right')
         else:
@@ -63,7 +67,8 @@ class SequenceFolder(data.Dataset):
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            intrinsics = utils.get_intrinsics_matrix(self.dataset, preprocessed=self.preprocessed)
+            intrinsics = utils.get_intrinsics_matrix(
+                self.dataset, preprocessed=self.preprocessed)
             rightTleft = utils.get_rightTleft(self.dataset)
             #imgs = sorted(scene.files('*.png'))
             left_imgs = sorted(
@@ -114,13 +119,16 @@ class SequenceFolder(data.Dataset):
         sample = self.samples[index]
         if self.dataset == 'radiate' or self.preprocessed:
             tgt_img = self.load_undistorted_as_float(sample['tgt'])
-            ref_imgs = [self.load_undistorted_as_float(ref_img) for ref_img in sample['ref_imgs']]
+            ref_imgs = [self.load_undistorted_as_float(
+                ref_img) for ref_img in sample['ref_imgs']]
         else:
             tgt_img = self.load_as_float(sample['tgt'], self.cam_model_left)
-            ref_imgs = [self.load_as_float(sample['ref_imgs'][0], self.cam_model_right)]
+            ref_imgs = [self.load_as_float(
+                sample['ref_imgs'][0], self.cam_model_right)]
             for ref_img in sample['ref_imgs'][1:]:
-                ref_imgs.append(self.load_as_float(ref_img, self.cam_model_left))
-        
+                ref_imgs.append(self.load_as_float(
+                    ref_img, self.cam_model_left))
+
         if self.transform is not None:
             imgs, intrinsics, extrinsics = self.transform(
                 [tgt_img] + ref_imgs, np.copy(sample['intrinsics']), np.copy(sample['rightTleft']))
@@ -131,7 +139,7 @@ class SequenceFolder(data.Dataset):
         else:
             intrinsics = np.copy(sample['intrinsics'])
             extrinsics = np.copy(sample['rightTleft'])
-        
+
         if self.train:
             return tgt_img, ref_imgs, intrinsics, extrinsics
         else:
