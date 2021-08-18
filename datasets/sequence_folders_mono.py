@@ -22,8 +22,8 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, dataset='robotcar', seed=None, train=True, 
-    sequence_length=3, transform=None, skip_frames=1, preprocessed=False):
+    def __init__(self, root, dataset='robotcar', seed=None, train=True,
+                 sequence_length=3, transform=None, skip_frames=1, preprocessed=False):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -35,19 +35,22 @@ class SequenceFolder(data.Dataset):
         self.train = train
         self.k = skip_frames
         self.preprocessed = preprocessed
-        
+
         if dataset == 'radiate':
-            self.mono_folder = 'zed_left'
+            if self.preprocessed:
+                self.mono_folder = 'stereo_undistorted/left'
+            else:
+                self.mono_folder = 'zed_left'
         elif dataset == 'robotcar':
             if self.preprocessed:
-                self.mono_folder ='stereo_undistorted/left'
+                self.mono_folder = 'stereo_undistorted/left'
             else:
-                self.mono_folder ='stereo/left'         
+                self.mono_folder = 'stereo/left'
                 self.cam_model = CameraModel()
         else:
             raise NotImplementedError(
                 'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
-        
+
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -59,7 +62,8 @@ class SequenceFolder(data.Dataset):
         shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            intrinsics = utils.get_intrinsics_matrix(self.dataset, preprocessed=self.preprocessed)
+            intrinsics = utils.get_intrinsics_matrix(
+                self.dataset, preprocessed=self.preprocessed)
             #imgs = sorted(scene.files('*.png'))
             imgs = sorted(list((scene/self.mono_folder).glob('*.png')))
 
@@ -94,6 +98,7 @@ class SequenceFolder(data.Dataset):
     def __getitem__(self, index):
         sample = self.samples[index]
         if self.preprocessed or self.dataset == 'radiate':
+            # TODO: On-the-fly rectification support for RADIATE dataset
             tgt_img = self.load_undistorted_as_float(sample['tgt'])
             ref_imgs = [self.load_undistorted_as_float(ref_img)
                         for ref_img in sample['ref_imgs']]

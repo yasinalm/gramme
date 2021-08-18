@@ -133,6 +133,8 @@ def main():
             train_transform = T.Compose([
                 # T.ToPILImage(),
                 T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -149,6 +151,8 @@ def main():
                 T.CropBottom(),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -163,21 +167,38 @@ def main():
             ])
 
     elif args.dataset == 'radiate':
-        train_transform = T.Compose([
-            # T.ToPILImage(),
-            T.Resize(img_size),
-            T.RandomHorizontalFlip(),
-            T.RandomScaleCrop(),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.with_preprocessed:
+            train_transform = T.Compose([
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
-        valid_transform = T.Compose([
-            # T.ToPILImage(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+            valid_transform = T.Compose([
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            train_transform = T.Compose([
+                # T.ToPILImage(),
+                T.Resize(img_size),
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     train_set = SequenceFolder(
@@ -331,8 +352,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
 
         # measure data loading time
         data_time.update(time.time() - end)
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device), posinf=1, neginf=0)
+        ref_imgs = [torch.nan_to_num(
+            img.to(device), posinf=1, neginf=0) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
 
         # compute output

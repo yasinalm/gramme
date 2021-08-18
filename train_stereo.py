@@ -140,6 +140,8 @@ def main():
             train_transform = T.Compose([
                 # T.ToPILImage(),
                 T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -156,6 +158,8 @@ def main():
                 T.CropBottom(),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -174,8 +178,8 @@ def main():
         if args.with_preprocessed:
             train_transform = T.Compose([
                 T.RandomHorizontalFlip(),
-                # T.ColorJitter(brightness=0.5, contrast=0.5,
-                #               saturation=0.5, hue=0.5),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -190,8 +194,8 @@ def main():
                 # T.ToPILImage(),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
-                # T.ColorJitter(brightness=0.5, contrast=0.5,
-                #               saturation=0.5, hue=0.5),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
