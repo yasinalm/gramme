@@ -86,6 +86,8 @@ parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
                     metavar='PATH', help='path to pre-trained Pose net model')
+parser.add_argument('--pretrained-optim', dest='pretrained_optim', default=None,
+                    metavar='PATH', help='path to pre-trained optimizer state')
 parser.add_argument('--name', dest='name', type=str, required=True,
                     help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
@@ -277,6 +279,12 @@ def main():
     optimizer = torch.optim.Adam(optim_params,
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
+
+    if args.pretrained_optim:
+        print("=> using pre-trained weights for the optimizer")
+        weights = torch.load(args.pretrained_optim)
+        optimizer.load_state_dict(
+            weights['state_dict'])
 
     with open(args.save_path/args.log_summary, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
