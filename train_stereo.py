@@ -170,7 +170,7 @@ def main():
             ])
 
     elif args.dataset == 'radiate':
-        depth_scale = 1.0
+        depth_scale = 10.0
         if args.with_preprocessed:
             train_transform = T.Compose([
                 T.RandomHorizontalFlip(),
@@ -656,8 +656,8 @@ def disp_to_depth(disp):
     id_disp = torch.rand(disp.shape).to(device)*1e-12
     disp = disp + id_disp
     depth = 1./disp
-    depth = depth.clamp(min=1e-3)
     depth = depth/depth_scale
+    depth = depth.clamp(min=1e-6)
     return depth
 
 
