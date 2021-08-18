@@ -74,7 +74,7 @@ parser.add_argument('--with-ssim', type=int,
                     default=1, help='with ssim or not')
 parser.add_argument('--with-mask', type=int, default=1,
                     help='with the the mask for moving objects and occlusions or not')
-parser.add_argument('--with-auto-mask', type=int,  default=0,
+parser.add_argument('--with-auto-mask', type=int,  default=1,
                     help='with the the mask for stationary points')
 parser.add_argument('--with-pretrain', type=int,  default=1,
                     help='with or without imagenet pretrain for resnet')
@@ -251,8 +251,11 @@ def main():
     mono_warper = MonoWarper(
         max_scales=args.num_scales,
         dataset=args.dataset,
-        # batch_size=args.batch_size,
-        padding_mode=args.padding_mode)
+        with_auto_mask=args.with_auto_mask,
+        with_mask=args.with_mask,
+        with_ssim=args.with_ssim,
+        padding_mode=args.padding_mode
+    )
 
     # create model
     print("=> creating model")

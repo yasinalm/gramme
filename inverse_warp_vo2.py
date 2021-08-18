@@ -7,7 +7,6 @@ import utils_warp as utils
 import loss_ssim
 
 
-
 pixel_coords = None
 
 device = torch.device(
@@ -157,7 +156,7 @@ class MonoWarper(object):
     """Inverse warper class
     """
 
-    def __init__(self, max_scales, dataset, with_auto_mask=True, with_ssim=True, with_mask=True, padding_mode='zeros'):
+    def __init__(self, max_scales, dataset, with_auto_mask, with_ssim, with_mask, padding_mode='zeros'):
         global device
         self.dataset = dataset
         self.padding_mode = padding_mode
@@ -258,7 +257,7 @@ class MonoWarper(object):
             img, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)
 
         valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
-        valid_mask = valid_points.unsqueeze(1).to(torch.float32) #.float()
+        valid_mask = valid_points.unsqueeze(1).to(torch.float32)  # .float()
 
         projected_depth = F.grid_sample(
             ref_depth, src_pixel_coords, padding_mode=self.padding_mode, align_corners=False)

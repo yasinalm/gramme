@@ -82,9 +82,11 @@ parser.add_argument('-s', '--ssim-loss-weight', type=float,
 #                     help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-c', '--geometry-consistency-weight', type=float,
                     help='weight for depth consistency loss', metavar='W', default=1.0)
-# parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
-# parser.add_argument('--with-mask', type=int, default=1, help='with the mask for moving objects and occlusions or not')
-parser.add_argument('--with-auto-mask', action='store_true',
+parser.add_argument('--with-ssim', type=int,
+                    default=1, help='with ssim or not')
+parser.add_argument('--with-mask', type=int, default=1,
+                    help='with the mask for moving objects and occlusions or not')
+parser.add_argument('--with-auto-mask', type=int, default=1,
                     help='with the mask for stationary points')
 parser.add_argument('--with-masknet', action='store_true',
                     help='with the masknet for multipath and noise')
@@ -274,8 +276,11 @@ def main():
         mono_warper = MonoWarper(
             max_scales=args.num_scales,
             dataset=args.dataset,
-            # batch_size=args.batch_size,
-            padding_mode=args.padding_mode)
+            with_auto_mask=args.with_auto_mask,
+            with_mask=args.with_mask,
+            with_ssim=args.with_ssim,
+            padding_mode=args.padding_mode
+        )
     # create model
     print("=> creating model")
     mask_net = None
@@ -418,7 +423,7 @@ def main():
                 'state_dict': mask_net.module.state_dict()
             }
             utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
-                                ['radar_masknet'])
+                                       ['radar_masknet'])
         if args.with_vo:
             vo_pose_ckpt_dict = {
                 'epoch': epoch,
@@ -431,12 +436,13 @@ def main():
             fuse_ckpt_dict = {
                 'epoch': epoch,
                 'state_dict': fuse_net.module.state_dict()
-            }                 
+            }
             # utils.save_checkpoint_mono(
             #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
             utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
-                                ['mono_dispnet', 'mono_posenet', 'mono_fusenet'],
-                                epoch=epoch)
+                                       ['mono_dispnet', 'mono_posenet',
+                                           'mono_fusenet'],
+                                       epoch=epoch)
         ro_pose_ckpt_dict = {
             'epoch': epoch,
             'state_dict': radar_pose_net.module.state_dict()
@@ -444,10 +450,10 @@ def main():
         optim_dict = {
             'epoch': epoch,
             'state_dict': optimizer.state_dict()
-            }  
+        }
         utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
-                                ['radar_posenet', 'radar_optim'],
-                                epoch=epoch)
+                                   ['radar_posenet', 'radar_optim'],
+                                   epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -487,8 +493,8 @@ def train(
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
         save_checkpoints = i > 0 and n_iter % 1000 == 0
-        tgt_img = input[0] # [B,1,H,W]
-        ref_imgs = input[1] # [2,B,1,H,W]
+        tgt_img = input[0]  # [B,1,H,W]
+        ref_imgs = input[1]  # [2,B,1,H,W]
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -688,7 +694,7 @@ def train(
                     'state_dict': mask_net.module.state_dict()
                 }
                 utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
-                                    ['radar_masknet'])
+                                           ['radar_masknet'])
             if args.with_vo:
                 vo_pose_ckpt_dict = {
                     'n_iter': n_iter,
@@ -701,11 +707,11 @@ def train(
                 fuse_ckpt_dict = {
                     'n_iter': n_iter,
                     'state_dict': fuse_net.module.state_dict()
-                }                 
+                }
                 # utils.save_checkpoint_mono(
                 #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
                 utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
-                                    ['mono_dispnet', 'mono_posenet', 'mono_fusenet'])
+                                           ['mono_dispnet', 'mono_posenet', 'mono_fusenet'])
             ro_pose_ckpt_dict = {
                 'n_iter': n_iter,
                 'state_dict': radar_pose_net.module.state_dict()
@@ -713,9 +719,9 @@ def train(
             optim_dict = {
                 'n_iter': n_iter,
                 'state_dict': optimizer.state_dict()
-                }  
+            }
             utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
-                                    ['radar_posenet', 'radar_optim'])
+                                       ['radar_posenet', 'radar_optim'])
             # utils.save_checkpoint(
             #     args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict)
 

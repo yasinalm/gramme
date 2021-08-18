@@ -82,9 +82,11 @@ parser.add_argument('-s', '--ssim-loss-weight', type=float,
 #                     help='weight for disparity smoothness loss', metavar='W', default=0.1)
 parser.add_argument('-c', '--geometry-consistency-weight', type=float,
                     help='weight for depth consistency loss', metavar='W', default=1.0)
-# parser.add_argument('--with-ssim', type=int, default=1, help='with ssim or not')
-# parser.add_argument('--with-mask', type=int, default=1, help='with the mask for moving objects and occlusions or not')
-parser.add_argument('--with-auto-mask', action='store_true',
+parser.add_argument('--with-ssim', type=int,
+                    default=1, help='with ssim or not')
+parser.add_argument('--with-mask', type=int, default=1,
+                    help='with the mask for moving objects and occlusions or not')
+parser.add_argument('--with-auto-mask', type=int, default=1,
                     help='with the mask for stationary points')
 parser.add_argument('--with-masknet', action='store_true',
                     help='with the masknet for multipath and noise')
@@ -268,8 +270,11 @@ def main():
         mono_warper = MonoWarper(
             max_scales=args.num_scales,
             dataset=args.dataset,
-            # batch_size=args.batch_size,
-            padding_mode=args.padding_mode)
+            with_auto_mask=args.with_auto_mask,
+            with_mask=args.with_mask,
+            with_ssim=args.with_ssim,
+            padding_mode=args.padding_mode
+        )
     # create model
     print("=> creating model")
     mask_net = None
@@ -385,9 +390,9 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader, mask_net,
-                        radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
-                        attention_net, camera_pose_features, radar_pose_features,
-                        logger, training_writer, warper, mono_warper)
+                           radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
+                           attention_net, camera_pose_features, radar_pose_features,
+                           logger, training_writer, warper, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
