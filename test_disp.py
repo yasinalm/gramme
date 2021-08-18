@@ -10,8 +10,10 @@ import utils
 # import custom_transforms_mono as T
 
 import torch
+import torch.backends.cudnn as cudnn
 import torchvision as tv
 import torchvision.transforms as T
+# from datasets.image_folders import ImageFolder
 # from torchvision.utils import save_image
 
 parser = argparse.ArgumentParser(description='Script for DispNet testing with corresponding groundTruth',
@@ -19,6 +21,8 @@ parser = argparse.ArgumentParser(description='Script for DispNet testing with co
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+parser.add_argument('--with-preprocessed', type=int, default=1,
+                    help='use the preprocessed undistorted images')
 parser.add_argument("--pretrained-disp", required=True,
                     type=str, help="pretrained DispNet path")
 parser.add_argument('-j', '--workers', default=4, type=int,
@@ -52,31 +56,42 @@ def main():
     results_depth_dir = results_dir/'depth'
     results_depth_dir.mkdir(parents=True)
 
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    cudnn.deterministic = True
+    cudnn.benchmark = True
+
     img_size = (args.img_height, args.img_width)
 
     if args.dataset == 'robotcar':
-        # if args.with_preprocessed:
-        valid_transform = T.Compose([
-            # T.ToPILImage(),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
-        # else:
-        #     valid_transform = T.Compose([
-        #         T.ToPILImage(),
-        #         T.CropBottom(),
-        #         T.Resize(img_size),
-        #         T.ToTensor(),
-        #         # T.Normalize(imagenet_mean, imagenet_std)
-        #     ])
+        if args.with_preprocessed:
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            valid_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     elif args.dataset == 'radiate':
-        valid_transform = T.Compose([
-            # T.ToPILImage(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.with_preprocessed:
+            valid_transform = T.Compose([
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     test_set = tv.datasets.ImageFolder(
         root=args.data, transform=valid_transform)
@@ -98,6 +113,9 @@ def main():
     print("=> using pre-trained weights for DispResNet")
     weights = torch.load(args.pretrained_disp)
     disp_net.load_state_dict(weights['state_dict'], strict=False)
+
+    # switch to evaluate mode
+    disp_net.eval()
 
     avg_time = 0
     for i, (tgt_img, y) in tqdm(enumerate(test_loader)):
@@ -131,20 +149,30 @@ def main():
     print('Avg Speed: ', 1.0 / avg_time, ' fps')
 
 
+# def disp_to_depth(disp):
+#     """Convert network's sigmoid output into depth prediction
+#     The formula for this conversion is given in the 'additional considerations'
+#     section of the paper.
+#     """
+#     # Disp is not scaled in DispResNet.
+#     min_depth = 0.1
+#     max_depth = 100.0
+#     min_disp = 1 / max_depth
+#     max_disp = 1 / min_depth
+#     # disp = disp.clamp(min=1e-6)
+#     scaled_disp = min_disp + (max_disp - min_disp) * disp
+#     depth = 1 / scaled_disp
+#     # depth = 1./disp
+#     return depth
+
+
 def disp_to_depth(disp):
-    """Convert network's sigmoid output into depth prediction
-    The formula for this conversion is given in the 'additional considerations'
-    section of the paper.
-    """
-    # Disp is not scaled in DispResNet.
-    min_depth = 0.1
-    max_depth = 100.0
-    min_disp = 1 / max_depth
-    max_disp = 1 / min_depth
-    disp = disp.clamp(min=1e-6)
-    scaled_disp = min_disp + (max_disp - min_disp) * disp
-    depth = 1 / scaled_disp
-    # depth = 1./disp
+    # depth_scale = 10.0
+    # id_disp = torch.rand(disp.shape).to(device)*1e-12
+    # disp = disp + id_disp
+    depth = 1./disp
+    # depth = depth/depth_scale
+    depth = depth.clamp(min=1e-6)
     return depth
 
 
