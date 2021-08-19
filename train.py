@@ -27,7 +27,7 @@ from tensorboardX import SummaryWriter
 # Supress UserWarning from grid_sample
 warnings.filterwarnings("ignore", category=UserWarning)
 
-parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
+parser = argparse.ArgumentParser(description='Structure from Motion Learner training',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
@@ -102,6 +102,8 @@ parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+parser.add_argument('--with-preprocessed', type=int, default=1,
+                    help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-mask', dest='pretrained_mask',
                     default=None, metavar='PATH', help='path to pre-trained masknet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
@@ -119,8 +121,8 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
 # parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
 parser.add_argument('--gt-file', metavar='DIR',
                     help='path to ground truth validation file')
-parser.add_argument('--gt-type', type=str,
-                    choices=['kitti', 'xyz'], default='xyz', help='GT format')
+# parser.add_argument('--gt-type', type=str,
+#                     choices=['kitti', 'xyz'], default='xyz', help='GT format')
 parser.add_argument('--radar-format', type=str,
                     choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
 parser.add_argument('--range-res', type=float,
@@ -183,6 +185,7 @@ def main():
             [custom_transforms.ArrayToTensor(),
              transforms.RandomRotation(degrees=10, center=center)])
     else:
+        # TODO: Add colorjitter augmentation
         train_transform = custom_transforms.Compose(
             [custom_transforms.ArrayToTensor(),
              # transforms.RandomRotation(10)
@@ -190,26 +193,103 @@ def main():
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
-    mono_transform = None
+    # mono_transform = None
+    mono_train_transform = None
+    mono_valid_transform = None
     if args.with_vo:
+        # imagenet_mean = utils.imagenet_mean
+        # imagenet_std = utils.imagenet_std
+        # img_size = (args.img_height, args.img_width)
+        # if args.dataset == 'robotcar':
+        #     mono_transform = T.Compose([
+        #         T.ToPILImage(),
+        #         T.CropBottom(),
+        #         T.Resize(img_size),
+        #         T.ToTensor(),
+        #         T.Normalize(imagenet_mean, imagenet_std)
+        #     ])
+        # elif args.dataset == 'radiate':
+        #     mono_transform = T.Compose([
+        #         T.ToPILImage(),
+        #         T.Resize(img_size),
+        #         T.ToTensor(),
+        #         T.Normalize(imagenet_mean, imagenet_std)
+        #     ])
+
         imagenet_mean = utils.imagenet_mean
         imagenet_std = utils.imagenet_std
         img_size = (args.img_height, args.img_width)
         if args.dataset == 'robotcar':
-            mono_transform = T.Compose([
-                T.ToPILImage(),
-                T.CropBottom(),
-                T.Resize(img_size),
-                T.ToTensor(),
-                T.Normalize(imagenet_mean, imagenet_std)
-            ])
+            if args.with_preprocessed:
+                mono_train_transform = T.Compose([
+                    # T.ToPILImage(),
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+            else:
+                mono_train_transform = T.Compose([
+                    T.ToPILImage(),
+                    T.CropBottom(),
+                    T.Resize(img_size),
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.2, contrast=0.2,
+                                  saturation=0.2, hue=0.2),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    T.ToPILImage(),
+                    T.CropBottom(),
+                    T.Resize(img_size),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
         elif args.dataset == 'radiate':
-            mono_transform = T.Compose([
-                T.ToPILImage(),
-                T.Resize(img_size),
-                T.ToTensor(),
-                T.Normalize(imagenet_mean, imagenet_std)
-            ])
+            if args.with_preprocessed:
+                mono_train_transform = T.Compose([
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+            else:
+                mono_train_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.Resize(img_size),
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.Resize(img_size),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     ro_params = {
@@ -229,7 +309,8 @@ def main():
         dataset=args.dataset,
         ro_params=ro_params,
         load_mono=args.with_vo,
-        mono_transform=mono_transform
+        mono_transform=mono_train_transform,
+        mono_preprocessed=args.with_preprocessed
     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -243,7 +324,8 @@ def main():
         dataset=args.dataset,
         ro_params=ro_params,
         load_mono=args.with_vo,
-        mono_transform=mono_transform
+        mono_transform=mono_valid_transform,
+        mono_preprocessed=args.with_preprocessed
     )
 
     print('{} samples found in {} train scenes'.format(
@@ -298,6 +380,8 @@ def main():
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
     disp_net = camera_pose_net = None
+    fuse_net = None
+    attention_net = None
     radar_pose_features = None
     camera_pose_features = None
     if args.with_vo:
@@ -669,9 +753,9 @@ def train(
                 train_writer.add_image(
                     'train/mono/warped_ref', utils.tensor2array(mono_ref_imgs_warped[0][0]), n_iter)
                 train_writer.add_image(
-                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), n_iter)
+                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='viridis'), n_iter)
                 train_writer.add_image(
-                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='viridis'), n_iter)
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='inferno'), n_iter)
                 train_writer.add_image(
                     'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
@@ -868,9 +952,9 @@ def validate(
                 val_writer.add_image(
                     'val/mono/warped_ref', utils.tensor2array(mono_ref_imgs_warped[0][0]), epoch)
                 val_writer.add_image(
-                    'val/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), epoch)
+                    'val/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='viridis'), epoch)
                 val_writer.add_image(
-                    'val/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='viridis'), epoch)
+                    'val/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='inferno'), epoch)
                 val_writer.add_image(
                     'val/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), epoch)
 
@@ -1019,15 +1103,49 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
 
 #     return tgt_depth, ref_depths
 
+# def compute_depth(disp_net, tgt_img, ref_imgs):
+#     tgt_depth = [20/disp for disp in disp_net(tgt_img)]
+
+#     ref_depths = []
+#     for ref_img in ref_imgs:
+#         ref_depth = [20/disp for disp in disp_net(ref_img)]
+#         ref_depths.append(ref_depth)
+
+#     return tgt_depth, ref_depths
+
+
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [20/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [20/disp for disp in disp_net(ref_img)]
+        ref_depth = [disp_to_depth(disp) for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
+
+
+def disp_to_depth(disp):
+    # global depth_scale
+    """Convert network's sigmoid output into depth prediction
+    The formula for this conversion is given in the 'additional considerations'
+    section of the paper.
+    """
+    # Disp is not scaled in DispResNet.
+    # min_depth = 0.1
+    # max_depth = 100.0
+    # min_disp = 1 / max_depth
+    # max_disp = 1 / min_depth
+    # scaled_disp = min_disp + (max_disp - min_disp) * disp
+    # depth = 1 / scaled_disp
+    # disp = disp.clamp(min=1e-2)
+
+    # id_disp = torch.rand(disp.shape).to(device)*1e-12
+    # disp = disp + id_disp
+    depth = 1./disp
+    # depth = depth/depth_scale
+    depth = depth.clamp(min=1e-6)
+    return depth
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):

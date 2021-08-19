@@ -26,12 +26,14 @@ class SequenceFolder(data.Dataset):
     def __init__(
             self, root, skip_frames, sequence_length, train, dataset,
             ro_params=None, load_mono=False,
-            seed=None, transform=None, mono_transform=None, sequence=None):
+            seed=None, transform=None, mono_transform=None, sequence=None,
+            mono_preprocessed=False):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.train = train
         self.load_mono = load_mono
+        self.preprocessed = mono_preprocessed
 
         self.cart_resolution = ro_params['cart_resolution']
         self.cart_pixels = ro_params['cart_pixels']
@@ -55,9 +57,24 @@ class SequenceFolder(data.Dataset):
                            if not folder.strip().startswith("#")]
 
         if self.load_mono:
-            self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
-            if dataset == 'robotcar':
-                self.cam_model = CameraModel()
+            # self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
+            # if dataset == 'robotcar':
+            #     self.cam_model = CameraModel()
+
+            if dataset == 'radiate':
+                if self.preprocessed:
+                    self.mono_folder = 'stereo_undistorted/left'
+                else:
+                    self.mono_folder = 'zed_left'
+            elif dataset == 'robotcar':
+                if self.preprocessed:
+                    self.mono_folder = 'stereo_undistorted/left'
+                else:
+                    self.mono_folder = 'stereo/left'
+                    self.cam_model = CameraModel()
+            else:
+                raise NotImplementedError(
+                    'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
 
         self.transform = transform
         self.mono_transform = mono_transform
@@ -74,7 +91,8 @@ class SequenceFolder(data.Dataset):
         self.shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
-            intrinsics = utils.get_intrinsics_matrix(self.dataset)
+            intrinsics = utils.get_intrinsics_matrix(
+                self.dataset, preprocessed=self.preprocessed)
             # f_type = '*.csv' if self.dataset == 'hand' else '*.png'
             f_type = '*.png'
             imgs = sorted(list((scene/self.radar_folder).glob(f_type)))
@@ -184,6 +202,10 @@ class SequenceFolder(data.Dataset):
         # img = img.astype(np.float32) / 255.
         return img
 
+    def load_undistorted_mono_img_as_float(self, path):
+        img = Image.open(path)
+        return img
+
     def load_cart_as_float(self, path):
         raw_data = Image.open(path)
         raw_data = np.array(raw_data)
@@ -291,8 +313,13 @@ class SequenceFolder(data.Dataset):
 
         if self.load_mono:
             if 'vo_tgt_img' in sample:
-                vo_tgt_img = self.load_mono_img_as_float(sample['vo_tgt_img'])
-                vo_ref_imgs = [self.load_mono_img_as_float(
+                if self.preprocessed or self.dataset == 'radiate':
+                    # TODO: On-the-fly rectification support for RADIATE dataset
+                    self.load_img = self.load_undistorted_mono_img_as_float
+                else:
+                    self.load_img = self.load_mono_img_as_float
+                vo_tgt_img = self.load_img(sample['vo_tgt_img'])
+                vo_ref_imgs = [self.load_img(
                     ref_img) for ref_img in sample['vo_ref_imgs']]
                 if self.mono_transform:
                     imgs, intrinsics = self.mono_transform(
