@@ -224,9 +224,9 @@ def main():
                 mono_train_transform = T.Compose([
                     # T.ToPILImage(),
                     # T.RandomHorizontalFlip(),
-                    T.ColorJitter(brightness=0.1, contrast=0.1,
-                                  saturation=0.1, hue=0.1),
-                    T.RandomScaleCrop(),
+                    # T.ColorJitter(brightness=0.1, contrast=0.1,
+                    #               saturation=0.1, hue=0.1),
+                    # T.RandomScaleCrop(),
                     T.ToTensor(),
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
@@ -553,7 +553,7 @@ def train(
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(i=10 if args.with_vo else 5, precision=4)
+    losses = AverageMeter(i=11 if args.with_vo else 5, precision=4)
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
@@ -595,6 +595,7 @@ def train(
             radar_pose_net, tgt_img, ref_imgs)
 
         vo_loss = 0
+        vo2radar_loss = 0
         if args.with_vo:
             # num_scales = 4, num_match=3
             vo_tgt_img = input[2]  # [B,3,H,W]
@@ -658,7 +659,7 @@ def train(
 
             vo2radar_loss = w1*rec_loss2 + w2 * \
                 geometry_consistency_loss2 + w3*fft_loss2 + w4*ssim_loss2
-            vo_loss += 5*vo2radar_loss
+            # vo_loss += vo2radar_loss
 
         # indices = torch.tensor([4, 5, 3, 1, 2, 0], device=device)
         # vo2radar_poses = torch.index_select(vo_poses, -1, indices)
@@ -674,7 +675,7 @@ def train(
         ssim_loss = w4*ssim_loss
         radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
-        loss = radar_loss + vo_loss
+        loss = radar_loss + 30*vo_loss + vo2radar_loss
 
         # record loss and EPE
         losses_it = [
@@ -684,6 +685,8 @@ def train(
         if args.with_vo:
             losses_it.extend(
                 [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item(), vo_ssim_loss.item()])
+            losses_it.extend(
+                [vo2radar_loss.item()])
         losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
@@ -708,11 +711,14 @@ def train(
             if args.with_vo:
                 error_names.extend(
                     ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss', 'vo_ssim_loss'])
+                error_names.extend(['vo2radar_loss'])
             error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                      for name, error in zip(error_names, errors))
+            # Write scalars to the progressbar
             logger.train_writer.write(
                 'Train: Batch time {} Data time {} '.format(batch_time, data_time, losses) + error_string)
 
+            # Write scalaras to Tensorboard
             for error, name in zip(errors, error_names):
                 train_writer.add_scalar('train/'+name, error, n_iter)
 
@@ -721,10 +727,12 @@ def train(
             tags_rot = ['rot_pred-x', 'rot_pred-y', 'rot_pred-z']
             tags_trans = ['trans_pred-x', 'trans_pred-y', 'trans_pred-z']
 
+            # Write radar pose histograms to Tensorboard
             for i, tag in enumerate(tags_rot+tags_trans):
                 train_writer.add_histogram(
                     'train/radar/'+tag, ro_poses[..., i], n_iter)
 
+            # Write VO and VO2Radar pose histograms to Tensorboard
             if args.with_vo:
                 for i, tag in enumerate(tags_trans+tags_rot):
                     train_writer.add_histogram(
@@ -734,6 +742,7 @@ def train(
                     train_writer.add_histogram(
                         'train/mono2radar/'+tag, vo2radar_poses[..., i], n_iter)
 
+            # Write intermediate radar image outputs to Tensorboard
             train_writer.add_image(
                 'train/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
@@ -1140,11 +1149,12 @@ def disp_to_depth(disp):
     # depth = 1 / scaled_disp
     # disp = disp.clamp(min=1e-2)
 
-    # id_disp = torch.rand(disp.shape).to(device)*1e-12
-    # disp = disp + id_disp
+    id_disp = torch.rand(disp.shape).to(device)*1e-12
+    disp = disp + id_disp
+    disp = disp.clamp(min=1e-3)
     depth = 1./disp
     # depth = depth/depth_scale
-    depth = depth.clamp(min=1e-6)
+    depth = depth.clamp(min=1e-3)
     return depth
 
 
