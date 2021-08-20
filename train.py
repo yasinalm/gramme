@@ -582,8 +582,8 @@ def train(
 
         # measure data loading time
         data_time.update(time.time() - end)
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device))
+        ref_imgs = [torch.nan_to_num(img.to(device)) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)
 
         # compute output
@@ -601,8 +601,9 @@ def train(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
-            vo_tgt_img = vo_tgt_img.to(device)
-            vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
+            vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
+            vo_ref_imgs = [torch.nan_to_num(
+                ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
@@ -860,8 +861,8 @@ def validate(
     for i, input in enumerate(val_loader):
         tgt_img = input[0]
         ref_imgs = input[1]
-        tgt_img = tgt_img.to(device)
-        ref_imgs = [img.to(device) for img in ref_imgs]
+        tgt_img = torch.nan_to_num(tgt_img.to(device))
+        ref_imgs = [torch.nan_to_num(img.to(device)) for img in ref_imgs]
         # intrinsics = intrinsics.to(device)
         # intrinsics_inv = intrinsics_inv.to(device)
 
@@ -891,8 +892,9 @@ def validate(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
-            vo_tgt_img = vo_tgt_img.to(device)
-            vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
+            vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
+            vo_ref_imgs = [torch.nan_to_num(
+                ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
             # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]

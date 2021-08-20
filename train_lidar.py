@@ -102,6 +102,8 @@ parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+parser.add_argument('--with-preprocessed', type=int, default=1,
+                    help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-mask', dest='pretrained_mask',
                     default=None, metavar='PATH', help='path to pre-trained masknet model')
 parser.add_argument('--pretrained-pose', dest='pretrained_pose', default=None,
@@ -119,16 +121,16 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
 # parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
 parser.add_argument('--gt-file', metavar='DIR',
                     help='path to ground truth validation file')
-parser.add_argument('--gt-type', type=str,
-                    choices=['kitti', 'xyz'], default='xyz', help='GT format')
-parser.add_argument('--radar-format', type=str,
-                    choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
-parser.add_argument('--range-res', type=float,
-                    help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
-parser.add_argument('--angle-res', type=float,
-                    help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
+# parser.add_argument('--gt-type', type=str,
+#                     choices=['kitti', 'xyz'], default='xyz', help='GT format')
+# parser.add_argument('--radar-format', type=str,
+#                     choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
+# parser.add_argument('--range-res', type=float,
+#                     help='Range resolution of LIDAR in meters', metavar='W', default=0.0977)
+# parser.add_argument('--angle-res', type=float,
+#                     help='Angular azimuth resolution of LIDAR in radians', metavar='W', default=1.0)
 parser.add_argument('--cart-res', type=float,
-                    help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
+                    help='Cartesian resolution of LIDAR in meters/pixel', metavar='W', default=0.25)
 parser.add_argument('--cart-pixels', type=int,
                     help='Cartesian size in pixels (used for both height and width)', metavar='W', default=512)
 
@@ -160,20 +162,7 @@ def main():
         val_writer = SummaryWriter(args.save_path/'valid')
 
     # Data loading code
-    # if args.dataset == 'hand':
-    #     mean, std = 119.4501, 6.5258 # Calculated over all dataset
-    # else:
-    #     mean, std = 11.49, 16.46 # Calculated over all robotcar dataset
-    # normalize = custom_transforms.Normalize(mean=mean, std=std)
 
-    # train_transform = custom_transforms.Compose([
-    #     custom_transforms.RandomHorizontalFlip(),
-    #     custom_transforms.RandomScaleCrop(),
-    #     custom_transforms.ArrayToTensor(),
-    #     normalize
-    # ])
-
-    # ds_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
     # Calculate center of handheld dataset. The rotation center is not the image center (default image center).
     if args.dataset == 'hand':
         center = (0, args.cart_pixels//2)
@@ -188,26 +177,85 @@ def main():
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
-    mono_transform = None
+    # mono_transform = None
+    mono_train_transform = None
+    mono_valid_transform = None
     if args.with_vo:
+
         imagenet_mean = utils.imagenet_mean
         imagenet_std = utils.imagenet_std
         img_size = (args.img_height, args.img_width)
         if args.dataset == 'robotcar':
-            mono_transform = T.Compose([
-                T.ToPILImage(),
-                T.CropBottom(),
-                T.Resize(img_size),
-                T.ToTensor(),
-                T.Normalize(imagenet_mean, imagenet_std)
-            ])
+            if args.with_preprocessed:
+                mono_train_transform = T.Compose([
+                    # T.ToPILImage(),
+                    # T.RandomHorizontalFlip(),
+                    # T.ColorJitter(brightness=0.1, contrast=0.1,
+                    #               saturation=0.1, hue=0.1),
+                    # T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+            else:
+                mono_train_transform = T.Compose([
+                    T.ToPILImage(),
+                    T.CropBottom(),
+                    T.Resize(img_size),
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.2, contrast=0.2,
+                                  saturation=0.2, hue=0.2),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    T.ToPILImage(),
+                    T.CropBottom(),
+                    T.Resize(img_size),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
         elif args.dataset == 'radiate':
-            mono_transform = T.Compose([
-                T.ToPILImage(),
-                T.Resize(img_size),
-                T.ToTensor(),
-                T.Normalize(imagenet_mean, imagenet_std)
-            ])
+            if args.with_preprocessed:
+                mono_train_transform = T.Compose([
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+            else:
+                mono_train_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.Resize(img_size),
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                mono_valid_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.Resize(img_size),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     lo_params = {
@@ -222,8 +270,9 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         lo_params=lo_params,
-        # load_mono=args.with_vo,
-        # mono_transform=mono_transform
+        load_mono=args.with_vo,
+        load_mono=args.with_vo,
+        mono_transform=mono_train_transform
     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -236,8 +285,9 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         lo_params=lo_params,
-        # load_mono=args.with_vo,
-        # mono_transform=mono_transform
+        load_mono=args.with_vo,
+        mono_transform=mono_valid_transform,
+        mono_preprocessed=args.with_preprocessed
     )
 
     print('{} samples found in {} train scenes'.format(
@@ -288,12 +338,12 @@ def main():
             raise NotImplementedError(
                 'The chosen MaskNet is not implemented! Given: {}'.format(args.masknet))
 
-    radar_pose_net = models.PoseResNet(
+    lidar_pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, args.with_pretrain).to(device)
 
     disp_net = camera_pose_net = None
     fuse_net = attention_net = None
-    radar_pose_features = None
+    lidar_pose_features = None
     camera_pose_features = None
     if args.with_vo:
         disp_net = models.DispResNet(
@@ -305,8 +355,8 @@ def main():
 
         camera_pose_net.encoder.register_forward_hook(
             get_activation(camera_pose_features))
-        radar_pose_net.encoder.register_forward_hook(
-            get_activation(radar_pose_features))
+        lidar_pose_net.encoder.register_forward_hook(
+            get_activation(lidar_pose_features))
 
     # load parameters
     if args.with_masknet and args.pretrained_mask:
@@ -317,7 +367,7 @@ def main():
     if args.pretrained_pose:
         print("=> using pre-trained weights for PoseNet")
         weights = torch.load(args.pretrained_pose)
-        radar_pose_net.load_state_dict(weights['state_dict'], strict=False)
+        lidar_pose_net.load_state_dict(weights['state_dict'], strict=False)
 
     if args.with_vo:
         if args.pretrained_disp:
@@ -342,12 +392,12 @@ def main():
 
     if args.with_masknet:
         mask_net = torch.nn.DataParallel(mask_net)
-    radar_pose_net = torch.nn.DataParallel(radar_pose_net)
+    lidar_pose_net = torch.nn.DataParallel(lidar_pose_net)
 
     print('=> setting adam solver')
     optim_params = [
-        {'params': radar_pose_net.parameters(), 'lr': args.lr}
-        # {'params': radar_pose_net.parameters(), 'lr': 1e-7}
+        {'params': lidar_pose_net.parameters(), 'lr': args.lr}
+        # {'params': lidar_pose_net.parameters(), 'lr': 1e-7}
     ]
     if args.with_masknet:
         optim_params.append({'params': mask_net.parameters(), 'lr': args.lr})
@@ -390,15 +440,15 @@ def main():
         # train for one epoch
         logger.reset_train_bar()
         train_loss = train(args, train_loader, mask_net,
-                           radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
-                           attention_net, camera_pose_features, radar_pose_features,
+                           lidar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
+                           attention_net, camera_pose_features, lidar_pose_features,
                            logger, training_writer, warper, mono_warper)
         logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
 
         # evaluate on validation set
         logger.reset_valid_bar()
         val_loss = validate(
-            args, val_loader, mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net,
+            args, val_loader, mask_net, lidar_pose_net, disp_net, camera_pose_net, fuse_net,
             epoch, logger, warper, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
@@ -431,20 +481,23 @@ def main():
                 'n_iter': epoch + 1,
                 'state_dict': fuse_net.module.state_dict()
             }
-            utils.save_checkpoint_mono(
-                args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
+            # utils.save_checkpoint_mono(
+            #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
+            utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
+                                       ['mono_dispnet', 'mono_posenet',
+                                           'mono_fusenet'],
+                                       epoch=epoch)
         ro_pose_ckpt_dict = {
             'epoch': epoch + 1,
-            'state_dict': radar_pose_net.module.state_dict()
+            'state_dict': lidar_pose_net.module.state_dict()
         }
-        optim_ckpt_dict = {
+        optim_dict = {
             'epoch': epoch + 1,
             'state_dict': optimizer.state_dict()
         }
-        utils.save_checkpoint(
-            args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict, epoch=epoch)
-        utils.save_checkpoint_optim(
-            args.save_path, optim_ckpt_dict, epoch=epoch)
+        utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
+                                   ['lidar_posenet', 'lidar_optim'],
+                                   epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -454,13 +507,13 @@ def main():
 
 def train(
         args, train_loader,
-        mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
-        attention_net, camera_pose_features, radar_pose_features,
+        mask_net, lidar_pose_net, disp_net, camera_pose_net, fuse_net, optimizer,
+        attention_net, camera_pose_features, lidar_pose_features,
         logger, train_writer, warper, mono_warper):
     global n_iter, device
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    losses = AverageMeter(i=10 if args.with_vo else 5, precision=4)
+    losses = AverageMeter(i=11 if args.with_vo else 5, precision=4)
     w1, w2, w3, w4 = args.photo_loss_weight, args.geometry_consistency_weight, args.fft_loss_weight, args.ssim_loss_weight
 
     # best_error = 9.0e6
@@ -472,14 +525,14 @@ def train(
         disp_net.train()
         camera_pose_net.train()
         fuse_net.train()
-    # radar_pose_net.eval()
-    radar_pose_net.train()
+    # lidar_pose_net.eval()
+    lidar_pose_net.train()
 
     end = time.time()
     logger.train_bar.update(0)
 
     # TODO: Haydaaa! Her batch ayni boyutta olacak diye hata veriyor mono frame lerden dolayi
-    # Simdilik sadece sabit olarak radar frame ler arasinda 3 mono frame oalcak sekilde aliyoruz.
+    # Simdilik sadece sabit olarak lidar frame ler arasinda 3 mono frame oalcak sekilde aliyoruz.
     # Diger sequence leri atiyoruz. Data efficient degil. Daha akilli yol bul. collate_fn ile
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
@@ -499,16 +552,18 @@ def train(
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         ro_poses, ro_poses_inv = compute_pose_with_inv(
-            radar_pose_net, tgt_img, ref_imgs)
+            lidar_pose_net, tgt_img, ref_imgs)
 
         vo_loss = 0
+        vo2lidar_loss = 0
         if args.with_vo:
             # num_scales = 4, num_match=3
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
-            vo_tgt_img = vo_tgt_img.to(device)
-            vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
+            vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
+            vo_ref_imgs = [torch.nan_to_num(
+                ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
@@ -543,33 +598,33 @@ def train(
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
             # TODO: duzgun bir basit pose fusion dusun
-            # Get the pose features from resnet_endocer for both radar and camera.
+            # Get the pose features from resnet_endocer for both lidar and camera.
             # Use forward hooks to get the intermediate output.
             # Feed them into FC and SoftMax.
-            # Get KL difference and use it as weight on vo2radar_poses
+            # Get KL difference and use it as weight on vo2lidar_poses
             # cam_conf 1x6 confidence score weight (asagidaki weight tam dogru degil duzelt)
             # attention_map 100 filan boyutunda softmax, visualization icin
 
             # attention_map, cam_conf = attention_net(
-            #     camera_pose_features, radar_pose_features)
+            #     camera_pose_features, lidar_pose_features)
 
-            # Scale and project camera pose to radar frame
-            vo2radar_poses = fuse_net(vo_poses)
-            vo2radar_poses_inv = fuse_net(vo_poses_inv)
+            # Scale and project camera pose to lidar frame
+            vo2lidar_poses = fuse_net(vo_poses)
+            vo2lidar_poses_inv = fuse_net(vo_poses_inv)
             # L1 regularization on VO pose
-            # vo2radar_poses = (ro_poses + vo2radar_poses)/2
-            # vo2radar_poses_inv = (ro_poses_inv + vo2radar_poses_inv)/2
+            # vo2lidar_poses = (ro_poses + vo2lidar_poses)/2
+            # vo2lidar_poses_inv = (ro_poses_inv + vo2lidar_poses_inv)/2
 
             (rec_loss2, geometry_consistency_loss2, fft_loss2, ssim_loss2,
-             projected_imgs2, _) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2radar_poses, vo2radar_poses_inv)
+             projected_imgs2, _) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, vo2lidar_poses, vo2lidar_poses_inv)
 
-            vo2radar_loss = w1*rec_loss2 + w2 * \
+            vo2lidar_loss = w1*rec_loss2 + w2 * \
                 geometry_consistency_loss2 + w3*fft_loss2 + w4*ssim_loss2
-            vo_loss += 5*vo2radar_loss
+            # vo_loss += 5*vo2lidar_loss
 
         # indices = torch.tensor([4, 5, 3, 1, 2, 0], device=device)
-        # vo2radar_poses = torch.index_select(vo_poses, -1, indices)
-        # vo2radar_poses_inv = torch.index_select(vo_poses_inv, -1, indices)
+        # vo2lidar_poses = torch.index_select(vo_poses, -1, indices)
+        # vo2lidar_poses_inv = torch.index_select(vo_poses_inv, -1, indices)
         (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
          projected_imgs, projected_masks) = warper.compute_db_loss(tgt_img, ref_imgs, tgt_mask, ref_masks, ro_poses, ro_poses_inv)
 
@@ -579,9 +634,9 @@ def train(
         geometry_consistency_loss = w2*geometry_consistency_loss
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
-        radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+        lidar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
-        loss = radar_loss + vo_loss
+        loss = lidar_loss + 30*vo_loss + vo2lidar_loss
 
         # record loss and EPE
         losses_it = [
@@ -591,6 +646,8 @@ def train(
         if args.with_vo:
             losses_it.extend(
                 [vo_loss.item(), vo_photo_loss.item(), vo_smooth_loss.item(), vo_geometry_loss.item(), vo_ssim_loss.item()])
+            losses_it.extend(
+                [vo2lidar_loss.item()])
         losses.update(losses_it, args.batch_size)
 
         # compute gradient and do Adam step
@@ -615,6 +672,7 @@ def train(
             if args.with_vo:
                 error_names.extend(
                     ['vo_loss', 'vo_photo_loss', 'vo_smooth_loss', 'vo_geometry_loss', 'vo_ssim_loss'])
+                error_names.extend(['vo2lidar_loss'])
             error_string = ', '.join('{} : {:.3f}'.format(name, error)
                                      for name, error in zip(error_names, errors))
             logger.train_writer.write(
@@ -630,7 +688,7 @@ def train(
 
             for i, tag in enumerate(tags_rot+tags_trans):
                 train_writer.add_histogram(
-                    'train/radar/'+tag, ro_poses[..., i], n_iter)
+                    'train/lidar/'+tag, ro_poses[..., i], n_iter)
 
             if args.with_vo:
                 for i, tag in enumerate(tags_trans+tags_rot):
@@ -639,19 +697,19 @@ def train(
 
                 for i, tag in enumerate(tags_rot+tags_trans):
                     train_writer.add_histogram(
-                        'train/mono2radar/'+tag, vo2radar_poses[..., i], n_iter)
+                        'train/mono2lidar/'+tag, vo2lidar_poses[..., i], n_iter)
 
             train_writer.add_image(
-                'train/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
+                'train/lidar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/lidar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
-                'train/radar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+                'train/lidar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
                 train_writer.add_image(
-                    'train/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/lidar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
                 train_writer.add_image(
-                    'train/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/lidar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
                 train_writer.add_image(
                     'train/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), n_iter)
@@ -660,14 +718,14 @@ def train(
                 train_writer.add_image(
                     'train/mono/warped_ref', utils.tensor2array(mono_ref_img_warped[0]), n_iter)
                 train_writer.add_image(
-                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), n_iter)
+                    'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='viridis'), n_iter)
                 train_writer.add_image(
-                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='viridis'), n_iter)
+                    'train/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='inferno'), n_iter)
                 train_writer.add_image(
                     'train/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), n_iter)
 
                 train_writer.add_image(
-                    'train/radar/warped_ref_from_mono', utils.tensor2array(projected_imgs2[0][0], max_value=1.0, colormap='bone'), n_iter)
+                    'train/lidar/warped_ref_from_mono', utils.tensor2array(projected_imgs2[0][0], max_value=1.0, colormap='bone'), n_iter)
 
         if save_checkpoints:
             # Up to you to chose the most relevant error to measure your model's performance,
@@ -681,30 +739,36 @@ def train(
             mask_ckpt_dict = None
             if args.with_masknet:
                 mask_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': mask_net.module.state_dict()
                 }
+                utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
+                                           ['lidar_masknet'])
             if args.with_vo:
                 vo_pose_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': camera_pose_net.module.state_dict()
                 }
                 disp_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': disp_net.module.state_dict()
                 }
                 fuse_ckpt_dict = {
-                    'n_iter': n_iter + 1,
+                    'n_iter': n_iter,
                     'state_dict': fuse_net.module.state_dict()
                 }
-                utils.save_checkpoint_mono(
-                    args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
+                utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
+                                           ['mono_dispnet', 'mono_posenet', 'mono_fusenet'])
             ro_pose_ckpt_dict = {
-                'n_iter': n_iter + 1,
-                'state_dict': radar_pose_net.module.state_dict()
+                'n_iter': n_iter,
+                'state_dict': lidar_pose_net.module.state_dict()
             }
-            utils.save_checkpoint(
-                args.save_path, mask_ckpt_dict, ro_pose_ckpt_dict)
+            optim_dict = {
+                'n_iter': n_iter,
+                'state_dict': optimizer.state_dict()
+            }
+            utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
+                                       ['lidar_posenet', 'lidar_optim'])
 
         if i >= args.train_size - 1:
             break
@@ -716,7 +780,7 @@ def train(
 
 @torch.no_grad()
 def validate(
-        args, val_loader, mask_net, radar_pose_net, disp_net, camera_pose_net, fuse_net,
+        args, val_loader, mask_net, lidar_pose_net, disp_net, camera_pose_net, fuse_net,
         epoch, logger, warper, mono_warper, val_writer):
     global device
     batch_time = AverageMeter()
@@ -730,14 +794,14 @@ def validate(
     if args.with_vo:
         disp_net.eval()
         camera_pose_net.eval()
-    radar_pose_net.eval()
+    lidar_pose_net.eval()
 
     all_poses = []
     all_inv_poses = []
     all_poses_mono = []
     all_inv_poses_mono = []
-    all_poses_mono2radar = []
-    all_inv_poses_mono2radar = []
+    all_poses_mono2lidar = []
+    all_inv_poses_mono2lidar = []
 
     # Randomly choose n indices to log images
     rng = np.random.default_rng()
@@ -759,7 +823,7 @@ def validate(
         if args.with_masknet:
             tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
         ro_poses, ro_poses_inv = compute_pose_with_inv(
-            radar_pose_net, tgt_img, ref_imgs)
+            lidar_pose_net, tgt_img, ref_imgs)
         all_poses.append(ro_poses)
         all_inv_poses.append(ro_poses_inv)
 
@@ -771,7 +835,7 @@ def validate(
         geometry_consistency_loss = w2*geometry_consistency_loss
         fft_loss = w3*fft_loss
         ssim_loss = w4*ssim_loss
-        radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
+        lidar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         vo_loss = 0
         if args.with_vo:
@@ -779,8 +843,9 @@ def validate(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
-            vo_tgt_img = vo_tgt_img.to(device)
-            vo_ref_imgs = [ref_img.to(device) for ref_img in vo_ref_imgs]
+            vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
+            vo_ref_imgs = [torch.nan_to_num(
+                ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
             # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]
@@ -816,31 +881,31 @@ def validate(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            vo2radar_poses = fuse_net(vo_poses)
-            vo2radar_poses_inv = fuse_net(vo_poses_inv)
+            vo2lidar_poses = fuse_net(vo_poses)
+            vo2lidar_poses_inv = fuse_net(vo_poses_inv)
 
             # Change VO pose order to RO
             # all_poses_mono.append(
             #     torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
             # all_inv_poses_mono.append(
             #     torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
-            all_poses_mono2radar.append(vo2radar_poses)
-            all_inv_poses_mono2radar.append(vo2radar_poses_inv)
+            all_poses_mono2lidar.append(vo2lidar_poses)
+            all_inv_poses_mono2lidar.append(vo2lidar_poses_inv)
 
-        loss = radar_loss + vo_loss
+        loss = lidar_loss + vo_loss
 
         if log_outputs and i in log_ind:
             val_writer.add_image(
-                'val/radar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), epoch)
+                'val/lidar/tgt_input', utils.tensor2array(tgt_img[0], max_value=1.0, colormap='bone'), epoch)
             val_writer.add_image(
-                'val/radar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
+                'val/lidar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
             val_writer.add_image(
-                'val/radar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
+                'val/lidar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
             if args.with_masknet:
                 val_writer.add_image(
-                    'val/radar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), epoch)
+                    'val/lidar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), epoch)
                 val_writer.add_image(
-                    'val/radar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), epoch)
+                    'val/lidar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), epoch)
             if args.with_vo:
                 val_writer.add_image(
                     'val/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), epoch)
@@ -849,9 +914,9 @@ def validate(
                 val_writer.add_image(
                     'val/mono/warped_ref', utils.tensor2array(mono_ref_img_warped[0]), epoch)
                 val_writer.add_image(
-                    'val/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='inferno'), epoch)
+                    'val/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='viridis'), epoch)
                 val_writer.add_image(
-                    'val/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='viridis'), epoch)
+                    'val/mono/tgt_depth', utils.tensor2array(tgt_depth[0][0], colormap='inferno'), epoch)
                 val_writer.add_image(
                     'val/mono/warped_mask', utils.tensor2array(mono_valid_mask[0], max_value=1.0, colormap='bone'), epoch)
 
@@ -880,7 +945,7 @@ def validate(
 
         for i, tag in enumerate(tags):
             val_writer.add_histogram(
-                'val/radar/'+tag, all_poses_t[..., i], epoch)
+                'val/lidar/'+tag, all_poses_t[..., i], epoch)
 
         if args.with_vo:
             all_poses_mono_t = torch.cat(
@@ -888,11 +953,11 @@ def validate(
             for i, tag in enumerate(tags):
                 val_writer.add_histogram(
                     'val/mono/'+tag, all_poses_mono_t[..., i], epoch)
-            all_poses_mono2radar_t = torch.cat(
-                all_poses_mono2radar, 1)
+            all_poses_mono2lidar_t = torch.cat(
+                all_poses_mono2lidar, 1)
             for i, tag in enumerate(tags):
                 val_writer.add_histogram(
-                    'val/mono_fused/'+tag, all_poses_mono2radar_t[..., i], epoch)
+                    'val/mono_fused/'+tag, all_poses_mono2lidar_t[..., i], epoch)
 
     logger.valid_bar.update(args.val_size)
 
@@ -924,7 +989,7 @@ def validate(
                 f_pred_xyz.squeeze(), ro_eval.gt[:, :3, 3].squeeze())
             # fig2= utils.traj2Fig(f_pred[:,:3,3])
             val_writer.add_figure(
-                'val/fig/radar/traj_aligned_pred', fig, epoch)
+                'val/fig/lidar/traj_aligned_pred', fig, epoch)
             # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
 
     else:
@@ -935,8 +1000,8 @@ def validate(
             # Plot and log predicted trajectory
             b_fig = utils.traj2Fig(b_pred_xyz)
             f_fig = utils.traj2Fig(f_pred_xyz)
-            val_writer.add_figure('val/fig/radar/b_traj_pred', b_fig, epoch)
-            val_writer.add_figure('val/fig/radar/f_traj_pred', f_fig, epoch)
+            val_writer.add_figure('val/fig/lidar/b_traj_pred', b_fig, epoch)
+            val_writer.add_figure('val/fig/lidar/f_traj_pred', f_fig, epoch)
 
         if args.with_vo:
             b_pred_xyz_mono, f_pred_xyz_mono = getTraj(
@@ -948,16 +1013,16 @@ def validate(
                 val_writer.add_figure('val/fig/mono/b_traj_pred', b_fig, epoch)
                 val_writer.add_figure('val/fig/mono/f_traj_pred', f_fig, epoch)
 
-            b_pred_xyz_mono2radar, f_pred_xyz_mono2radar = getTraj(
-                all_poses_mono2radar, all_inv_poses_mono2radar, args.skip_frames)
+            b_pred_xyz_mono2lidar, f_pred_xyz_mono2lidar = getTraj(
+                all_poses_mono2lidar, all_inv_poses_mono2lidar, args.skip_frames)
             if log_outputs:
                 # Plot and log predicted trajectory
-                b_fig = utils.traj2Fig(b_pred_xyz_mono2radar)
-                f_fig = utils.traj2Fig(f_pred_xyz_mono2radar)
+                b_fig = utils.traj2Fig(b_pred_xyz_mono2lidar)
+                f_fig = utils.traj2Fig(f_pred_xyz_mono2lidar)
                 val_writer.add_figure(
-                    'val/fig/mono2radar/b_traj_pred', b_fig, epoch)
+                    'val/fig/mono2lidar/b_traj_pred', b_fig, epoch)
                 val_writer.add_figure(
-                    'val/fig/mono2radar/f_traj_pred', f_fig, epoch)
+                    'val/fig/mono2lidar/f_traj_pred', f_fig, epoch)
 
     return losses.avg[0]
 
@@ -1001,14 +1066,38 @@ def compute_mask(mask_net, tgt_img, ref_imgs):
 #     return tgt_depth, ref_depths
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [20/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [20/disp for disp in disp_net(ref_img)]
+        ref_depth = [disp_to_depth(disp) for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
+
+
+def disp_to_depth(disp):
+    # global depth_scale
+    """Convert network's sigmoid output into depth prediction
+    The formula for this conversion is given in the 'additional considerations'
+    section of the paper.
+    """
+    # Disp is not scaled in DispResNet.
+    # min_depth = 0.1
+    # max_depth = 100.0
+    # min_disp = 1 / max_depth
+    # max_disp = 1 / min_depth
+    # scaled_disp = min_disp + (max_disp - min_disp) * disp
+    # depth = 1 / scaled_disp
+    # disp = disp.clamp(min=1e-2)
+
+    id_disp = torch.rand(disp.shape).to(device)*1e-12
+    disp = disp + id_disp
+    disp = disp.clamp(min=1e-3)
+    depth = 1./disp
+    # depth = depth/depth_scale
+    depth = depth.clamp(min=1e-3)
+    return depth
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
