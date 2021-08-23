@@ -794,6 +794,7 @@ def validate(
     if args.with_vo:
         disp_net.eval()
         camera_pose_net.eval()
+        fuse_net.eval()
     lidar_pose_net.eval()
 
     all_poses = []

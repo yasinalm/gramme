@@ -2,13 +2,18 @@ import warnings
 import torch
 
 import numpy as np
+from pathlib import Path
 
 import conversions as tgm
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device(
+    "cuda") if torch.cuda.is_available() else torch.device("cpu")
+
 
 class RadarEvalOdom():
-    """Evaluate odometry result
+    """Evaluate odometry results for ground-truth and predicted odometry. 
+    Includes utility functions to convert odometry predictions to trajectories.
+    If this class is instantiated with a gt file, it aligns the predictions with gt. They can be of different sizes.
     Usage example:
         vo_eval = RadarEvalOdom()
         vo_eval.eval(gt_pose_txt_dir, result_pose_txt_dir)
@@ -22,19 +27,82 @@ class RadarEvalOdom():
             eul (boolean): If the gt format is in Euler xyz.
         """
         self.dataset = dataset
-        if self.dataset=='hand':
-            self.gt = load_xyz_from_txt(f_gt) # [N,3]
-        elif self.dataset=='robotcar':
-            self.gt = load_odometry_from_txt(f_gt) # [N,4,4]
-        elif self.dataset=='radiate':
-            self.gt = load_odometry_from_txt(f_gt) # [N,4,4]
+        if self.dataset == 'hand':
+            self.gt = load_xyz_from_txt(f_gt)  # [N,3]
+        elif self.dataset == 'robotcar':
+            self.gt = load_odometry_from_txt(f_gt)  # [N,4,4]
+        elif self.dataset == 'radiate':
+            self.gt = load_odometry_from_folder(f_gt)  # [N,4,4]
         else:
             raise RuntimeError('Unknown dataset name is provded!')
-        
+
         # self.gt = align_to_origin(self.gt)
 
+    # def eval_ref_poses(self, all_poses, all_inv_poses, k):
+    #     """Evaluate ATE pose error from the predicted poses. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
+    #     We form a trajectory from a chained sequence with k skip frames, e.g. [k, 2*k, 3*k, ..., N]. We shift the sequence by {i:i<k} to evaluate
+    #     the full prediction.
 
-    def eval_ref_poses(self, all_poses, all_inv_poses, k):
+    #     Args:
+    #         all_poses (list): Predicted relative pose values for each src-to-tgt pair. List of torch.Tensor objects size [seq_length, B, 6]. rtvec=[rx, ry, rz, tx, ty, tz]
+    #         all_inv_poses (list): Predicted relative pose values for each tgt-to-src pair. List of torch.Tensor objects.
+    #         k (int): Skip frames. rtvec=[rx, ry, rz, tx, ty, tz]
+
+    #     Returns:
+    #         torch.Tensor: Mean and std of the calculated ATE for forward and backward pose predictions.
+    #     """
+
+    #     # pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
+    #     all_poses_t = torch.cat(all_poses, 1)  # [seq_length, N, 6]
+    #     all_inv_poses_t = torch.cat(all_inv_poses, 1)  # [seq_length, N, 6]
+
+    #     N = all_poses_t.shape[1]  # len(all_poses) # number of sequences
+
+    #     ate_bs = []
+    #     ate_fs = []
+    #     f_pred = None
+    #     f_pred_xyz = None
+    #     # i=0
+    #     for i in range(k):
+    #         idx = torch.arange(i, N, k)
+
+    #         # Previous src
+    #         # (src2tgt + inv(tgt2src))/2 [n,6]
+    #         b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2
+    #         # b_pose = all_poses_t[0, idx] #src2tgt [n,6]
+    #         b_pose = -b_pose  # tgt2src [n,6]
+    #         b_pose = tgm.rtvec_to_pose(b_pose)  # tgt2src [n,4,4]
+    #         # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+    #         # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]
+    #         b_pose = rel2abs_traj(b_pose)  # [n,4,4]
+    #         # b_pose = b_pose.cumsum(dim=0) # [n,6]
+    #         # b_pose = b_pose.cumsum(dim=0) # [n,6]
+    #         gt_idx = idx+i  # torch.arange(k+i, N+k, k)
+    #         gt_seq_i = self.gt[gt_idx]
+    #         ate_b, b_pred_xyz, b_pred = self.calculate_ate_from_hom(
+    #             b_pose, gt_seq_i)
+    #         ate_bs.append(ate_b)
+
+    #         # Next src
+    #         # (src2tgt + inv(tgt2src))/2 [n,6]
+    #         f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2
+    #         # f_pose = all_poses_t[1, idx] #src2tgt [n,6]
+    #         # f_pose = -f_pose # tgt2src [n,6]
+    #         # f_pose = f_pose.cumsum(dim=0) # [n,6]
+    #         f_pose = tgm.rtvec_to_pose(f_pose)  # src2tgt [n,4,4]
+    #         f_pose = rel2abs_traj(f_pose)  # [n,4,4]
+    #         gt_idx = idx+2*i  # torch.arange(2*k, N+2*k, k)
+    #         gt_seq_i = self.gt[gt_idx, :]
+    #         ate_f, f_pred_xyz, f_pred = self.calculate_ate_from_hom(
+    #             f_pose, gt_seq_i)
+    #         ate_fs.append(ate_f)
+
+    #     ate_bs = torch.cat(ate_bs)
+    #     ate_fs = torch.cat(ate_fs)
+
+    #     return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz, f_pred
+
+    def eval_ref_poses(self, all_poses, all_inv_poses, k, estimate_scale: bool = False):
         """Evaluate ATE pose error from the predicted poses. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
         We form a trajectory from a chained sequence with k skip frames, e.g. [k, 2*k, 3*k, ..., N]. We shift the sequence by {i:i<k} to evaluate 
         the full prediction.
@@ -49,52 +117,29 @@ class RadarEvalOdom():
         """
 
         # pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
-        all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-        all_inv_poses_t = torch.cat(all_inv_poses, 1) # [seq_length, N, 6]
+        all_poses_t = torch.cat(all_poses, 1)  # [seq_length, N, 6]
+        all_inv_poses_t = torch.cat(all_inv_poses, 1)  # [seq_length, N, 6]
 
-        N = all_poses_t.shape[1] #len(all_poses) # number of sequences
+        N = all_poses_t.shape[1]  # len(all_poses) # number of sequences
 
-        ate_bs = []
-        ate_fs = []
-        f_pred = None
-        f_pred_xyz = None
-        #i=0
-        for i in range(k):
-            idx = torch.arange(i, N, k)
+        # f_pred = None
+        # f_pred_xyz = None
+        # i = k-1
+        i = 0
+        # for i in range(k):
 
-            # Previous src
-            b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-            # b_pose = all_poses_t[0, idx] #src2tgt [n,6]
-            b_pose = -b_pose # tgt2src [n,6]
-            b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
-            # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]            
-            # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
-            b_pose = rel2abs_traj(b_pose) # [n,4,4]
-            # b_pose = b_pose.cumsum(dim=0) # [n,6] 
-            # b_pose = b_pose.cumsum(dim=0) # [n,6]            
-            gt_idx = idx+i #torch.arange(k+i, N+k, k)
-            gt_seq_i = self.gt[gt_idx]
-            ate_b, b_pred_xyz, b_pred = self.calculate_ate_from_hom(b_pose, gt_seq_i)
-            ate_bs.append(ate_b)
+        idx = torch.arange(i, N, k)
 
-            # Next src
-            f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
-            # f_pose = all_poses_t[1, idx] #src2tgt [n,6]
-            # f_pose = -f_pose # tgt2src [n,6]
-            # f_pose = f_pose.cumsum(dim=0) # [n,6]
-            f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]
-            f_pose = rel2abs_traj(f_pose) # [n,4,4]
-            gt_idx = idx+2*i #torch.arange(2*k, N+2*k, k)
-            gt_seq_i = self.gt[gt_idx,:]
-            ate_f, f_pred_xyz, f_pred = self.calculate_ate_from_hom(f_pose, gt_seq_i)
-            ate_fs.append(ate_f)
+        # Next src
+        f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2
+        f_pose = tgm.rtvec_to_pose(f_pose)  # src2tgt [n,4,4]
+        f_pose = rel2abs_traj(f_pose)  # [n,4,4]
+        ate_f, f_pred_xyz, f_pred = self.calculate_ate_from_hom(
+            f_pose, self.gt, estimate_scale)
 
-        ate_bs = torch.cat(ate_bs)
-        ate_fs = torch.cat(ate_fs)
+        return ate_f, f_pred_xyz, f_pred
 
-        return ate_bs.mean(), ate_bs.std(), ate_fs.mean(), ate_fs.std(), f_pred_xyz, f_pred
-
-    def calculate_ate_from_hom(self, pred, gt=None):
+    def calculate_ate_from_hom(self, pred, gt=None, estimate_scale: bool = False):
         """Calculate Absolute Trajectory Error between predicted and ground truth trajectories, using Umeyama alignment.
         Both prediction and gt is absolute trajectories.
 
@@ -106,17 +151,18 @@ class RadarEvalOdom():
             torch.Tensor: Root mean squared error (RMSE) of ATE. Scalar tensor.
             torch.Tensor: Aligned pedicted trajectory.
         """
-        if gt==None:
-            gt = self.gt        
+        if gt == None:
+            gt = self.gt
 
-        rmse_ate, aligned_pred_xyz, aligned_pred = calculate_ate(pred, gt)
+        # rmse_ate, aligned_pred_xyz, aligned_pred = calculate_ate(pred, gt)
+        rmse_ate, aligned_pred_xyz, aligned_pred = calculate_ate(
+            pred, gt, estimate_scale)
 
         return rmse_ate, aligned_pred_xyz, aligned_pred
+        # return aligned_pred_xyz, aligned_pred
 
-    
 
-        
-def calculate_ate(pred, gt):
+def calculate_ate(pred, gt, estimate_scale: bool = False):
     """Calculate Absolute Trajectory Error between predicted and ground truth trajectories, using Umeyama alignment.
     Both prediction and gt is absolute trajectories.
 
@@ -129,26 +175,33 @@ def calculate_ate(pred, gt):
         torch.Tensor: Aligned pedicted trajectory.
     """
 
-    gt_xyz = gt[:,:3,3]
-    pred_xyz = pred[:,:3,3]
+    gt_xyz = gt[:, :3, 3]
+    pred_xyz = pred[:, :3, 3]
+
+    if pred_xyz.shape != gt_xyz.shape:
+        idx = torch.randperm(gt_xyz.shape[0], device=gt_xyz.device)
+        idx = idx[:pred_xyz.shape[0]]
+        idx, _ = torch.sort(idx, dim=0)
+        gt_xyz = gt_xyz[idx, :]
 
     # None for batching, batch=1
     gt_xyz = gt_xyz[None]
     pred_xyz = pred_xyz[None]
-    R, T, s = corresponding_points_alignment(pred_xyz, gt_xyz)
+    R, T, s = corresponding_points_alignment(
+        pred_xyz, gt_xyz, estimate_scale=estimate_scale)
 
     # apply the estimated similarity transform to Xt_init
     aligned_pred_xyz = _apply_similarity_transform(pred_xyz, R, T, s)
 
-    # TODO: simdilik sadece xyz yi align ediyoruz. _apply_similarity_transform_hom metodunu adam etmek lazim.
     aligned_pred = pred.clone()
-    aligned_pred[:,:3,3] = aligned_pred_xyz
+    aligned_pred[:, :3, 3] = aligned_pred_xyz
 
     # compute the root mean squared error
+    # TODO: Not yet compatible for sets with different sizes
     rmse_ate = ((aligned_pred_xyz - gt_xyz) ** 2).mean(1).sqrt()
 
     return rmse_ate, aligned_pred_xyz, aligned_pred
-
+    # return aligned_pred_xyz, aligned_pred
 
 
 def load_KITTI_poses_from_txt(file_name):
@@ -165,12 +218,13 @@ def load_KITTI_poses_from_txt(file_name):
     global device
 
     poses = np.genfromtxt(file_name, delimiter=',')
-    poses16 = np.zeros((poses.shape[0],16))
-    poses16[:,:12] = poses
-    poses16[:,-1] = 1.0
-    poses_mat = poses16.reshape((-1,4,4))
+    poses16 = np.zeros((poses.shape[0], 16))
+    poses16[:, :12] = poses
+    poses16[:, -1] = 1.0
+    poses_mat = poses16.reshape((-1, 4, 4))
     poses_mat = torch.Tensor(poses_mat).to(device)
     return poses_mat
+
 
 def load_xyz_from_txt(file_name):
     """Load xyz poses from txt. Each line is: x,y,x       
@@ -185,8 +239,9 @@ def load_xyz_from_txt(file_name):
 
     poses = np.genfromtxt(file_name, delimiter=',')
     poses = torch.Tensor(poses).to(device)
-    poses = tgm.rtvec_to_pose(poses) # [n,4,4]
+    poses = tgm.rtvec_to_pose(poses)  # [n,4,4]
     return poses
+
 
 def load_odometry_from_txt(file_name):
     """Load xyz poses from odometry data. Columns [2,3,4,5,6,7] are [x,y,z,rx,ry,rz].      
@@ -198,14 +253,33 @@ def load_odometry_from_txt(file_name):
         torch.Tensor: Trajectory in the form of homogenous transformation matrix. Shape [N,4,4]
     """
     global device
-    
-    gt = np.genfromtxt(file_name, delimiter=',', usecols=np.arange(2,8), skip_header=True)
-    gt[:,np.arange(6)] = gt[:,[3,4,5,0,1,2]] # [rx,ry,rz,x,y,x] format
-    gt_t = torch.Tensor(gt).to(device) # [n,6]
-    gt_t = tgm.rtvec_to_pose(gt_t) # [n,4,4]
-    gt_t = rel2abs_traj(gt_t) # [n,4,4]
+
+    gt = np.genfromtxt(file_name, delimiter=',',
+                       usecols=np.arange(2, 8), skip_header=True)
+    gt[:, np.arange(6)] = gt[:, [3, 4, 5, 0, 1, 2]]  # [rx,ry,rz,x,y,x] format
+    gt_t = torch.Tensor(gt).to(device)  # [n,6]
+    gt_t = tgm.rtvec_to_pose(gt_t)  # [n,4,4]
+    gt_t = rel2abs_traj(gt_t)  # [n,4,4]
 
     return gt_t
+
+
+def load_odometry_from_folder(path):
+    gps_path = Path(path)
+    twists = sorted(list(gps_path.glob('*.txt')))
+    traj = np.zeros((len(twists), 6))
+    for i, path in enumerate(twists):
+        # Read first GPS line: Latitude, Longitude, Altitude in degrees
+        twist = np.genfromtxt(path, delimiter=',',
+                              dtype=np.float32, max_rows=1)
+        xyz = twist
+        traj[i, 3:] = xyz
+
+    gt_t = torch.Tensor(traj).to(device)  # [n,6]
+    gt_t = tgm.rtvec_to_pose(gt_t)  # [n,4,4]
+    # gt_t = rel2abs_traj(gt_t)  # [n,4,4]
+    return gt_t
+
 
 def getTraj(all_poses, all_inv_poses, k):
     """Convert the predicted poses to absolute trajectory. Each prediction in inputs is the relative pose for a sequence of [src_p, tgt, src_n].
@@ -221,24 +295,25 @@ def getTraj(all_poses, all_inv_poses, k):
     """
 
     # pred = torch.zeros(self.gt.size(), dtype=self.gt.dtype, device = self.gt.device)
-    all_poses_t = torch.cat(all_poses, 1) # [seq_length, N, 6]
-    all_inv_poses_t = torch.cat(all_inv_poses, 1) # [seq_length, N, 6]
+    all_poses_t = torch.cat(all_poses, 1)  # [seq_length, N, 6]
+    all_inv_poses_t = torch.cat(all_inv_poses, 1)  # [seq_length, N, 6]
 
-    N = all_poses_t.shape[1] #len(all_poses) # number of sequences
+    N = all_poses_t.shape[1]  # len(all_poses) # number of sequences
 
-    i=0
+    i = 0
     # for i in range(k):
     idx = torch.arange(i, N, k)
-    
+
     # Previous src
-    b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+    # (src2tgt + inv(tgt2src))/2 [n,6]
+    b_pose = (all_poses_t[0, idx] - all_inv_poses_t[0, idx])/2
     # b_pose = all_poses_t[0, idx] #src2tgt [n,6]
-    b_pose = -b_pose # tgt2src [n,6]
-    b_pose = tgm.rtvec_to_pose(b_pose) # tgt2src [n,4,4]
-    # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]    
-    # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]            
-    b_pose = rel2abs_traj(b_pose) # [n,4,4]
-    # b_pose = b_pose.cumsum(dim=0) # [n,6] 
+    b_pose = -b_pose  # tgt2src [n,6]
+    b_pose = tgm.rtvec_to_pose(b_pose)  # tgt2src [n,4,4]
+    # b_pose = tgm.inv_rigid_tform(b_pose) # tgt2src [n,4,4]
+    # b_inv_pose = tgm.rtvec_to_pose(all_inv_poses_t[0, idx]) # inv(src2tgt) [n,4,4]
+    b_pose = rel2abs_traj(b_pose)  # [n,4,4]
+    # b_pose = b_pose.cumsum(dim=0) # [n,6]
 
     # Next src
     # f_pose = tgm.rtvec_to_pose(all_poses_t[1, idx]) # tgt2src [n,4,4]
@@ -246,16 +321,17 @@ def getTraj(all_poses, all_inv_poses, k):
     # f_inv_pose = tgm.inv_rigid_tform(f_inv_pose) # inv(inv(tgt2src)) [n,4,4]
     # f_pose = (f_pose + f_inv_pose)/2 # (tgt2src + inv(inv(tgt2src)))/2 [n,4,4]
     # f_pose = rel2abs_traj(f_pose)
-    f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2 # (src2tgt + inv(tgt2src))/2 [n,6]
+    # (src2tgt + inv(tgt2src))/2 [n,6]
+    f_pose = (all_poses_t[1, idx] - all_inv_poses_t[1, idx])/2
     # f_pose = all_poses_t[1, idx] #src2tgt [n,6]
     # f_pose = -f_pose # tgt2src [n,6]
     # f_pose = f_pose.cumsum(dim=0) # [n,6]
-    f_pose = tgm.rtvec_to_pose(f_pose) # src2tgt [n,4,4]
-    f_pose = rel2abs_traj(f_pose) # [n,4,4]
+    f_pose = tgm.rtvec_to_pose(f_pose)  # src2tgt [n,4,4]
+    f_pose = rel2abs_traj(f_pose)  # [n,4,4]
     # end for
 
-    f_xyz = f_pose[:,:3,3]
-    b_xyz = b_pose[:,:3,3]
+    f_xyz = f_pose[:, :3, 3]
+    b_xyz = b_pose[:, :3, 3]
     return b_xyz.squeeze(), f_xyz.squeeze()
 
 
@@ -273,7 +349,7 @@ def align_to_origin(pose):
     inv_pose0 = tgm.inv_rigid_tform(pose[0:1])
     aligned_pose = torch.matmul(aligned_pose, inv_pose0)
     return aligned_pose
-    
+
 
 def rel2abs_traj(rel_pose):
     """Convert a given relative pose sequences to absolute pose sequences.
@@ -286,7 +362,7 @@ def rel2abs_traj(rel_pose):
     """
 
     global_pose = torch.eye(4, dtype=rel_pose.dtype, device=rel_pose.device)
-    abs_pose = torch.zeros_like(rel_pose)    
+    abs_pose = torch.zeros_like(rel_pose)
     for i in range(rel_pose.shape[0]):
         global_pose = global_pose @ rel_pose[i]
         abs_pose[i] = global_pose
@@ -298,10 +374,11 @@ def rel2abs_traj(rel_pose):
 # is full rank in corresponding_points_alignment
 AMBIGUOUS_ROT_SINGULAR_THR = 1e-15
 
+
 def corresponding_points_alignment(
     X,
     Y,
-    weights = None,
+    weights=None,
     estimate_scale: bool = False,
     allow_reflection: bool = False,
     eps: float = 1e-9,
@@ -349,26 +426,25 @@ def corresponding_points_alignment(
     Xt = X
     Yt = Y
     num_points = X.shape[1] * torch.ones(  # type: ignore
-            X.shape[0], device=X.device, dtype=torch.int64
-        )
+        X.shape[0], device=X.device, dtype=torch.int64
+    )
     num_points_Y = Y.shape[1] * torch.ones(  # type: ignore
-            Y.shape[0], device=Y.device, dtype=torch.int64
-        )
-
+        Y.shape[0], device=Y.device, dtype=torch.int64
+    )
 
     if (Xt.shape != Yt.shape) or (num_points != num_points_Y).any():
         raise ValueError(
             "Point sets X and Y have to have the same \
             number of batches, points and dimensions."
         )
-    
 
     b, n, dim = Xt.shape
 
     # compute the centroids of the point sets
-    Xmu = Xt.mean(dim=1, keepdim=True) #oputil.wmean(Xt, weight=weights, eps=eps)
-    Ymu = Yt.mean(dim=1, keepdim=True) #oputil.wmean(Yt, weight=weights, eps=eps)
-
+    # oputil.wmean(Xt, weight=weights, eps=eps)
+    Xmu = Xt.mean(dim=1, keepdim=True)
+    # oputil.wmean(Yt, weight=weights, eps=eps)
+    Ymu = Yt.mean(dim=1, keepdim=True)
 
     # mean-center the point sets
     Xc = Xt - Xmu
@@ -405,7 +481,8 @@ def corresponding_points_alignment(
         )
 
     # identity matrix used for fixing reflections
-    E = torch.eye(dim, dtype=XYcov.dtype, device=XYcov.device)[None].repeat(b, 1, 1)
+    E = torch.eye(dim, dtype=XYcov.dtype, device=XYcov.device)[
+        None].repeat(b, 1, 1)
 
     if not allow_reflection:
         # reflection test:
@@ -437,6 +514,7 @@ def corresponding_points_alignment(
 
     return R, T, s
 
+
 def _apply_similarity_transform(
     X: torch.Tensor, R: torch.Tensor, T: torch.Tensor, s: torch.Tensor
 ) -> torch.Tensor:
@@ -450,6 +528,7 @@ def _apply_similarity_transform(
     """
     X = s[:, None, None] * torch.bmm(X, R) + T[:, None, :]
     return X
+
 
 def _apply_similarity_transform_hom(
     X: torch.Tensor, R: torch.Tensor, T: torch.Tensor, s: torch.Tensor
@@ -465,10 +544,11 @@ def _apply_similarity_transform_hom(
     X_tformed = X.clone()
 
     tform = torch.eye(4, dtype=X.dtype, device=X.device)
-    tform = tform[None,:,:]
-    tform = tform.repeat(X_tformed.shape[0],1,1)
-    tform[:,:3,:3] = s[:, None, None] * R
-    tform[:,:3,3] = T
+    tform = tform[None, :, :]
+    tform = tform.repeat(X_tformed.shape[0], 1, 1)
+    tform[:, :3, :3] = s[:, None, None] * R
+    tform[:, :3, 3] = T
     for i in range(X_tformed.shape[0]):
-        X_tformed[i] = torch.matmul(X_tformed[i], tform[i]) # [N,4,4] @ [4,4] = [N,4,4]
-    return X_tformed # [B,N,4,4]
+        # [N,4,4] @ [4,4] = [N,4,4]
+        X_tformed[i] = torch.matmul(X_tformed[i], tform[i])
+    return X_tformed  # [B,N,4,4]

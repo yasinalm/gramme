@@ -186,10 +186,16 @@ def main():
              transforms.RandomRotation(degrees=10, center=center)])
     else:
         # TODO: Add colorjitter augmentation
-        train_transform = custom_transforms.Compose(
-            [custom_transforms.ArrayToTensor(),
-             # transforms.RandomRotation(10)
-             ])
+        if args.with_vo:
+            train_transform = custom_transforms.Compose(
+                [custom_transforms.ArrayToTensor(),
+                 # transforms.RandomRotation(10)
+                 ])
+        else:
+            train_transform = custom_transforms.Compose(
+                [custom_transforms.ArrayToTensor(),
+                 transforms.RandomRotation(10)
+                 ])
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
@@ -843,6 +849,7 @@ def validate(
     if args.with_vo:
         disp_net.eval()
         camera_pose_net.eval()
+        fuse_net.eval()
     radar_pose_net.eval()
 
     all_poses = []
@@ -1026,11 +1033,18 @@ def validate(
             val_writer.add_scalar('val/'+name, error, epoch)
 
     if args.gt_file is not None:
-        # TODO: Plot mono pose results with ground-truth
+        # TODO: RADIATE GPS ground-truth causes alignment problems.
+        # Don't use GT for RADIATE yet!
         ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
-        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
+        ate_f, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
             all_poses, all_inv_poses, args.skip_frames)
+
+        if args.with_vo:
+            ate_f_mono, f_pred_xyz_mono, f_pred_mono = ro_eval.eval_ref_poses(
+                all_poses_mono, all_inv_poses_mono, args.skip_frames, estimate_scale=True)
+            ate_f_mono2radar, f_pred_xyz_mono2radar, f_pred_mono2radar = ro_eval.eval_ref_poses(
+                all_poses_mono2radar, all_inv_poses_mono2radar, args.skip_frames)
 
         if log_outputs:
             # Plot and log aligned trajectory
@@ -1040,6 +1054,18 @@ def validate(
             val_writer.add_figure(
                 'val/fig/radar/traj_aligned_pred', fig, epoch)
             # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
+
+            if args.with_vo:
+                # Plot and log aligned trajectory
+                fig_mono = utils.traj2Fig_withgt(
+                    f_pred_xyz_mono.squeeze(), ro_eval.gt[:, :3, 3].squeeze(), axes=[2, 0])
+                val_writer.add_figure(
+                    'val/fig/mono/traj_aligned_pred', fig_mono, epoch)
+                # Plot and log aligned trajectory
+                fig_mono2radar = utils.traj2Fig_withgt(
+                    f_pred_xyz_mono2radar.squeeze(), ro_eval.gt[:, :3, 3].squeeze())
+                val_writer.add_figure(
+                    'val/fig/mono2radar/traj_aligned_pred', fig_mono2radar, epoch)
 
     else:
         b_pred_xyz, f_pred_xyz = getTraj(

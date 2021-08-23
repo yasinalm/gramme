@@ -130,7 +130,7 @@ def traj2Fig(pred_xyz, axes=[0, 1]):
     return fig
 
 
-def traj2Fig_withgt(pred_xyz, gt_xyz):
+def traj2Fig_withgt(pred_xyz, gt_xyz, axes=[0, 1]):
     """Make `matplotlib.pyplot.figure` from the 2D plot of a given trajectory.
 
     Args:
@@ -146,7 +146,7 @@ def traj2Fig_withgt(pred_xyz, gt_xyz):
 
     fig = plt.figure()
     ax = plt.gca()
-    ax.plot(pred_xyz[:, 0], pred_xyz[:, 1], label='Prediction')
+    ax.plot(pred_xyz[:, axes[0]], pred_xyz[:, axes[0]], label='Prediction')
     ax.plot(gt_xyz[:, 0], gt_xyz[:, 1], label='Ground-truth')
     ax.legend()
     # fig.canvas.draw()
