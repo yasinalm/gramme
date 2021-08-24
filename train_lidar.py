@@ -170,10 +170,16 @@ def main():
             [custom_transforms.ArrayToTensor(),
              transforms.RandomRotation(degrees=10, center=center)])
     else:
-        train_transform = custom_transforms.Compose(
-            [custom_transforms.ArrayToTensor(),
-             transforms.RandomRotation(10)
-             ])
+        if args.with_vo:
+            train_transform = custom_transforms.Compose(
+                [custom_transforms.ArrayToTensor(),
+                 # transforms.RandomRotation(10)
+                 ])
+        else:
+            train_transform = custom_transforms.Compose(
+                [custom_transforms.ArrayToTensor(),
+                 transforms.RandomRotation(10)
+                 ])
     val_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
@@ -981,8 +987,14 @@ def validate(
         # TODO: Plot mono pose results with ground-truth
         ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
-        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
+        ate_f, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
             all_poses, all_inv_poses, args.skip_frames)
+
+        if args.with_vo:
+            ate_f_mono, f_pred_xyz_mono, f_pred_mono = ro_eval.eval_ref_poses(
+                all_poses_mono, all_inv_poses_mono, args.skip_frames, estimate_scale=True)
+            ate_f_mono2lidar, f_pred_xyz_mono2lidar, f_pred_mono2lidar = ro_eval.eval_ref_poses(
+                all_poses_mono2lidar, all_inv_poses_mono2lidar, args.skip_frames)
 
         if log_outputs:
             # Plot and log aligned trajectory
@@ -993,6 +1005,17 @@ def validate(
                 'val/fig/lidar/traj_aligned_pred', fig, epoch)
             # output_writers[0].add_figure('val/fig/traj_pred_full_aligned', fig2, epoch)
 
+            if args.with_vo:
+                # Plot and log aligned trajectory
+                fig_mono = utils.traj2Fig_withgt(
+                    f_pred_xyz_mono.squeeze(), ro_eval.gt[:, :3, 3].squeeze(), axes=[2, 0])
+                val_writer.add_figure(
+                    'val/fig/mono/traj_aligned_pred', fig_mono, epoch)
+                # Plot and log aligned trajectory
+                fig_mono2lidar = utils.traj2Fig_withgt(
+                    f_pred_xyz_mono2lidar.squeeze(), ro_eval.gt[:, :3, 3].squeeze())
+                val_writer.add_figure(
+                    'val/fig/mono2lidar/traj_aligned_pred', fig_mono2lidar, epoch)
     else:
         b_pred_xyz, f_pred_xyz = getTraj(
             all_poses, all_inv_poses, args.skip_frames)
