@@ -68,9 +68,9 @@ class SequenceFolder(data.Dataset):
         # k skip frames
         sequence_set = []
         demi_length = (sequence_length-1)//2
-        shifts = list(range(-demi_length * self.k,
-                            demi_length * self.k + 1, self.k))
-        shifts.pop(demi_length)
+        self.shifts = list(range(-demi_length * self.k,
+                                 demi_length * self.k + 1, self.k))
+        self.shifts.pop(demi_length)
         for scene in self.scenes:
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(
@@ -132,7 +132,7 @@ class SequenceFolder(data.Dataset):
 
             for cnt, i in enumerate(range(demi_length * self.k, len(imgs)-demi_length * self.k)):
                 sample = {'tgt': imgs[i], 'ref_imgs': []}
-                for j in shifts:
+                for j in self.shifts:
                     sample['ref_imgs'].append(imgs[i+j])
 
                 if self.load_mono:
