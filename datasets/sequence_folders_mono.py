@@ -47,6 +47,11 @@ class SequenceFolder(data.Dataset):
             else:
                 self.mono_folder = 'stereo/left'
                 self.cam_model = CameraModel()
+        elif dataset == 'cadcd':
+            if self.preprocessed:
+                self.mono_folder = 'preprocessed/image_00/data'
+            else:
+                self.mono_folder = 'labeled/image_00/data'
         else:
             raise NotImplementedError(
                 'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
@@ -97,7 +102,7 @@ class SequenceFolder(data.Dataset):
 
     def __getitem__(self, index):
         sample = self.samples[index]
-        if self.preprocessed or self.dataset == 'radiate':
+        if self.preprocessed or self.dataset == 'radiate' or self.dataset == 'cadcd':
             # TODO: On-the-fly rectification support for RADIATE dataset
             tgt_img = self.load_undistorted_as_float(sample['tgt'])
             ref_imgs = [self.load_undistorted_as_float(ref_img)

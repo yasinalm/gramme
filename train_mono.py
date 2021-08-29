@@ -153,8 +153,8 @@ def main():
                 T.CropBottom(),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
-                T.ColorJitter(brightness=0.2, contrast=0.2,
-                              saturation=0.2, hue=0.2),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
                 T.RandomScaleCrop(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -197,6 +197,43 @@ def main():
 
             valid_transform = T.Compose([
                 # T.ToPILImage(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+    elif args.dataset == 'cadcd':
+        if args.with_preprocessed:
+            train_transform = T.Compose([
+                # T.ToPILImage(),
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            train_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(250),
+                T.Resize(img_size),
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+
+            valid_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(250),
                 T.Resize(img_size),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
