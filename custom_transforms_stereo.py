@@ -178,6 +178,10 @@ class CropBottom(torch.nn.Module):
     Args:
     """
 
+    def __init__(self, offset_y=160):
+        super().__init__()
+        self.offset_y = offset_y
+
     def forward(self, images, intrinsics):
         """
         Args:
@@ -189,9 +193,9 @@ class CropBottom(torch.nn.Module):
 
         # PIL uses a coordinate system with (0, 0) in the upper left corner.
         # Bottom trimming does not change the principle points (cx, cy).
-        offset_y = 160
+        # offset_y = 160
 
-        cropped_images = [F.crop(img, 0, 0, in_h-offset_y, in_w)
+        cropped_images = [F.crop(img, 0, 0, in_h-self.offset_y, in_w)
                           for img in images]
 
         return cropped_images, intrinsics

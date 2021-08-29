@@ -207,6 +207,44 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
+    elif args.dataset == 'cadcd':
+        depth_scale = 200.0
+        if args.with_preprocessed:
+            train_transform = T.Compose([
+                # T.ToPILImage(),
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            train_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(250),
+                T.Resize(img_size),
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(brightness=0.1, contrast=0.1,
+                              saturation=0.1, hue=0.1),
+                T.RandomScaleCrop(),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+
+            valid_transform = T.Compose([
+                T.ToPILImage(),
+                T.CropBottom(250),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     train_set = SequenceFolder(

@@ -53,6 +53,13 @@ class SequenceFolder(data.Dataset):
                 self.stereo_right_folder = 'stereo/right'
                 self.cam_model_left = CameraModel()
                 self.cam_model_right = CameraModel('stereo_wide_right')
+        elif dataset == 'cadc':
+            if self.preprocessed:
+                self.stereo_left_folder = 'preprocessed/image_07/data'
+                self.stereo_right_folder = 'preprocessed/image_01/data'
+            else:
+                self.stereo_left_folder = 'labeled/image_07/data'
+                self.stereo_right_folder = 'labeled/image_01/data'
         else:
             raise NotImplementedError(
                 'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
@@ -117,7 +124,7 @@ class SequenceFolder(data.Dataset):
 
     def __getitem__(self, index):
         sample = self.samples[index]
-        if self.dataset == 'radiate' or self.preprocessed:
+        if self.dataset == 'radiate' or self.dataset == 'cadcd' or self.preprocessed:
             tgt_img = self.load_undistorted_as_float(sample['tgt'])
             ref_imgs = [self.load_undistorted_as_float(
                 ref_img) for ref_img in sample['ref_imgs']]

@@ -127,6 +127,8 @@ def get_rightTleft(dataset):
         rightTleft[0] = -0.239983
     elif dataset == 'radiate':
         rightTleft[0] = -0.12
+    elif dataset == 'cadcd':
+        rightTleft[0] = -1.027041266425808
     else:
         raise NotImplementedError(
             'The chosen dataset is not implemented! Given: {}'.format(dataset))
