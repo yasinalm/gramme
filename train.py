@@ -1258,4 +1258,5 @@ def mono_collate_fn(batch):
 
 
 if __name__ == '__main__':
-    main()
+    with torch.cuda.amp.autocast(enabled=False):
+        main()

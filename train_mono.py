@@ -678,4 +678,5 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
 
 if __name__ == '__main__':
-    main()
+    with torch.cuda.amp.autocast(enabled=False):
+        main()

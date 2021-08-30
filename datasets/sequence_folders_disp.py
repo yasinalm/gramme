@@ -6,7 +6,7 @@ from PIL import Image
 
 class ImageFolder(data.Dataset):
     def __init__(self, path, transform=None):
-        self.path = Path(path)
+        self.path = path
         self.image_paths = sorted(list(self.path.glob('*.png')))
         self.transform = transform
 

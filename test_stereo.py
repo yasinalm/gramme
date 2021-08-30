@@ -69,7 +69,7 @@ def main():
                 # T.ToPILImage(),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
-            ])            
+            ])
         else:
             valid_transform = T.Compose([
                 T.ToPILImage(),
@@ -78,7 +78,7 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-        
+
     elif args.dataset == 'radiate':
         valid_transform = T.Compose([
             T.ToPILImage(),
@@ -199,5 +199,5 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
 
 if __name__ == '__main__':
-
-    main()
+    with torch.cuda.amp.autocast(enabled=False):
+        main()

@@ -22,6 +22,8 @@ parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
 parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
+parser.add_argument('--with-testfile', type=int, default=0,
+                    help='use the test.txt file containing test sequences')
 parser.add_argument("--pretrained-disp", required=True,
                     type=str, help="pretrained DispNet path")
 parser.add_argument('-j', '--workers', default=4, type=int,
@@ -52,8 +54,6 @@ def main():
 
     results_dir = Path(args.results_dir)  # /args.sequence
     results_dir.mkdir(parents=True)
-    results_depth_dir = results_dir/'depth'
-    results_depth_dir.mkdir(parents=True)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -91,17 +91,16 @@ def main():
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
-
-    test_set = ImageFolder(
-        path=args.data, transform=valid_transform)
-    nframes = len(test_set)
-    print('{} samples found in {} '.format(
-        nframes, args.data))
-    test_loader = torch.utils.data.DataLoader(dataset=test_set,
-                                              batch_size=args.batch_size,
-                                              shuffle=False,
-                                              num_workers=args.workers,
-                                              pin_memory=True)
+    if args.with_testfile:
+        root = Path(args.data)
+        scene_list_path = root/'test.txt'
+        scenes = [root/folder.strip()/'stereo_undistorted/left'
+                  for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+        scene_names = [folder.strip()
+                       for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+    else:
+        scene_names = 'sequence'
+        scenes = [Path(args.data)]
 
     # create model
     print("=> creating model")
@@ -116,36 +115,53 @@ def main():
     # switch to evaluate mode
     disp_net.eval()
 
-    avg_time = 0
-    for i, tgt_img in tqdm(enumerate(test_loader)):
-        tgt_img = tgt_img.to(device)
+    for scene_name, scene in zip(scene_names, scenes):
+        print("=> Processing:", scene_name)
 
-        # compute speed
-        torch.cuda.synchronize()
-        t_start = time.time()
+        results_depth_dir = results_dir/scene_name/'depth'
+        results_depth_dir.mkdir(parents=True)
 
-        tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
+        test_set = ImageFolder(
+            path=scene, transform=valid_transform)
+        nframes = len(test_set)
+        print('{} samples found in {} '.format(
+            nframes, scene_name))
+        test_loader = torch.utils.data.DataLoader(dataset=test_set,
+                                                  batch_size=args.batch_size,
+                                                  shuffle=False,
+                                                  num_workers=args.workers,
+                                                  pin_memory=True)
 
-        torch.cuda.synchronize()
-        elapsed_time = time.time() - t_start
+        avg_time = 0
+        for i, tgt_img in tqdm(enumerate(test_loader)):
+            tgt_img = tgt_img.to(device)
 
-        avg_time += elapsed_time
+            # compute speed
+            torch.cuda.synchronize()
+            t_start = time.time()
 
-        # tv.utils.save_image(
-        #     tgt_depth[0], results_depth_dir/'{0:03d}.png'.format(i))
+            tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
 
-        for j, depth in enumerate(tgt_depth[0]):
-            colour_depth = utils.tensor2array(
-                depth, max_value=None, colormap='inferno')
-            colour_depth = colour_depth.transpose(1, 2, 0)*255
-            colour_depth = colour_depth.astype(np.uint8)
-            im = Image.fromarray(colour_depth)
-            im.save(results_depth_dir /
-                    '{0:03d}.png'.format(i*args.batch_size+j))
+            torch.cuda.synchronize()
+            elapsed_time = time.time() - t_start
 
-    avg_time /= nframes
-    print('Avg Time: ', avg_time, ' seconds.')
-    print('Avg Speed: ', 1.0 / avg_time, ' fps')
+            avg_time += elapsed_time
+
+            # tv.utils.save_image(
+            #     tgt_depth[0], results_depth_dir/'{0:03d}.png'.format(i))
+
+            for j, depth in enumerate(tgt_depth[0]):
+                colour_depth = utils.tensor2array(
+                    depth, max_value=None, colormap='inferno')
+                colour_depth = colour_depth.transpose(1, 2, 0)*255
+                colour_depth = colour_depth.astype(np.uint8)
+                im = Image.fromarray(colour_depth)
+                im.save(results_depth_dir /
+                        '{0:03d}.png'.format(i*args.batch_size+j))
+
+        avg_time /= nframes
+        print('Avg Time: ', avg_time, ' seconds.')
+        print('Avg Speed: ', 1.0 / avg_time, ' fps')
 
 
 # def disp_to_depth(disp):
@@ -176,4 +192,5 @@ def disp_to_depth(disp):
 
 
 if __name__ == '__main__':
-    main()
+    with torch.cuda.amp.autocast(enabled=False):
+        main()
