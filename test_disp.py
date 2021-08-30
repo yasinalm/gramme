@@ -13,8 +13,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import torchvision as tv
 import torchvision.transforms as T
-# from datasets.image_folders import ImageFolder
-# from torchvision.utils import save_image
+from datasets.sequence_folders_disp import ImageFolder
 
 parser = argparse.ArgumentParser(description='Script for DispNet testing with corresponding groundTruth',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -93,8 +92,8 @@ def main():
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
 
-    test_set = tv.datasets.ImageFolder(
-        root=args.data, transform=valid_transform)
+    test_set = ImageFolder(
+        path=args.data, transform=valid_transform)
     nframes = len(test_set)
     print('{} samples found in {} '.format(
         nframes, args.data))
@@ -118,7 +117,7 @@ def main():
     disp_net.eval()
 
     avg_time = 0
-    for i, (tgt_img, y) in tqdm(enumerate(test_loader)):
+    for i, tgt_img in tqdm(enumerate(test_loader)):
         tgt_img = tgt_img.to(device)
 
         # compute speed

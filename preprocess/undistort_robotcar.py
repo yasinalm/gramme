@@ -50,7 +50,7 @@ if __name__ == '__main__':
     save_dir = 'stereo_undistorted'
     scenes = [f for f in root.iterdir() if f.is_dir()]
     # scenes = [Path('/media/storage/robotcar/2019-01-17-12-48-25-radar-oxford-10k')]
-    # scenes = scenes[24:]
+    # scenes = scenes[42:]
     print(scenes)
 
     stereo_left_folder = 'stereo/left'
