@@ -182,7 +182,7 @@ class CropBottom(torch.nn.Module):
         super().__init__()
         self.offset_y = offset_y
 
-    def forward(self, images, intrinsics):
+    def forward(self, images, intrinsics, extrinsics):
         """
         Args:
             img (PIL Image or Tensor): Image to be flipped.
@@ -198,7 +198,7 @@ class CropBottom(torch.nn.Module):
         cropped_images = [F.crop(img, 0, 0, in_h-self.offset_y, in_w)
                           for img in images]
 
-        return cropped_images, intrinsics
+        return cropped_images, intrinsics, extrinsics
 
     def __repr__(self):
         return self.__class__.__name__ + '()'

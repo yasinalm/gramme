@@ -79,7 +79,7 @@ parser.add_argument('--with-auto-mask', type=int,  default=1,
 parser.add_argument('--with-pretrain', type=int,  default=1,
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
-                    'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+                    'hand', 'robotcar', 'radiate', 'cadcd'], default='hand', help='the dataset to train')
 parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp',
@@ -227,7 +227,7 @@ def main():
             ])
         else:
             train_transform = T.Compose([
-                T.ToPILImage(),
+                # T.ToPILImage(),
                 T.CropBottom(250),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
@@ -239,7 +239,7 @@ def main():
             ])
 
             valid_transform = T.Compose([
-                T.ToPILImage(),
+                # T.ToPILImage(),
                 T.CropBottom(250),
                 T.Resize(img_size),
                 T.ToTensor(),
@@ -395,8 +395,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
     w1, w2, w3 = args.photo_loss_weight, args.smooth_loss_weight, args.geometry_consistency_weight
 
     # switch to train mode
-    # disp_net.train()
-    disp_net.eval()
+    disp_net.train()
+    # disp_net.eval()
     pose_net.train()
 
     end = time.time()

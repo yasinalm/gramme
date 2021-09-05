@@ -24,6 +24,8 @@ parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--with-testfile', type=int, default=0,
                     help='use the test.txt file containing test sequences')
+parser.add_argument('--with-timing', type=int, default=0,
+                    help='use the timing benchmark to evaluate the runtime speed')
 parser.add_argument("--pretrained-disp", required=True,
                     type=str, help="pretrained DispNet path")
 parser.add_argument('-j', '--workers', default=4, type=int,
@@ -136,16 +138,17 @@ def main():
         for i, tgt_img in tqdm(enumerate(test_loader)):
             tgt_img = tgt_img.to(device)
 
-            # compute speed
-            torch.cuda.synchronize()
-            t_start = time.time()
+            if args.with_timing:
+                # compute speed
+                torch.cuda.synchronize()
+                t_start = time.time()
 
             tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
 
-            torch.cuda.synchronize()
-            elapsed_time = time.time() - t_start
-
-            avg_time += elapsed_time
+            if args.with_timing:
+                torch.cuda.synchronize()
+                elapsed_time = time.time() - t_start
+                avg_time += elapsed_time
 
             # tv.utils.save_image(
             #     tgt_depth[0], results_depth_dir/'{0:03d}.png'.format(i))
@@ -159,9 +162,10 @@ def main():
                 im.save(results_depth_dir /
                         '{0:03d}.png'.format(i*args.batch_size+j))
 
-        avg_time /= nframes
-        print('Avg Time: ', avg_time, ' seconds.')
-        print('Avg Speed: ', 1.0 / avg_time, ' fps')
+        if args.with_timing:
+            avg_time /= nframes
+            print('Avg Time: ', avg_time, ' seconds.')
+            print('Avg Speed: ', 1.0 / avg_time, ' fps')
 
 
 # def disp_to_depth(disp):

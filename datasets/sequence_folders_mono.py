@@ -51,7 +51,7 @@ class SequenceFolder(data.Dataset):
             if self.preprocessed:
                 self.mono_folder = 'preprocessed/image_00/data'
             else:
-                self.mono_folder = 'labeled/image_00/data'
+                self.mono_folder = 'raw/image_00/data'
         else:
             raise NotImplementedError(
                 'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
