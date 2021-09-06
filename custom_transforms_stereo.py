@@ -204,6 +204,41 @@ class CropBottom(torch.nn.Module):
         return self.__class__.__name__ + '()'
 
 
+class CropSides(torch.nn.Module):
+    """Randomly zooms images up to 15% and crop them to keep same size as before.
+    If the image is torch Tensor, it is expected
+    to have [..., H, W] shape, where ... means an arbitrary number of leading
+    dimensions
+    Args:
+    """
+
+    def forward(self, images, intrinsics, extrinsics):
+        """
+        Args:
+            img (PIL Image or Tensor): Image to be flipped.
+        Returns:
+            PIL Image or Tensor: Randomly flipped image.
+        """
+        output_intrinsics = np.copy(intrinsics)
+
+        in_w, in_h = images[0].size
+
+        # PIL uses a coordinate system with (0, 0) in the upper left corner.
+        # Left trimming shifts the principal point cx.
+        offset_x = 140
+
+        cropped_images = [F.crop(img, 0, offset_x, in_h, in_w-2*offset_x)
+                          for img in images]
+
+        output_intrinsics[0, 2] -= offset_x
+        # output_intrinsics[1, 2] -= offset_y
+
+        return cropped_images, output_intrinsics, extrinsics
+
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
+
 class Resize(torch.nn.Module):
     """Resize the input image to the given size. Input is list of PIL images.
     If the image is torch Tensor, it is expected

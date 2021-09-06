@@ -208,7 +208,7 @@ def main():
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
     elif args.dataset == 'cadcd':
-        depth_scale = 200.0
+        depth_scale = 1.0
         if args.with_preprocessed:
             train_transform = T.Compose([
                 # T.ToPILImage(),
@@ -229,6 +229,7 @@ def main():
             train_transform = T.Compose([
                 # T.ToPILImage(),
                 T.CropBottom(250),
+                T.CropSides(),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
                 T.ColorJitter(brightness=0.1, contrast=0.1,
