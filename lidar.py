@@ -17,6 +17,22 @@ hdl32e_cos_elevations = np.cos(hdl32e_elevations)
 hdl32e_sin_elevations = np.sin(hdl32e_elevations)
 
 
+def load_velodyne_binary(velodyne_bin_path: AnyStr):
+    """Decode a binary Velodyne example (of the form '<timestamp>.bin')
+    Args:
+        example_path (AnyStr): Oxford Radar RobotCar Dataset binary Velodyne pointcloud example path
+    Returns:
+        ptcld (np.ndarray): XYZI pointcloud from the binary Velodyne data Nx4
+    Notes:
+        - The pre computed points are *NOT* motion compensated.
+        - Converting a raw velodyne scan to pointcloud can be done using the
+            `velodyne_ranges_intensities_angles_to_pointcloud` function.
+    """
+    data = np.fromfile(velodyne_bin_path, dtype=np.float32)
+    ptcld = data.reshape((3, -1))
+    return ptcld
+
+
 def load_velodyne_raw(velodyne_raw_path: AnyStr):
     """Decode a raw Velodyne example. (of the form '<timestamp>.png')
     Args:

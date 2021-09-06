@@ -59,8 +59,23 @@ class SequenceFolder(data.Dataset):
         self.mono_transform = mono_transform
         self.train = train
         self.k = skip_frames
-        self.lidar_folder = 'velo_lidar' if dataset == 'radiate' else 'velodyne_left'
-        self.lidar_ext = '*.csv' if dataset == 'radiate' else '*.png'
+        if dataset == 'radiate':
+            self.lidar_folder = 'velo_lidar'
+            self.lidar_ext = '*.csv'
+            self.lidar_timestamps = 'velo_lidar.txt'
+            self.stereo_timestamps = 'zed_left.txt'
+        else:
+            self.stereo_timestamps = 'stereo.timestamps'
+            if '2014' in root:
+                self.lidar_folder = 'ldmrs'  # Robotcar dataset
+                self.lidar_ext = '*.bin'
+                self.lidar_timestamps = 'ldmrs.timestamps'
+                self.max_range = 50.0
+            else:
+                self.lidar_folder = 'velodyne_left'  # Robotcar radar dataset
+                self.lidar_ext = '*.png'
+                self.lidar_timestamps = 'velodyne_left.timestamps'
+        # self.lidar_ext = '*.csv' if dataset == 'radiate' else '*.png'
         self.ground_thr = -1.8 if dataset == 'radiate' else 1.0
         self.crawl_folders(sequence_length)
 
@@ -72,6 +87,7 @@ class SequenceFolder(data.Dataset):
                                  demi_length * self.k + 1, self.k))
         self.shifts.pop(demi_length)
         for scene in self.scenes:
+            # print(scene)
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(
                 self.dataset, preprocessed=self.preprocessed)
@@ -100,21 +116,14 @@ class SequenceFolder(data.Dataset):
                 if len(imgs) < sequence_length:
                     continue
 
+                f_rt = scene/self.lidar_timestamps
+                f_mt = scene/self.stereo_timestamps
                 if self.dataset == 'radiate':
-                    f_rt = scene/'velo_lidar.txt'
-                    f_mt = scene/'zed_left.txt'
-
                     rts = [float(folder.strip().split(':')[-1].strip())
                            for folder in open(f_rt)]
                     mts = [float(folder.strip().split(':')[-1].strip())
                            for folder in open(f_mt)]
-                    # Some scenes contain timestamps more than images. Drop the extra timestamps.
-                    mts = mts[:len(imgs_mono)]
-
                 elif self.dataset == 'robotcar':
-                    f_rt = scene/'velodyne_left.timestamps'
-                    f_mt = scene/'stereo.timestamps'
-
                     # Robotcar timestamps are in microsecs.
                     # Read them in secs.
                     rts = [float(folder.strip().split()[0].strip())/1e6
@@ -124,6 +133,8 @@ class SequenceFolder(data.Dataset):
                 else:
                     raise NotImplementedError(
                         'Currently, RADIATE and RobotCar datasets supported for VO')
+                # Some scenes contain timestamps more than images. Drop the extra timestamps.
+                mts = mts[:len(imgs_mono)]
 
                 lidar_idxs = list(
                     range(demi_length * self.k, len(imgs)-demi_length * self.k))
@@ -175,7 +186,7 @@ class SequenceFolder(data.Dataset):
         # data = np.genfromtxt(path, delimiter=',', dtype=np.float32)
         data = pd.read_csv(
             path, usecols=[0, 1, 2, 3], dtype=np.float32).to_numpy()
-        #data = data[[0, 1, 3], :]
+        # data = data[[0, 1, 3], :]
         # return data[:,:4].transpose()
         return data.transpose()
 
@@ -189,20 +200,32 @@ class SequenceFolder(data.Dataset):
         return img
 
     def load_robotcar_velo(self, path):
-        ranges, intensities, angles, approximate_timestamps = lidar.load_velodyne_raw(
-            path)
-        # [4,N] x,y,z,I
-        ptcld = lidar.velodyne_raw_to_pointcloud(ranges, intensities, angles)
-        ptcld[3, :] = self.reflectance2colour(ptcld)
+        if self.lidar_folder == 'ldmrs':
+            # ptcld = lidar.load_velodyne_binary(path)
+            scan_file = open(path)
+            scan = np.fromfile(scan_file, np.double)
+            scan_file.close()
+            scan = scan.reshape((len(scan) // 3, 3)).transpose()
+            scan[:2, :] = -scan[:2, :]
 
-        # Filter points at close range
-        # ptcld = ptcld[:, np.logical_and(
-        #     np.abs(ptcld[0]) > 4.0, np.abs(ptcld[1]) > 4.0)]
+            # ptcld = np.vstack((ptcld, np.ones((1, ptcld.shape[1]))))
+            img = self.ptc3d2img(scan)
+        else:
+            ranges, intensities, angles, approximate_timestamps = lidar.load_velodyne_raw(
+                path)
+            # [4,N] x,y,z,I
+            ptcld = lidar.velodyne_raw_to_pointcloud(
+                ranges, intensities, angles)
+            ptcld[3, :] = self.reflectance2colour(ptcld)
 
-        # Remove ground reflections
-        ptcld = ptcld[:, ptcld[2] < self.ground_thr]
+            # Filter points at close range
+            # ptcld = ptcld[:, np.logical_and(
+            #     np.abs(ptcld[0]) > 4.0, np.abs(ptcld[1]) > 4.0)]
 
-        img = self.ptc2img(ptcld)
+            # Remove ground reflections
+            ptcld = ptcld[:, ptcld[2] < self.ground_thr]
+
+            img = self.ptc2img(ptcld)
         return img
 
     def reflectance2colour(self, ptcld):
@@ -245,9 +268,25 @@ class SequenceFolder(data.Dataset):
         img = img.astype(np.float32)[np.newaxis, :, :]  # / 255.
         # img[img < 0.2] = 0
 
-        #img = np.nan_to_num(img, nan=1e-6)
+        # img = np.nan_to_num(img, nan=1e-6)
         # if np.isnan(np.min(img)):
         #     print('NaN detected in input!')
+        return img
+
+    def ptc3d2img(self, data):
+        if data.shape[0] != 3:
+            raise ValueError("Input must be [3,N]. Got {}".format(
+                data.shape))
+
+        # Calculate the number of points in each pixel
+        power_count, _, _ = np.histogram2d(
+            x=data[0], y=data[1],
+            bins=[self.cart_pixels, self.cart_pixels],
+            range=[[-self.max_range, self.max_range],
+                   [-self.max_range, self.max_range]]
+        )
+        img = power_count.astype(np.float32)[np.newaxis, :, :]  # / 255.
+        # img = img / img.max()
         return img
 
     def load_lidar(self, path):
@@ -309,8 +348,9 @@ class SequenceFolder(data.Dataset):
         return len(self.samples)
 
     def find_mono_samples(self, t_idxs: List[int], rts: List[List[float]], mts: List[List[float]]) -> List[List[int]]:
-        """Returns indexes of monocular frames in the form of 
-        [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
+        """Returns indexes of monocular frames in the form of
+        [[tgt, [src-1,...,tgt], [tgt,...,src+1]],
+            [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
 
         Args:
             t_idx (List[int]): Indices of the target lidar frames
