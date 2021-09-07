@@ -94,6 +94,8 @@ parser.add_argument('--masknet', type=str,
                     choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
 parser.add_argument('--with-vo', action='store_true',
                     help='with VO fusion')
+parser.add_argument('--cam-mode', type=str, choices=[
+                    'mono', 'stereo'], default='stereo', help='the dataset to train')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained DispResNet model')
 parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=None,
@@ -101,7 +103,7 @@ parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=N
 parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
-                    'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+                    'hand', 'robotcar', 'radiate', 'cadcd'], default='hand', help='the dataset to train')
 parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-mask', dest='pretrained_mask',
@@ -314,9 +316,10 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         ro_params=ro_params,
-        load_mono=args.with_vo,
-        mono_transform=mono_train_transform,
-        mono_preprocessed=args.with_preprocessed
+        load_camera=args.with_vo,
+        cam_mode=args.cam_mode,
+        cam_transform=mono_train_transform,
+        cam_preprocessed=args.with_preprocessed
     )
 
     # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
@@ -329,9 +332,10 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         ro_params=ro_params,
-        load_mono=args.with_vo,
-        mono_transform=mono_valid_transform,
-        mono_preprocessed=args.with_preprocessed
+        load_camera=args.with_vo,
+        cam_mode=args.cam_mode,
+        cam_transform=mono_valid_transform,
+        cam_preprocessed=args.with_preprocessed
     )
 
     print('{} samples found in {} train scenes'.format(
@@ -607,18 +611,24 @@ def train(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
+            rightTleft = input[5]
             vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
+            rightTleft = rightTleft.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
             # vo_poses_inv: [2,3,B,6]
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
-            vo_poses, vo_poses_inv = compute_pose_with_inv(
-                camera_pose_net, vo_tgt_img, vo_ref_imgs)
+            if args.cam_mode == 'mono':
+                vo_poses, vo_poses_inv = compute_pose_with_inv(
+                    camera_pose_net, vo_tgt_img, vo_ref_imgs)
+            else:
+                vo_poses, vo_poses_inv = compute_pose_with_inv_stereo(
+                    camera_pose_net, vo_tgt_img, vo_ref_imgs, rightTleft)
 
             # r = (ro_poses[..., 2] + vo_poses[..., 3])/2
             # vo_poses[..., 3] = r
@@ -1194,6 +1204,17 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses_inv.append(pose_net(ref_img, tgt_img))
 
     return torch.stack(poses), torch.stack(poses_inv)
+
+
+def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
+    global depth_scale
+    poses = [rightTleft]
+    poses_inv = [-(rightTleft.clone())]
+    for ref_img in ref_imgs[1:]:
+        poses.append(pose_net(tgt_img, ref_img))
+        poses_inv.append(pose_net(ref_img, tgt_img))
+
+    return poses, poses_inv
 
 
 def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):

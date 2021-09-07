@@ -25,15 +25,16 @@ class SequenceFolder(data.Dataset):
 
     def __init__(
             self, root, skip_frames, sequence_length, train, dataset,
-            ro_params=None, load_mono=False,
-            seed=None, transform=None, mono_transform=None, sequence=None,
-            mono_preprocessed=False):
+            ro_params=None, load_camera=False, cam_mode='mono',
+            seed=None, transform=None, cam_transform=None, sequence=None,
+            cam_preprocessed=False):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.train = train
-        self.load_mono = load_mono
-        self.preprocessed = mono_preprocessed
+        self.load_camera = load_camera
+        self.cam_mode = cam_mode
+        self.preprocessed = cam_preprocessed
 
         self.cart_resolution = ro_params['cart_resolution']
         self.cart_pixels = ro_params['cart_pixels']
@@ -56,28 +57,40 @@ class SequenceFolder(data.Dataset):
             self.scenes = [self.root/folder.strip() for folder in open(scene_list_path)
                            if not folder.strip().startswith("#")]
 
-        if self.load_mono:
+        if self.load_camera:
             # self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
             # if dataset == 'robotcar':
             #     self.cam_model = CameraModel()
 
             if dataset == 'radiate':
                 if self.preprocessed:
-                    self.mono_folder = 'stereo_undistorted/left'
+                    self.stereo_left_folder = 'stereo_undistorted/left'
+                    self.stereo_right_folder = 'stereo_undistorted/right'
                 else:
-                    self.mono_folder = 'zed_left'
+                    self.stereo_left_folder = 'zed_left'
+                    self.stereo_right_folder = 'zed_right'
             elif dataset == 'robotcar':
                 if self.preprocessed:
-                    self.mono_folder = 'stereo_undistorted/left'
+                    self.stereo_left_folder = 'stereo_undistorted/left'
+                    self.stereo_right_folder = 'stereo_undistorted/right'
                 else:
-                    self.mono_folder = 'stereo/left'
-                    self.cam_model = CameraModel()
+                    self.stereo_left_folder = 'stereo/left'
+                    self.stereo_right_folder = 'stereo/right'
+                    self.cam_model_left = CameraModel()
+                    self.cam_model_right = CameraModel('stereo_wide_right')
+            elif dataset == 'cadcd':
+                if self.preprocessed:
+                    self.stereo_left_folder = 'preprocessed/image_07/data'
+                    self.stereo_right_folder = 'preprocessed/image_01/data'
+                else:
+                    self.stereo_left_folder = 'raw/image_07/data'
+                    self.stereo_right_folder = 'raw/image_01/data'
             else:
                 raise NotImplementedError(
                     'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
 
         self.transform = transform
-        self.mono_transform = mono_transform
+        self.cam_transform = cam_transform
         self.dataset = dataset
         self.k = skip_frames
         self.crawl_folders(sequence_length)
@@ -93,13 +106,14 @@ class SequenceFolder(data.Dataset):
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(
                 self.dataset, preprocessed=self.preprocessed)
+            rightTleft = utils.get_rightTleft(self.dataset)
             # f_type = '*.csv' if self.dataset == 'hand' else '*.png'
             f_type = '*.png'
             imgs = sorted(list((scene/self.radar_folder).glob(f_type)))
             if len(imgs) < sequence_length:
                 continue
 
-            if self.load_mono:
+            if self.load_camera:
                 # We need to collect the corresponding monocular frames within the same dataset class.
                 # If we use separate classes for radar and mono, the order gets messy due to shuffling.
 
@@ -110,12 +124,15 @@ class SequenceFolder(data.Dataset):
                 #     f_mt = temp_root/scene.name/'stereo.timestamps'
                 #     if not f_mt.is_file():
                 #         continue
-                #     imgs_mono = sorted(
+                #     left_imgs = sorted(
                 #         list((temp_root/scene.name/self.mono_folder).glob(f_type)))
                 # elif self.dataset == 'radiate':
-                imgs_mono = sorted(
-                    list((scene/self.mono_folder).glob(f_type)))
-                if len(imgs) < sequence_length:
+                left_imgs = sorted(
+                    list((scene/self.stereo_left_folder).glob(f_type)))
+                if self.cam_mode == 'stereo':
+                    right_imgs = sorted(
+                        list((scene/self.stereo_right_folder).glob('*.png')))
+                if len(left_imgs) < sequence_length:
                     continue
 
                 if self.dataset == 'radiate':
@@ -127,7 +144,7 @@ class SequenceFolder(data.Dataset):
                     mts = [float(folder.strip().split(':')[-1].strip())
                            for folder in open(f_mt)]
                     # Some scenes contain timestamps more than images. Drop the extra timestamps.
-                    mts = mts[:len(imgs_mono)]
+                    mts = mts[:len(left_imgs)]
 
                 elif self.dataset == 'robotcar':
                     f_rt = scene/'radar.timestamps'
@@ -145,7 +162,7 @@ class SequenceFolder(data.Dataset):
 
                 radar_idxs = list(
                     range(demi_length * self.k, len(imgs)-demi_length * self.k))
-                mono_matches_all = self.find_mono_samples(
+                cam_matches_all = self.find_cam_samples(
                     radar_idxs, rts, mts)
 
             for cnt, i in enumerate(range(demi_length * self.k, len(imgs)-demi_length * self.k)):
@@ -154,26 +171,35 @@ class SequenceFolder(data.Dataset):
                 for j in self.shifts:
                     sample['ref_imgs'].append(imgs[i+j])
 
-                if self.load_mono:
-                    # self.find_mono_samples(i, rts, mts)
+                if self.load_camera:
+                    # self.find_cam_samples(i, rts, mts)
                     # try:
-                    mono_matches = mono_matches_all[cnt]
+                    cam_matches = cam_matches_all[cnt]
                     # except IndexError:
-                    #     print(len(mono_matches_all))
+                    #     print(len(cam_matches_all))
                     #     print(i)
                     #     raise IndexError('Patladi!')
-                    if mono_matches:
+                    if cam_matches:
                         # Add all the monocular frames between the matched source and target frames.
-                        sample['vo_tgt_img'] = imgs_mono[mono_matches[0]]
+                        sample = {'intrinsics': intrinsics,
+                                  'rightTleft': rightTleft,
+                                  'vo_tgt_img': left_imgs[cam_matches[0]],
+                                  'vo_ref_imgs': []}
+
+                        # sample['vo_tgt_img'] = left_imgs[cam_matches[0]]
+                        # sample['vo_ref_imgs'] = []
 
                         # vo_ref_imgs = [
-                        # [imgs_mono[src-1],...,imgs_mono[tgt]],
-                        # [imgs_mono[tgt],...,imgs_mono[src+1]
+                        # [left_imgs[src-1],...,left_imgs[tgt]],
+                        # [left_imgs[tgt],...,left_imgs[src+1]
                         # ]
-                        sample['vo_ref_imgs'] = [
-                            # [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
-                            imgs_mono[ref] for ref in mono_matches[1:]]
-                        sample['intrinsics'] = intrinsics
+                        if self.train and self.cam_mode == 'stereo':
+                            sample['vo_ref_imgs'].append(
+                                right_imgs[cam_matches[0]])
+                        sample['vo_ref_imgs'].extend([
+                            # [left_imgs[ref] for ref in refs] for refs in cam_matches[1:]]
+                            left_imgs[ref] for ref in cam_matches[1:]])
+                        # sample['intrinsics'] = intrinsics
                     else:
                         continue
 
@@ -192,12 +218,12 @@ class SequenceFolder(data.Dataset):
         cart_img[cart_img < 0.2] = 0
         return cart_img
 
-    def load_mono_img_as_float(self, path):
+    def load_camera_img_as_float(self, path, cam_model):
         img = Image.open(path)
         # img = img.resize((640, 384))
         if self.dataset == 'robotcar':
             img = demosaic(img, 'gbrg')
-            img = self.cam_model.undistort(img)
+            img = cam_model.undistort(img)
         img = np.array(img).astype(np.uint8)
         # img = img.astype(np.float32) / 255.
         return img
@@ -230,9 +256,10 @@ class SequenceFolder(data.Dataset):
 
         return cart_img
 
-    def find_mono_samples(self, t_idxs: List[int], rts: List[List[float]], mts: List[List[float]]) -> List[List[int]]:
-        """Returns indexes of monocular frames in the form of 
-        [[tgt, [src-1,...,tgt], [tgt,...,src+1]], [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
+    def find_cam_samples(self, t_idxs: List[int], rts: List[List[float]], mts: List[List[float]]) -> List[List[int]]:
+        """Returns indexes of monocular frames in the form of
+        [[tgt, [src-1,...,tgt], [tgt,...,src+1]],
+            [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
 
         Args:
             t_idx (List[int]): Indices of the target radar frames
@@ -289,7 +316,7 @@ class SequenceFolder(data.Dataset):
             tgt_img (torch.Tensor): Target radar frame [B,1,H,W]
             ref_imgs (List[torch.Tensor]): Reference target frames [2,B,1,H,W]
             vo_tgt_img (torch.Tensor): Target monocular frame [B,3,H,W]
-            vo_ref_imgs (List[List[torch.Tensor]]): Reference monocular frames 
+            vo_ref_imgs (List[List[torch.Tensor]]): Reference monocular frames
             [num_sequence-1,num_matches,B,num_channels,H,W]=[2,3,B,3,H,W]
         """
 
@@ -303,7 +330,7 @@ class SequenceFolder(data.Dataset):
         #     load_as_float = self.load_radar_img_as_float
         load_as_float = self.load_cart_as_float if self.isCartesian else self.load_radar_img_as_float
         # else:
-        #     load_as_float = self.load_mono_img_as_float
+        #     load_as_float = self.load_camera_img_as_float
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
@@ -311,28 +338,51 @@ class SequenceFolder(data.Dataset):
             tgt_img = self.transform(tgt_img)
             ref_imgs = [self.transform(ref_img) for ref_img in ref_imgs]
 
-        if self.load_mono:
+        if self.load_camera:
             if 'vo_tgt_img' in sample:
-                if self.preprocessed or self.dataset == 'radiate':
+                if self.preprocessed or self.dataset == 'radiate' or self.dataset == 'cadcd':
                     # TODO: On-the-fly rectification support for RADIATE dataset
-                    self.load_img = self.load_undistorted_mono_img_as_float
+                    # self.load_img = self.load_undistorted_mono_img_as_float
+                    vo_tgt_img = self.load_undistorted_mono_img_as_float(
+                        sample['vo_tgt_img'])
+                    vo_ref_imgs = [self.load_undistorted_mono_img_as_float(
+                        ref_img) for ref_img in sample['vo_ref_imgs']]
                 else:
-                    self.load_img = self.load_mono_img_as_float
-                vo_tgt_img = self.load_img(sample['vo_tgt_img'])
-                vo_ref_imgs = [self.load_img(
-                    ref_img) for ref_img in sample['vo_ref_imgs']]
-                if self.mono_transform:
-                    imgs, intrinsics = self.mono_transform(
-                        [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
+                    # self.load_img = self.load_camera_img_as_float
+                    vo_tgt_img = self.load_camera_img_as_float(
+                        sample['vo_tgt_img'], self.cam_model_left)
+                    vo_ref_imgs = [self.load_camera_img_as_float(
+                        ref_img) for ref_img in sample['vo_ref_imgs']]
+
+                    vo_ref_imgs = [self.load_camera_img_as_float(
+                        sample['vo_ref_imgs'][0], self.cam_model_right)]
+                    for ref_img in sample['vo_ref_imgs'][1:]:
+                        vo_ref_imgs.append(self.load_camera_img_as_float(
+                            ref_img, self.cam_model_left))
+
+                if self.cam_transform:
+                    if self.cam_mode == 'mono':
+                        imgs, intrinsics = self.cam_transform(
+                            [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
+                    else:
+                        imgs, intrinsics = self.cam_transform(
+                            [vo_tgt_img] + vo_ref_imgs, np.copy(
+                                sample['intrinsics'], np.copy(sample['rightTleft'])))
                     vo_tgt_img = imgs[0]
                     vo_ref_imgs = imgs[1:]
-                    # vo_tgt_img = self.mono_transform(vo_tgt_img)
+                    # vo_tgt_img = self.cam_transform(vo_tgt_img)
                     # vo_ref_imgs = [
-                    #     self.mono_transform(ref_img) for ref_img in vo_ref_imgs]
+                    #     self.cam_transform(ref_img) for ref_img in vo_ref_imgs]
+                else:
+                    intrinsics = np.copy(sample['intrinsics'])
+                    extrinsics = np.copy(sample['rightTleft'])
             else:
                 vo_tgt_img = []
                 vo_ref_imgs = []
-            return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
+            if self.train and self.cam_mode == 'stereo':
+                return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics, extrinsics
+            else:
+                return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
         else:
             return tgt_img, ref_imgs
 
