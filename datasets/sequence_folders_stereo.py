@@ -25,7 +25,7 @@ class SequenceFolder(data.Dataset):
 
     def __init__(self, root, dataset='robotcar', seed=None, train=True,
                  sequence_length=3, transform=None, skip_frames=1, preprocessed=False,
-                 sequence=None,):
+                 sequence=None):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)

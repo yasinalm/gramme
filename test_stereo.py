@@ -44,7 +44,7 @@ parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--with-testfile', type=int, default=0,
                     help='use the test.txt file containing test sequences')
-parser.add_argument("--sequence", default='2019-01-10-14-36-48-radar-oxford-10k-partial',
+parser.add_argument("--sequence", default='',
                     type=str, help="sequence to test")
 parser.add_argument('--with-gt', action='store_true',
                     help='Evaluate with ground-truth')
@@ -118,8 +118,11 @@ def main():
         scene_list_path = root/'test.txt'
         sequences = [folder.strip()
                      for folder in open(scene_list_path) if not folder.strip().startswith("#")]
-    else:
+    elif args.sequence:
         sequences = [args.sequence]
+    else:
+        raise argparse.ArgumentError(
+            'Neither a test file nor a sequence name given!')
 
     for sequence in sequences:
         results_dir = Path(args.results_dir)/sequence
