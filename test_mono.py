@@ -1,6 +1,6 @@
 from radar_eval.eval_utils import getTraj
-from datasets.sequence_folders_stereo import SequenceFolder
-import custom_transforms_stereo as T
+from datasets.sequence_folders_mono import SequenceFolder
+import custom_transforms_mono as T
 import utils
 from inverse_warp_vo import MonoWarper
 import models
@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import torch
+from torchvision.utils import save_image
 from tqdm import tqdm
 
 
@@ -58,6 +59,9 @@ def main():
     global device
     args = parser.parse_args()
 
+    # results_depth_dir = results_dir/'depth'
+    # results_depth_dir.mkdir(parents=True)
+
     imagenet_mean = utils.imagenet_mean
     imagenet_std = utils.imagenet_std
     img_size = (args.img_height, args.img_width)
@@ -66,7 +70,7 @@ def main():
     print("=> creating model")
     # disp_net = models.DispResNet(
     #     args.resnet_layers, False).to(device)
-    pose_net = models.PoseResNetStereo(18, False).to(device)
+    pose_net = models.PoseResNetMono(18, False).to(device)
 
     # load parameters
     # print("=> using pre-trained weights for DispResNet")
@@ -169,6 +173,8 @@ def main():
             intrinsics = intrinsics.to(device)
 
             # start.record()
+            # tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
+            # tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
             poses, poses_inv = compute_pose_with_inv(
                 pose_net, tgt_img, ref_imgs)
             # end.record()
@@ -179,18 +185,20 @@ def main():
             poses = torch.stack(poses)
             poses_inv = torch.stack(poses_inv)
 
-            # Change VO pose order to RO
+            # Chaneg VO pose order to RO
             all_poses.append(
                 torch.cat((poses[..., 3:], poses[..., :3]), -1))
             all_inv_poses.append(
                 torch.cat((poses_inv[..., 3:], poses_inv[..., :3]), -1))
+
+            # save_image(tgt_depth[0], results_depth_dir/'{0:05d}'.format(i))
 
         # Total time for forward and backward poses
         # mean_inf = sum(timings)/(nframes*2)
         # print('Average time for inference: {:.2f}sec'.format(mean_inf))
 
         if args.with_gt:
-            print('Mono evaluation with GT is not supported yet!')
+            print('on-the-fly, Mono evaluation with GT is not supported yet!')
             # ro_eval = RadarEvalOdom(args.gt_file, args.dataset)
 
             # ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(
@@ -220,7 +228,33 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
     return poses, poses_inv
 
+# def compute_depth(disp_net, tgt_img, ref_imgs):
+#     tgt_depth = [disp_to_depth(disp) for disp in disp_net(tgt_img)]
+
+#     ref_depths = []
+#     for ref_img in ref_imgs:
+#         ref_depth = [disp_to_depth(disp) for disp in disp_net(ref_img)]
+#         ref_depths.append(ref_depth)
+
+#     return tgt_depth, ref_depths
+
+# def disp_to_depth(disp):
+#     """Convert network's sigmoid output into depth prediction
+#     The formula for this conversion is given in the 'additional considerations'
+#     section of the paper.
+#     """
+#     # Disp is not scaled in DispResNet.
+#     min_depth = 0.1
+#     max_depth = 100.0
+#     min_disp = 1 / max_depth
+#     max_disp = 1 / min_depth
+#     scaled_disp = min_disp + (max_disp - min_disp) * disp
+#     depth = 1 / scaled_disp
+#     # disp = disp.clamp(min=1e-3)
+#     # depth = 1./disp
+#     return depth
+
 
 if __name__ == '__main__':
-    with torch.cuda.amp.autocast(enabled=False):
-        main()
+
+    main()
