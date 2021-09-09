@@ -181,10 +181,10 @@ class SequenceFolder(data.Dataset):
                     #     raise IndexError('Patladi!')
                     if cam_matches:
                         # Add all the monocular frames between the matched source and target frames.
-                        sample = {'intrinsics': intrinsics,
-                                  'rightTleft': rightTleft,
-                                  'vo_tgt_img': left_imgs[cam_matches[0]],
-                                  'vo_ref_imgs': []}
+                        sample['intrinsics'] = intrinsics
+                        sample['rightTleft'] = rightTleft
+                        sample['vo_tgt_img'] = left_imgs[cam_matches[0]]
+                        sample['vo_ref_imgs'] = []
 
                         # sample['vo_tgt_img'] = left_imgs[cam_matches[0]]
                         # sample['vo_ref_imgs'] = []
@@ -365,14 +365,11 @@ class SequenceFolder(data.Dataset):
                         imgs, intrinsics = self.cam_transform(
                             [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
                     else:
-                        imgs, intrinsics = self.cam_transform(
+                        imgs, intrinsics, extrinsics = self.cam_transform(
                             [vo_tgt_img] + vo_ref_imgs, np.copy(
-                                sample['intrinsics'], np.copy(sample['rightTleft'])))
+                                sample['intrinsics']), np.copy(sample['rightTleft']))
                     vo_tgt_img = imgs[0]
                     vo_ref_imgs = imgs[1:]
-                    # vo_tgt_img = self.cam_transform(vo_tgt_img)
-                    # vo_ref_imgs = [
-                    #     self.cam_transform(ref_img) for ref_img in vo_ref_imgs]
                 else:
                     intrinsics = np.copy(sample['intrinsics'])
                     extrinsics = np.copy(sample['rightTleft'])

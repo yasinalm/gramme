@@ -14,7 +14,8 @@ from torchvision import transforms
 
 import models
 
-import custom_transforms_mono as T
+import custom_transforms_mono
+import custom_transforms_stereo
 import custom_transforms
 import utils
 from datasets.sequence_folders import SequenceFolder
@@ -128,9 +129,9 @@ parser.add_argument('--gt-file', metavar='DIR',
 parser.add_argument('--radar-format', type=str,
                     choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
 parser.add_argument('--range-res', type=float,
-                    help='Range resolution of FMCW radar in meters', metavar='W', default=0.0977)
+                    help='Range resolution of FMCW radar in meters', metavar='W', default=0.0432)
 parser.add_argument('--angle-res', type=float,
-                    help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=1.0)
+                    help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=0.015708)
 parser.add_argument('--cart-res', type=float,
                     help='Cartesian resolution of FMCW radar in meters/pixel', metavar='W', default=0.25)
 parser.add_argument('--cart-pixels', type=int,
@@ -202,62 +203,45 @@ def main():
         [custom_transforms.ArrayToTensor()])
 
     # mono_transform = None
-    mono_train_transform = None
-    mono_valid_transform = None
+    cam_train_transform = None
+    cam_valid_transform = None
     if args.with_vo:
-        # imagenet_mean = utils.imagenet_mean
-        # imagenet_std = utils.imagenet_std
-        # img_size = (args.img_height, args.img_width)
-        # if args.dataset == 'robotcar':
-        #     mono_transform = T.Compose([
-        #         T.ToPILImage(),
-        #         T.CropBottom(),
-        #         T.Resize(img_size),
-        #         T.ToTensor(),
-        #         T.Normalize(imagenet_mean, imagenet_std)
-        #     ])
-        # elif args.dataset == 'radiate':
-        #     mono_transform = T.Compose([
-        #         T.ToPILImage(),
-        #         T.Resize(img_size),
-        #         T.ToTensor(),
-        #         T.Normalize(imagenet_mean, imagenet_std)
-        #     ])
+        T = custom_transforms_mono if args.cam_mode == 'mono' else custom_transforms_stereo
 
         imagenet_mean = utils.imagenet_mean
         imagenet_std = utils.imagenet_std
         img_size = (args.img_height, args.img_width)
         if args.dataset == 'robotcar':
             if args.with_preprocessed:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     # T.ToPILImage(),
                     # T.RandomHorizontalFlip(),
-                    # T.ColorJitter(brightness=0.1, contrast=0.1,
-                    #               saturation=0.1, hue=0.1),
-                    # T.RandomScaleCrop(),
-                    T.ToTensor(),
-                    # T.Normalize(imagenet_mean, imagenet_std)
-                ])
-
-                mono_valid_transform = T.Compose([
-                    # T.ToPILImage(),
-                    T.ToTensor(),
-                    # T.Normalize(imagenet_mean, imagenet_std)
-                ])
-            else:
-                mono_train_transform = T.Compose([
-                    T.ToPILImage(),
-                    T.CropBottom(),
-                    T.Resize(img_size),
-                    # T.RandomHorizontalFlip(),
-                    T.ColorJitter(brightness=0.2, contrast=0.2,
-                                  saturation=0.2, hue=0.2),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
                     T.RandomScaleCrop(),
                     T.ToTensor(),
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
+                    # T.ToPILImage(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+            else:
+                cam_train_transform = T.Compose([
+                    T.ToPILImage(),
+                    T.CropBottom(),
+                    T.Resize(img_size),
+                    # T.RandomHorizontalFlip(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
+                    T.ToTensor(),
+                    # T.Normalize(imagenet_mean, imagenet_std)
+                ])
+
+                cam_valid_transform = T.Compose([
                     T.ToPILImage(),
                     T.CropBottom(),
                     T.Resize(img_size),
@@ -267,7 +251,7 @@ def main():
 
         elif args.dataset == 'radiate':
             if args.with_preprocessed:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     # T.RandomHorizontalFlip(),
                     T.ColorJitter(brightness=0.1, contrast=0.1,
                                   saturation=0.1, hue=0.1),
@@ -276,12 +260,12 @@ def main():
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
                     T.ToTensor(),
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
             else:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     # T.ToPILImage(),
                     T.Resize(img_size),
                     # T.RandomHorizontalFlip(),
@@ -292,7 +276,7 @@ def main():
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
                     # T.ToPILImage(),
                     T.Resize(img_size),
                     T.ToTensor(),
@@ -318,7 +302,7 @@ def main():
         ro_params=ro_params,
         load_camera=args.with_vo,
         cam_mode=args.cam_mode,
-        cam_transform=mono_train_transform,
+        cam_transform=cam_train_transform,
         cam_preprocessed=args.with_preprocessed
     )
 
@@ -334,7 +318,7 @@ def main():
         ro_params=ro_params,
         load_camera=args.with_vo,
         cam_mode=args.cam_mode,
-        cam_transform=mono_valid_transform,
+        cam_transform=cam_valid_transform,
         cam_preprocessed=args.with_preprocessed
     )
 
@@ -1207,14 +1191,15 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
-    global depth_scale
+    # global depth_scale
     poses = [rightTleft]
     poses_inv = [-(rightTleft.clone())]
     for ref_img in ref_imgs[1:]:
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))
 
-    return poses, poses_inv
+    return torch.stack(poses), torch.stack(poses_inv)
+    # return poses, poses_inv
 
 
 def compute_mono_pose_with_inv(pose_net, tgt_img, ref_imgs):
