@@ -83,12 +83,18 @@ def main():
             ])
 
     elif args.dataset == 'radiate':
-        valid_transform = T.Compose([
-            # T.ToPILImage(),
-            T.Resize(img_size),
-            T.ToTensor(),
-            # T.Normalize(imagenet_mean, imagenet_std)
-        ])
+        if args.with_preprocessed:
+            valid_transform = T.Compose([
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
+        else:
+            valid_transform = T.Compose([
+                # T.ToPILImage(),
+                T.Resize(img_size),
+                T.ToTensor(),
+                # T.Normalize(imagenet_mean, imagenet_std)
+            ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     val_set = SequenceFolder(

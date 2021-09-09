@@ -36,6 +36,8 @@ parser.add_argument('--dataset', type=str, choices=[
                     'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
 parser.add_argument("--sequence", default='2019-01-10-14-36-48-radar-oxford-10k-partial',
                     type=str, help="sequence to test")
+parser.add_argument('--cam-mode', type=str, choices=[
+                    'mono', 'stereo'], default='stereo', help='the dataset to train')
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
                     metavar='PATH', help='path to pre-trained Pose net model')
@@ -69,6 +71,14 @@ def main():
     ds_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
+    ro_params = {
+        'cart_resolution': args.cart_res,
+        'cart_pixels': args.cart_pixels,
+        'rangeResolutionsInMeter': args.range_res,
+        'angleResolutionInRad': args.angle_res,
+        'radar_format': args.radar_format
+    }
+
     val_set = SequenceFolder(
         args.data,
         transform=ds_transform,
@@ -77,10 +87,7 @@ def main():
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
-        cart_resolution=args.cart_res,
-        cart_pixels=args.cart_pixels,
-        rangeResolutionsInMeter=args.range_res,
-        angleResolutionInRad=args.angle_res,
+        ro_params=ro_params,
         sequence=args.sequence,
         radar_format=args.radar_format
     )
@@ -128,8 +135,8 @@ def main():
         print("=> converting odometry predictions to trajectory")
         gt_file = Path(args.data, args.sequence, 'gt', 'radar_odometry.csv')
         ro_eval = RadarEvalOdom(gt_file, args.dataset)
-        ate_bs_mean, ate_bs_std, ate_fs_mean, ate_fs_std, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses,
-                                                                                                      args.skip_frames)
+        ate_f, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses,
+                                                           args.skip_frames)
         # save_traj_plots_with_gt(results_dir, f_pred_xyz, ro_eval.gt)
         print("=> evaluating the trajectory")
         isPartialSequence = 'partial' in args.sequence

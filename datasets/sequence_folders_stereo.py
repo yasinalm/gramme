@@ -24,14 +24,18 @@ class SequenceFolder(data.Dataset):
     """
 
     def __init__(self, root, dataset='robotcar', seed=None, train=True,
-                 sequence_length=3, transform=None, skip_frames=1, preprocessed=False):
+                 sequence_length=3, transform=None, skip_frames=1, preprocessed=False,
+                 sequence=None,):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.dataset = dataset
-        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder.strip()
-                       for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+        if sequence is not None:
+            self.scenes = [self.root/sequence]
+        else:
+            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            self.scenes = [self.root/folder.strip()
+                           for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         # self.scenes = self.scenes[:len(self.scenes)//10]
         self.transform = transform
         self.train = train

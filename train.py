@@ -648,6 +648,11 @@ def train(
             # attention_map, cam_conf = attention_net(
             #     camera_pose_features, radar_pose_features)
 
+            # Drop the right2left stereo pose for radar reconstruction.
+            if args.cam_mode == 'stereo':
+                vo_poses = vo_poses[1:]
+                vo_poses_inv = vo_poses_inv[1:]
+
             # Scale and project camera pose to radar frame
             vo2radar_poses = fuse_net(vo_poses)
             vo2radar_poses_inv = fuse_net(vo_poses_inv)
