@@ -15,7 +15,7 @@ import torchvision as tv
 import torchvision.transforms as T
 from datasets.sequence_folders_disp import ImageFolder
 
-parser = argparse.ArgumentParser(description='Script for DispNet testing with corresponding groundTruth',
+parser = argparse.ArgumentParser(description='Script for testing depth predictions with the corresponding ground truth',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--dataset', type=str, choices=[

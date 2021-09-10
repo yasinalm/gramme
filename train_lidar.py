@@ -27,11 +27,10 @@ from tensorboardX import SummaryWriter
 # Supress UserWarning from grid_sample
 warnings.filterwarnings("ignore", category=UserWarning)
 
-parser = argparse.ArgumentParser(description='Structure from Motion Learner training on KITTI and CityScapes Dataset',
+parser = argparse.ArgumentParser(description='Unsupervised Geometry-Aware Ego-motion Estimation for LIDARs and cameras.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
-# parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N',
@@ -121,20 +120,11 @@ parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], def
 # parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
 parser.add_argument('--gt-file', metavar='DIR',
                     help='path to ground truth validation file')
-# parser.add_argument('--gt-type', type=str,
-#                     choices=['kitti', 'xyz'], default='xyz', help='GT format')
-# parser.add_argument('--radar-format', type=str,
-#                     choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
-# parser.add_argument('--range-res', type=float,
-#                     help='Range resolution of LIDAR in meters', metavar='W', default=0.0977)
-# parser.add_argument('--angle-res', type=float,
-#                     help='Angular azimuth resolution of LIDAR in radians', metavar='W', default=1.0)
 parser.add_argument('--cart-res', type=float,
                     help='Cartesian resolution of LIDAR in meters/pixel', metavar='W', default=0.25)
 parser.add_argument('--cart-pixels', type=int,
                     help='Cartesian size in pixels (used for both height and width)', metavar='W', default=512)
 
-# best_error = -1
 n_iter = 0
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -281,7 +271,6 @@ def main():
         mono_preprocessed=args.with_preprocessed
     )
 
-    # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
         args.data,
         transform=val_transform,
@@ -458,16 +447,6 @@ def main():
             epoch, logger, warper, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        # Up to you to chose the most relevant error to measure your model's performance,
-        # careful some measures are to maximize (such as a1,a2,a3)
-        # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
-        # decisive_error = errors[0]
-        # if best_error < 0:
-        #     best_error = decisive_error
-
-        # remember lowest error and save checkpoint
-        # is_best = decisive_error < best_error
-        # best_error = min(best_error, decisive_error)
         mask_ckpt_dict = None
         if args.with_masknet:
             mask_ckpt_dict = {
@@ -537,9 +516,8 @@ def train(
     end = time.time()
     logger.train_bar.update(0)
 
-    # TODO: Haydaaa! Her batch ayni boyutta olacak diye hata veriyor mono frame lerden dolayi
-    # Simdilik sadece sabit olarak lidar frame ler arasinda 3 mono frame oalcak sekilde aliyoruz.
-    # Diger sequence leri atiyoruz. Data efficient degil. Daha akilli yol bul. collate_fn ile
+    # TODO: Each batch must be of the same shape. Could there be a way to use the variable number of camera frames inbetween?
+    # collate_fn might help.
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
         save_checkpoints = i > 0 and n_iter % 1000 == 0
@@ -603,14 +581,7 @@ def train(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            # TODO: duzgun bir basit pose fusion dusun
-            # Get the pose features from resnet_endocer for both lidar and camera.
-            # Use forward hooks to get the intermediate output.
-            # Feed them into FC and SoftMax.
-            # Get KL difference and use it as weight on vo2lidar_poses
-            # cam_conf 1x6 confidence score weight (asagidaki weight tam dogru degil duzelt)
-            # attention_map 100 filan boyutunda softmax, visualization icin
-
+            # TODO: Calculate attention maps
             # attention_map, cam_conf = attention_net(
             #     camera_pose_features, lidar_pose_features)
 
@@ -734,14 +705,6 @@ def train(
                     'train/lidar/warped_ref_from_mono', utils.tensor2array(projected_imgs2[0][0], max_value=1.0, colormap='bone'), n_iter)
 
         if save_checkpoints:
-            # Up to you to chose the most relevant error to measure your model's performance,
-            # careful some measures are to maximize (such as a1,a2,a3)
-            # decisive_error = loss.item()
-
-            # # remember lowest error and save checkpoint
-            # is_best = decisive_error < best_error
-            # best_error = min(best_error, decisive_error)
-            # is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
             mask_ckpt_dict = None
             if args.with_masknet:
                 mask_ckpt_dict = {
@@ -854,7 +817,6 @@ def validate(
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
-            # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]

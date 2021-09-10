@@ -2,7 +2,7 @@ from typing import AnyStr
 from PIL import Image
 import numpy as np
 
-# From RobotCar dataset SDK
+# From RobotCar dataset SDK: https://github.com/ori-mrg/robotcar-dataset-sdk
 
 # Hard coded configuration to simplify parsing code
 hdl32e_range_resolution = 0.002  # m / pixel

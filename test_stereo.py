@@ -2,18 +2,17 @@ from radar_eval.eval_utils import getTraj
 from datasets.sequence_folders_stereo import SequenceFolder
 import custom_transforms_stereo as T
 import utils
-from inverse_warp_vo import MonoWarper
+# from inverse_warp_vo import MonoWarper
 import models
 
 import argparse
-import time
 from pathlib import Path
 
 import torch
 from tqdm import tqdm
 
 
-parser = argparse.ArgumentParser(description='Script for visualizing depth map and masks',
+parser = argparse.ArgumentParser(description='Test for stereo odometry.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 # parser.add_argument('--pretrained-disp', required=True, dest='pretrained_disp',
@@ -148,14 +147,6 @@ def main():
             val_set, batch_size=args.batch_size, shuffle=False,
             num_workers=args.workers, pin_memory=True
         )
-
-        # create model
-        # print("=> creating loss object")
-        # mono_warper = MonoWarper(
-        #     max_scales=args.num_scales,
-        #     dataset=args.dataset,
-        #     # batch_size=args.batch_size,
-        #     padding_mode=args.padding_mode)
 
         all_poses = []
         all_inv_poses = []

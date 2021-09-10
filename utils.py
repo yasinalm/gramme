@@ -155,6 +155,14 @@ def traj2Fig_withgt(pred_xyz, gt_xyz, axes=[0, 1]):
 
 
 def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[0, 1]):
+    """Plot and save trajectories to a file.
+
+    Args:
+        results_dir (str): Directory to save the plots.
+        f_pred_xyz (torch.Tensor): Predicted xyz values of a trajectory.
+        b_pred_xyz (torch.Tensor): Predicted inverse xyz values of a trajectory.
+        axes (list, optional): Which axes to use in 2D plot. Defaults to [0, 1].
+    """
     plt.figure(figsize=(16, 8))
     plt.subplot(1, 2, 1)
     ax = sn.lineplot(x=f_pred_xyz[:, axes[0]].cpu().numpy(
@@ -174,6 +182,13 @@ def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[0, 1]):
 
 
 def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
+    """Plot and save trajectories together with ground-truth to a file.
+
+    Args:
+        results_dir (str): Directory to save the plots.
+        pred_xyz (torch.Tensor): Predicted xyz values of a trajectory.
+        gt (torch.Tensor): Ground truth predictions as [4,4] transformation matrices.
+    """
     gt_xyz = gt[:, :3, 3].cpu().numpy()
     # np_pred = 0.5*gt_xyz + 0.5*pred_xyz[0].cpu().numpy()
     np_pred = pred_xyz[0].cpu()
@@ -226,5 +241,14 @@ def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
 
 
 def save_checkpoint_list(save_path, state_dicts, file_prefixes, epoch='', filename='checkpoint.pth.tar'):
+    """Saves a given list of model dictionaries as checpoints.
+
+    Args:
+        save_path (str, pathlib.Path): Directory to save the checkpoints.
+        state_dicts (list): List of dictionaries to save. It can contain dictionaries and weights of multiple networks and optimizers.
+        file_prefixes (list): Names of the models to be saved as prefixes.
+        epoch (str, optional): If given, appended to the filename. Defaults to ''.
+        filename (str, optional): Default filename postfix. Defaults to 'checkpoint.pth.tar'.
+    """
     for (prefix, state) in zip(file_prefixes, state_dicts):
         torch.save(state, save_path/'{}_{}{}'.format(prefix, epoch, filename))

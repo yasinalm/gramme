@@ -5,15 +5,20 @@ import matplotlib.cm as cm
 import numpy as np
 import os
 from tqdm import tqdm
-from path import Path
+from pathlib import Path
 
 ################### Options ######################
-parser = argparse.ArgumentParser(description="NYUv2 Depth options")
-parser.add_argument("--dataset", required=True, help="kitti or nyu", choices=['nyu', 'kitti'], type=str)
-parser.add_argument("--pred_depth", required=True, help="depth predictions npy", type=str)
-parser.add_argument("--gt_depth", required=True, help="gt depth nyu for nyu or folder for kitti", type=str)
-parser.add_argument("--vis_dir", help="result directory for saving visualization", type=str)
-parser.add_argument("--img_dir", help="image directory for reading image", type=str)
+parser = argparse.ArgumentParser(description="Depth options")
+parser.add_argument('--dataset', type=str, choices=[
+                    'hand', 'robotcar', 'radiate', 'cadcd'], default='hand', help='the dataset to train')
+parser.add_argument("--pred_depth", required=True,
+                    help="depth predictions npy", type=str)
+parser.add_argument("--gt_depth", required=True,
+                    help="gt depth", type=str)
+parser.add_argument(
+    "--vis_dir", help="result directory for saving visualization", type=str)
+parser.add_argument(
+    "--img_dir", help="image directory for reading image", type=str)
 parser.add_argument("--ratio_name", help="names for saving ratios", type=str)
 
 ######################################################
@@ -98,11 +103,6 @@ class DepthEvalEigen():
 
         self.min_depth = 1e-3
 
-        if args.dataset == 'nyu':
-            self.max_depth = 10.
-        elif args.dataset == 'kitti':
-            self.max_depth = 80.
-
     def main(self):
         pred_depths = []
 
@@ -118,7 +118,8 @@ class DepthEvalEigen():
             for gt_f in sorted(Path(args.gt_depth).files("*.npy")):
                 gt_depths.append(np.load(gt_f))
 
-        pred_depths = self.evaluate_depth(gt_depths, pred_depths, eval_mono=True)
+        pred_depths = self.evaluate_depth(
+            gt_depths, pred_depths, eval_mono=True)
 
         """ Save result """
         # create folder for visualization result
@@ -177,10 +178,12 @@ class DepthEvalEigen():
 
                 # resizing prediction (based on inverse depth)
                 pred_inv_depth = 1 / (pred_depths[i] + 1e-6)
-                pred_inv_depth = cv2.resize(pred_inv_depth, (gt_width, gt_height))
+                pred_inv_depth = cv2.resize(
+                    pred_inv_depth, (gt_width, gt_height))
                 pred_depth = 1 / (pred_inv_depth + 1e-6)
 
-                mask = np.logical_and(gt_depth > self.min_depth, gt_depth < self.max_depth)
+                mask = np.logical_and(
+                    gt_depth > self.min_depth, gt_depth < self.max_depth)
                 if args.dataset == 'kitti':
                     gt_height, gt_width = gt_depth.shape
                     crop = np.array([0.40810811 * gt_height,  0.99189189 * gt_height,
@@ -202,26 +205,33 @@ class DepthEvalEigen():
 
                 resized_pred_depths.append(pred_depth * ratio)
 
-                val_pred_depth[val_pred_depth < self.min_depth] = self.min_depth
-                val_pred_depth[val_pred_depth > self.max_depth] = self.max_depth
+                val_pred_depth[val_pred_depth <
+                               self.min_depth] = self.min_depth
+                val_pred_depth[val_pred_depth >
+                               self.max_depth] = self.max_depth
 
-                errors.append(compute_depth_errors(val_gt_depth, val_pred_depth))
+                errors.append(compute_depth_errors(
+                    val_gt_depth, val_pred_depth))
 
         if eval_mono:
             ratios = np.array(ratios)
             med = np.median(ratios)
-            print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, np.std(ratios / med)))
-            print(" Scaling ratios | mean: {:0.3f} +- std: {:0.3f}".format(np.mean(ratios), np.std(ratios)))
+            print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(
+                med, np.std(ratios / med)))
+            print(
+                " Scaling ratios | mean: {:0.3f} +- std: {:0.3f}".format(np.mean(ratios), np.std(ratios)))
             if args.ratio_name:
                 np.savetxt(args.ratio_name, ratios, fmt='%.4f')
 
         mean_errors = np.array(errors).mean(0)
 
         if args.dataset == 'nyu':
-            print("\n  " + ("{:>8} | " * 6).format("abs_rel", "log10", "rmse", "a1", "a2", "a3"))
+            print("\n  " + ("{:>8} | " * 6).format("abs_rel",
+                  "log10", "rmse", "a1", "a2", "a3"))
             print(("&{: 8.3f}  " * 6).format(*mean_errors.tolist()) + "\\\\")
         elif args.dataset == 'kitti':
-            print("\n  " + ("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
+            print("\n  " + ("{:>8} | " * 7).format("abs_rel",
+                  "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
             print(("&{: 8.3f}  " * 7).format(*mean_errors.tolist()) + "\\\\")
 
         return resized_pred_depths

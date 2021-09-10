@@ -22,7 +22,7 @@ from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
 
-parser = argparse.ArgumentParser(description='SfM',
+parser = argparse.ArgumentParser(description='Unsupervised Geometry-Aware Ego-motion Estimation for monocular cameras.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
@@ -98,7 +98,6 @@ parser.add_argument('--gt-file', metavar='DIR',
                     help='path to ground truth validation file')
 
 
-# best_error = -1
 n_iter = 0
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -250,7 +249,6 @@ def main():
         preprocessed=args.with_preprocessed
     )
 
-    # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
         args.data,
         dataset=args.dataset,
@@ -351,14 +349,6 @@ def main():
             args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        # Up to you to chose the most relevant error to measure your model's performance, careful some measures are to maximize (such as a1,a2,a3)
-        # decisive_error = errors[1]
-        # if best_error < 0:
-        #     best_error = decisive_error
-
-        # remember lowest error and save checkpoint
-        # is_best = decisive_error < best_error
-        # best_error = min(best_error, decisive_error)
         disp_dict = {
             'epoch': epoch,
             'state_dict': disp_net.module.state_dict()

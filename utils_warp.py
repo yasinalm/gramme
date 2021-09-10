@@ -58,6 +58,15 @@ def pol2cart(phi, rho):
 
 
 def camera_matrix(pinholes, eps=1e-6):
+    """ Returns the intrinsic matrix as a tensor.
+
+    Args:
+        pinholes (list): List of fx, cx, fy, cy camera parameters.
+        eps (float, optional): A small number for computational stability. Defaults to 1e-6.
+
+    Returns:
+        torch.Tensor: Intrinsic matrix as a [4,4] Tensor.
+    """
     k = torch.eye(4, device=pinholes.device, dtype=pinholes.dtype) + eps
     # k = k.view(1, 4, 4).repeat(pinholes.shape[0], 1, 1)  # Nx4x4
     # fill output with pinhole values
@@ -69,6 +78,18 @@ def camera_matrix(pinholes, eps=1e-6):
 
 
 def get_intrinsics_matrix(dataset, preprocessed):
+    """ Return the intrinsic matrix of a given dataset. If the dataset is preprocessed, returns the adjusted matrix.
+
+    Args:
+        dataset (str): Name of the dataset
+        preprocessed (bool): Whether the dataset is preprocessed
+
+    Raises:
+        NotImplementedError: The dataset should be one of the supported datasets.
+
+    Returns:
+        np.ndarray: Intrinsic matrix in the form of [3,3] matrix.
+    """
     intrinsics = np.eye(3, dtype=np.float32)+1e-6
     if dataset == 'robotcar':
         fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
@@ -122,6 +143,17 @@ def get_intrinsics_matrix(dataset, preprocessed):
 
 
 def get_rightTleft(dataset):
+    """ Return the stereo baseline, e.g., the distance between left and right cameras.
+
+    Args:
+        dataset (str): Name of the dataset
+
+    Raises:
+        NotImplementedError: The dataset should be one of the supported datasets.
+
+    Returns:
+        np.ndarray: Transformation values of length [6]: tx, ty, tz, rx, ry, rz
+    """
     rightTleft = np.zeros(6, dtype=np.float32)
     if dataset == 'robotcar':
         rightTleft[0] = -0.239983

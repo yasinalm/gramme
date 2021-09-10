@@ -14,7 +14,7 @@ from torchvision.utils import save_image
 from tqdm import tqdm
 
 
-parser = argparse.ArgumentParser(description='Script for visualizing depth map and masks',
+parser = argparse.ArgumentParser(description='Test for monocular odometry.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('data', metavar='DIR', help='path to dataset')
 # parser.add_argument('--pretrained-disp', required=True, dest='pretrained_disp',

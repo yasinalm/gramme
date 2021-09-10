@@ -28,11 +28,10 @@ from tensorboardX import SummaryWriter
 # Supress UserWarning from grid_sample
 warnings.filterwarnings("ignore", category=UserWarning)
 
-parser = argparse.ArgumentParser(description='Structure from Motion Learner training',
+parser = argparse.ArgumentParser(description='Unsupervised Geometry-Aware Ego-motion Estimation for radars and cameras.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
-# parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N',
@@ -118,9 +117,7 @@ parser.add_argument('--pretrained-optim', dest='pretrained_optim', default=None,
 parser.add_argument('--name', dest='name', type=str, required=True,
                     help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
-                    help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
-                         ' zeros will null gradients outside target image.'
-                         ' border will only null gradients of the coordinate outside (x or y)')
+                    help='padding mode for image warping')
 # parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
 parser.add_argument('--gt-file', metavar='DIR',
                     help='path to ground truth validation file')
@@ -139,7 +136,6 @@ parser.add_argument('--cart-pixels', type=int,
 # parser.add_argument('--num-range-bins', type=int, help='Number of ADC samples (range bins)', metavar='W', default=256)
 # parser.add_argument('--num-angle-bins', type=int, help='Number of angle bins', metavar='W', default=64)
 
-# best_error = -1
 n_iter = 0
 device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -306,7 +302,6 @@ def main():
         cam_preprocessed=args.with_preprocessed
     )
 
-    # if no Groundtruth is avalaible, Validation set is the same type as training set to measure photometric loss from warping
     val_set = SequenceFolder(
         args.data,
         transform=val_transform,
@@ -485,16 +480,6 @@ def main():
             epoch, logger, warper, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        # Up to you to chose the most relevant error to measure your model's performance,
-        # careful some measures are to maximize (such as a1,a2,a3)
-        # errors[0] is ATE error for `validate_with_gt`, and average loss for `validate_without_gt`
-        # decisive_error = errors[0]
-        # if best_error < 0:
-        #     best_error = decisive_error
-
-        # remember lowest error and save checkpoint
-        # is_best = decisive_error < best_error
-        # best_error = min(best_error, decisive_error)
         if args.with_masknet:
             mask_ckpt_dict = {
                 'epoch': epoch,
@@ -565,9 +550,8 @@ def train(
     end = time.time()
     logger.train_bar.update(0)
 
-    # TODO: Haydaaa! Her batch ayni boyutta olacak diye hata veriyor mono frame lerden dolayi
-    # Simdilik sadece sabit olarak radar frame ler arasinda 3 mono frame oalcak sekilde aliyoruz.
-    # Diger sequence leri atiyoruz. Data efficient degil. Daha akilli yol bul. collate_fn ile
+    # TODO: Each batch must be of the same shape. Could there be a way to use the variable number of camera frames inbetween?
+    # collate_fn might help.
     for i, input in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
         save_checkpoints = i > 0 and n_iter % 1000 == 0
@@ -637,13 +621,13 @@ def train(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            # TODO: duzgun bir basit pose fusion dusun
+            # TODO: Support for an alternative fusion option:
             # Get the pose features from resnet_endocer for both radar and camera.
             # Use forward hooks to get the intermediate output.
             # Feed them into FC and SoftMax.
             # Get KL difference and use it as weight on vo2radar_poses
-            # cam_conf 1x6 confidence score weight (asagidaki weight tam dogru degil duzelt)
-            # attention_map 100 filan boyutunda softmax, visualization icin
+            # cam_conf 1x6 confidence score weight (fix the weight below)
+            # attention_map of length 100
 
             # attention_map, cam_conf = attention_net(
             #     camera_pose_features, radar_pose_features)
@@ -724,7 +708,7 @@ def train(
             logger.train_writer.write(
                 'Train: Batch time {} Data time {} '.format(batch_time, data_time, losses) + error_string)
 
-            # Write scalaras to Tensorboard
+            # Write scalars to Tensorboard
             for error, name in zip(errors, error_names):
                 train_writer.add_scalar('train/'+name, error, n_iter)
 
@@ -778,15 +762,6 @@ def train(
                     'train/radar/warped_ref_from_mono', utils.tensor2array(projected_imgs2[0][0], max_value=1.0, colormap='bone'), n_iter)
 
         if save_checkpoints:
-            # Up to you to chose the most relevant error to measure your model's performance,
-            # careful some measures are to maximize (such as a1,a2,a3)
-            # decisive_error = loss.item()
-
-            # # remember lowest error and save checkpoint
-            # is_best = decisive_error < best_error
-            # best_error = min(best_error, decisive_error)
-            # is_best = False  # Do not choose the best in the training but in the validation wrt. ATE error
-            # mask_ckpt_dict = None
             if args.with_masknet:
                 mask_ckpt_dict = {
                     'n_iter': n_iter,
@@ -902,7 +877,6 @@ def validate(
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
-            # TODO: bunu boyle yapana kadar inputu sequence haline getir direk.
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
