@@ -154,7 +154,7 @@ def traj2Fig_withgt(pred_xyz, gt_xyz, axes=[0, 1]):
     return fig
 
 
-def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[0, 1]):
+def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[0, 1], plt_prefix=''):
     """Plot and save trajectories to a file.
 
     Args:
@@ -175,13 +175,13 @@ def save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz, axes=[0, 1]):
 
     # Save fig
     plt.tight_layout()
-    plt.savefig(results_dir/'ro_pred_nogt.pdf',
+    plt.savefig(results_dir/(plt_prefix+'pred_nogt.pdf'),
                 bbox_inches='tight', pad_inches=0)
-    plt.savefig(results_dir/'ro_pred_nogt.png',
+    plt.savefig(results_dir/(plt_prefix+'pred_nogt.png'),
                 bbox_inches='tight', pad_inches=0)
 
 
-def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
+def save_traj_plots_with_gt(results_dir, pred_xyz, gt, plt_prefix=''):
     """Plot and save trajectories together with ground-truth to a file.
 
     Args:
@@ -202,9 +202,9 @@ def save_traj_plots_with_gt(results_dir, pred_xyz, gt):
 
     # Save fig
     plt.tight_layout()
-    plt.savefig(results_dir/'ro_pred_with_gt.pdf',
+    plt.savefig(results_dir/(plt_prefix+'pred_with_gt.pdf'),
                 bbox_inches='tight', pad_inches=0)
-    plt.savefig(results_dir/'ro_pred_with_gt.png',
+    plt.savefig(results_dir/(plt_prefix+'pred_with_gt.png'),
                 bbox_inches='tight', pad_inches=0)
 
 

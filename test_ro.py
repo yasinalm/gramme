@@ -10,10 +10,13 @@ import utils
 import argparse
 import time
 from pathlib import Path
+import warnings
 
 import torch
 from tqdm import tqdm
 
+# Supress UserWarning from grid_sample
+warnings.filterwarnings("ignore", category=UserWarning)
 
 parser = argparse.ArgumentParser(description='Script for evaluating radar or radar-camera odometry predictions.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -21,7 +24,7 @@ parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('--sequence-length', type=int, metavar='N',
                     help='sequence length for training', default=3)
 parser.add_argument('--skip-frames', type=int, metavar='N',
-                    help='gap between frames', default=5)
+                    help='gap between frames', default=1)
 parser.add_argument('-j', '--workers', default=4, type=int,
                     metavar='N', help='number of data loading workers')
 parser.add_argument('-b', '--batch-size', default=4,
@@ -42,6 +45,10 @@ parser.add_argument('--with-testfile', type=int, default=0,
                     help='use the test.txt file containing test sequences')
 parser.add_argument('--cam-mode', type=str, choices=[
                     'mono', 'stereo'], default='stereo', help='the dataset to train')
+parser.add_argument('--img-height', type=int,
+                    help='resized mono image height', metavar='W', default=192)
+parser.add_argument('--img-width', type=int,
+                    help='resized mono image width', metavar='W', default=320)
 # parser.add_argument('--pretrained-disp', dest='pretrained_disp', default=None, metavar='PATH', help='path to pre-trained dispnet model')
 parser.add_argument('--pretrained-pose', required=True, dest='pretrained_pose',
                     metavar='PATH', help='path to pre-trained Pose net model')
@@ -77,7 +84,6 @@ def main():
     # results_dir = Path(args.results_dir)/args.sequence
     # results_dir.mkdir(parents=True)
 
-    print("=> fetching scenes in '{}'".format(args.data))
     radar_transform = custom_transforms.Compose(
         [custom_transforms.ArrayToTensor()])
 
@@ -180,7 +186,6 @@ def main():
             dataset=args.dataset,
             ro_params=ro_params,
             sequence=sequence,
-            radar_format=args.radar_format,
             load_camera=args.with_vo,
             cam_mode=args.cam_mode,
             cam_transform=cam_valid_transform,
@@ -202,7 +207,7 @@ def main():
         all_poses_mono2radar = []
         all_inv_poses_mono2radar = []
 
-        t_del = 0
+        # t_del = 0
         for i, input in tqdm(enumerate(val_loader)):
             tgt_img = input[0]
             ref_imgs = input[1]
@@ -242,46 +247,52 @@ def main():
                 all_inv_poses_mono2radar.append(vo2radar_poses_inv)
 
         # Total time for forward and backward poses
-        print(
-            'Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2))))
+        # print(
+        #     'Average time for inference: pair of frames/{:.2f}sec'.format(1./(t_del/(nframes*2))))
 
         if args.with_gt:
-            print("=> converting odometry predictions to trajectory")
+            print("=> converting radar odometry predictions to trajectory")
             gt_file = Path(args.data, sequence, 'gt', 'radar_odometry.csv')
             ro_eval = RadarEvalOdom(gt_file, args.dataset)
             ate_f, f_pred_xyz, f_pred = ro_eval.eval_ref_poses(all_poses, all_inv_poses,
                                                                args.skip_frames)
             # save_traj_plots_with_gt(results_dir, f_pred_xyz, ro_eval.gt)
-            print("=> evaluating the trajectory")
+            print("=> evaluating the radar trajectory")
             isPartialSequence = 'partial' in args.sequence
             odom_eval = EvalOdom(isPartial=isPartialSequence)
             odom_eval.eval(f_pred.cpu().numpy(),
-                           ro_eval.gt.cpu().numpy(), results_dir)
+                           ro_eval.gt.cpu().numpy(), results_dir, plt_prefix='radar')
             if args.with_vo:
+                print("=> converting visual odometry predictions to trajectory")
                 ate_f_mono, f_pred_xyz_mono, f_pred_mono = ro_eval.eval_ref_poses(
                     all_poses_mono, all_inv_poses_mono, args.skip_frames, estimate_scale=(args.cam_mode == 'mono'))
                 ate_f_mono2radar, f_pred_xyz_mono2radar, f_pred_mono2radar = ro_eval.eval_ref_poses(
                     all_poses_mono2radar, all_inv_poses_mono2radar, args.skip_frames)
 
+                print("=> evaluating the camera trajectory")
+                # TODO: Replace mono columns to [2,0,1] to match the radar gt
                 odom_eval.eval(f_pred_mono.cpu().numpy(),
-                               ro_eval.gt.cpu().numpy(), results_dir)
+                               ro_eval.gt.cpu().numpy(), results_dir, plt_prefix=args.cam_mode)
                 odom_eval.eval(f_pred_mono2radar.cpu().numpy(),
-                               ro_eval.gt.cpu().numpy(), results_dir)
+                               ro_eval.gt.cpu().numpy(), results_dir, plt_prefix='mono2radar')
         else:
+            print("=> converting radar odometry predictions to trajectory")
             b_pred_xyz, f_pred_xyz = getTraj(
                 all_poses, all_inv_poses, args.skip_frames)
-            utils.save_traj_plots(results_dir, f_pred_xyz, b_pred_xyz)
+            utils.save_traj_plots(results_dir, f_pred_xyz,
+                                  b_pred_xyz, plt_prefix='radar')
 
             if args.with_vo:
+                print("=> converting visual odometry predictions to trajectory")
                 b_pred_xyz_mono, f_pred_xyz_mono = getTraj(
                     all_poses_mono, all_inv_poses_mono, args.skip_frames)
                 utils.save_traj_plots(
-                    results_dir, f_pred_xyz_mono, b_pred_xyz_mono)
+                    results_dir, f_pred_xyz_mono, b_pred_xyz_mono, axes=[2, 0], plt_prefix=args.cam_mode)
 
                 b_pred_xyz_mono2radar, f_pred_xyz_mono2radar = getTraj(
                     all_poses_mono2radar, all_inv_poses_mono2radar, args.skip_frames)
                 utils.save_traj_plots(
-                    results_dir, f_pred_xyz_mono2radar, b_pred_xyz_mono2radar)
+                    results_dir, f_pred_xyz_mono2radar, b_pred_xyz_mono2radar, plt_prefix='mono2radar')
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):

@@ -1,18 +1,19 @@
 # Based on https://raw.githubusercontent.com/JiawangBian/SC-SfMLearner-Release/master/kitti_eval/kitti_odometry.py
 
+import seaborn as sn
+from glob import glob
+from pathlib import Path
+import os
+import numpy as np
+from matplotlib import pyplot as plt
 import copy
 import matplotlib as mpl
-mpl.use('Agg') # No x-server
-from matplotlib import pyplot as plt
-import numpy as np
-import os
-from pathlib import Path
-from glob import glob
-import seaborn as sn
+mpl.use('Agg')  # No x-server
 
-#sns.set(style=\"whitegrid\", rc={\"font.size\":8,\"axes.titlesize\":8,\"axes.labelsize\":5})
+# sns.set(style=\"whitegrid\", rc={\"font.size\":8,\"axes.titlesize\":8,\"axes.labelsize\":5})
 sn.set(style="whitegrid", font_scale=1.5)
 sn.set_palette("bright", n_colors=4, color_codes=True)
+
 
 class EvalOdom():
     """Evaluate odometry result
@@ -28,7 +29,6 @@ class EvalOdom():
         else:
             self.lengths = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]
         self.num_lengths = len(self.lengths)
-    
 
     def trajectory_distances(self, poses):
         """Compute distance for each pose w.r.t frame-0
@@ -107,7 +107,7 @@ class EvalOdom():
         """
         err = []
         dist = self.trajectory_distances(poses_gt)
-        self.step_size = 4 # FPS
+        self.step_size = 4  # FPS
 
         for first_frame in range(0, len(poses_gt), self.step_size):
             for i in range(self.num_lengths):
@@ -183,7 +183,7 @@ class EvalOdom():
         else:
             return 0, 0
 
-    def plot_trajectory(self, poses_gt, poses_result, result_dir):
+    def plot_trajectory(self, poses_gt, poses_result, result_dir, plt_prefix):
         """Plot trajectory for both GT and prediction
         Args:
             poses_gt (dict): {idx: 4x4 array}; ground truth poses
@@ -217,8 +217,8 @@ class EvalOdom():
         plt.xlabel('x (m)', fontsize=fontsize_)
         plt.ylabel('y (m)', fontsize=fontsize_)
         fig.set_size_inches(10, 10)
-        fig_pdf = result_dir/"trajectory.pdf"
-        fig_png = result_dir/"trajectory.png"
+        fig_pdf = result_dir/(plt_prefix+"trajectory.pdf")
+        fig_png = result_dir/(plt_prefix+"trajectory.png")
         plt.savefig(fig_pdf, bbox_inches='tight', pad_inches=0)
         plt.savefig(fig_png, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
@@ -238,7 +238,7 @@ class EvalOdom():
     #     plt.savefig(str(Path(self.plot_path_dir)/'ro_pred_with_gt.png'), bbox_inches = 'tight', pad_inches = 0)
     #     plt.close(fig)
 
-    def plot_error(self, avg_segment_errs, result_dir):
+    def plot_error(self, avg_segment_errs, result_dir, plt_prefix):
         """Plot per-length error
         Args:
             avg_segment_errs (dict): {100:[avg_t_err, avg_r_err],...}
@@ -260,7 +260,7 @@ class EvalOdom():
         plt.xlabel('Sequence Length (m)', fontsize=fontsize_)
         plt.legend(loc="upper right", prop={'size': fontsize_})
         fig.set_size_inches(5, 5)
-        fig_pdf = result_dir/"trans_err.pdf"
+        fig_pdf = result_dir/(plt_prefix+"trans_err.pdf")
         plt.savefig(fig_pdf, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
 
@@ -280,7 +280,7 @@ class EvalOdom():
         plt.xlabel('Sequence Length (m)', fontsize=fontsize_)
         plt.legend(loc="upper right", prop={'size': fontsize_})
         fig.set_size_inches(5, 5)
-        fig_pdf = result_dir/"rot_err.pdf"
+        fig_pdf = result_dir/(plt_prefix+"rot_err.pdf")
         plt.savefig(fig_pdf, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
 
@@ -378,7 +378,6 @@ class EvalOdom():
         rpe_rot = np.mean(np.asarray(rot_errors))
         return rpe_trans, rpe_rot
 
-   
     def write_result(self, f, seq, errs):
         """Write result into a txt file
         Args:
@@ -390,14 +389,15 @@ class EvalOdom():
         lines = []
         lines.append("Sequence: \t {} \n".format(seq))
         lines.append("Trans. err. (%): \t {:.3f} \n".format(ave_t_err*100))
-        lines.append("Rot. err. (deg/100m): \t {:.3f} \n".format(ave_r_err/np.pi*180*100))
+        lines.append(
+            "Rot. err. (deg/100m): \t {:.3f} \n".format(ave_r_err/np.pi*180*100))
         lines.append("ATE (m): \t {:.3f} \n".format(ate))
         lines.append("RPE (m): \t {:.3f} \n".format(rpe_trans))
         lines.append("RPE (deg): \t {:.3f} \n\n".format(rpe_rot * 180 / np.pi))
         for line in lines:
             f.writelines(line)
 
-    def eval(self, pred, gt, result_dir):
+    def eval(self, pred, gt, result_dir, plt_prefix=''):
         """Evaluate the precited trajectory in terms of several metrics and save plots and stats to `result_dir`.
 
         Args:
@@ -408,7 +408,7 @@ class EvalOdom():
 
         poses_result = dict(zip(range(pred.shape[0]), pred))
         poses_gt = dict(zip(range(gt.shape[0]), gt))
-       
+
         # Initialization
         ave_t_errs = []
         ave_r_errs = []
@@ -421,7 +421,7 @@ class EvalOdom():
         # self.plot_path_dir = result_dir + "/plot_path"
         # self.plot_error_dir = result_dir + "/plot_error"
         # result_txt = os.path.join(result_dir, "result.txt")
-        result_txt = result_dir/"result.txt"
+        result_txt = result_dir/(plt_prefix+"result.txt")
         f = open(result_txt, 'w')
 
         # if not os.path.exists(error_dir):
@@ -432,10 +432,11 @@ class EvalOdom():
         #     os.makedirs(self.plot_error_dir)
 
         # evaluation
-        i=0    
+        i = 0
         # compute sequence errors
         seq_err = self.calc_sequence_errors(poses_gt, poses_result)
-        self.save_sequence_errors(seq_err, result_dir/'sequence_errors.txt')
+        self.save_sequence_errors(
+            seq_err, result_dir/(plt_prefix+'sequence_errors.txt'))
 
         # Compute segment errors
         avg_segment_errs = self.compute_segment_error(seq_err)
@@ -461,11 +462,12 @@ class EvalOdom():
         print("RPE (deg): ", rpe_rot * 180 / np.pi)
 
         # Plotting
-        self.plot_trajectory(poses_gt, poses_result, result_dir)
-        self.plot_error(avg_segment_errs, result_dir)
+        self.plot_trajectory(poses_gt, poses_result, result_dir, plt_prefix)
+        self.plot_error(avg_segment_errs, result_dir, plt_prefix)
 
         # Save result summary
-        self.write_result(f, i, [ave_t_err, ave_r_err, ate, rpe_trans, rpe_rot])
+        self.write_result(
+            f, i, [ave_t_err, ave_r_err, ate, rpe_trans, rpe_rot])
 
         f.close()
 
