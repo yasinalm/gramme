@@ -159,6 +159,8 @@ class SequenceFolder(data.Dataset):
                 else:
                     raise NotImplementedError(
                         'Currently, RADIATE and RobotCar datasets supported for VO')
+                # Some scenes contain timestamps more than images. Drop the extra timestamps.
+                mts = mts[:len(left_imgs)]
 
                 radar_idxs = list(
                     range(demi_length * self.k, len(imgs)-demi_length * self.k))
@@ -352,9 +354,6 @@ class SequenceFolder(data.Dataset):
                     vo_tgt_img = self.load_camera_img_as_float(
                         sample['vo_tgt_img'], self.cam_model_left)
                     vo_ref_imgs = [self.load_camera_img_as_float(
-                        ref_img) for ref_img in sample['vo_ref_imgs']]
-
-                    vo_ref_imgs = [self.load_camera_img_as_float(
                         sample['vo_ref_imgs'][0], self.cam_model_right)]
                     for ref_img in sample['vo_ref_imgs'][1:]:
                         vo_ref_imgs.append(self.load_camera_img_as_float(
@@ -376,6 +375,7 @@ class SequenceFolder(data.Dataset):
             else:
                 vo_tgt_img = []
                 vo_ref_imgs = []
+
             if self.train and self.cam_mode == 'stereo':
                 return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics, extrinsics
             else:

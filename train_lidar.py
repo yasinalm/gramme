@@ -14,7 +14,8 @@ from torchvision import transforms
 
 import models
 
-import custom_transforms_mono as T
+import custom_transforms_mono
+import custom_transforms_stereo
 import custom_transforms
 import utils
 from datasets.sequence_folders_lidar import SequenceFolder
@@ -93,6 +94,8 @@ parser.add_argument('--masknet', type=str,
                     choices=['convnet', 'resnet'], default='convnet', help='MaskNet type')
 parser.add_argument('--with-vo', action='store_true',
                     help='with VO fusion')
+parser.add_argument('--cam-mode', type=str, choices=[
+                    'mono', 'stereo'], default='stereo', help='the dataset to train')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp',
                     default=None, metavar='PATH', help='path to pre-trained DispResNet model')
 parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=None,
@@ -100,7 +103,7 @@ parser.add_argument('--pretrained-vo-pose', dest='pretrained_vo_pose', default=N
 parser.add_argument('--with-pretrain', action='store_true',
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
-                    'hand', 'robotcar', 'radiate'], default='hand', help='the dataset to train')
+                    'hand', 'robotcar', 'radiate'], default='robotcar', help='the dataset to train')
 parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-mask', dest='pretrained_mask',
@@ -114,9 +117,7 @@ parser.add_argument('--pretrained-optim', dest='pretrained_optim', default=None,
 parser.add_argument('--name', dest='name', type=str, required=True,
                     help='name of the experiment, checkpoints are stored in checpoints/name')
 parser.add_argument('--padding-mode', type=str, choices=['zeros', 'border'], default='zeros',
-                    help='padding mode for image warping : this is important for photometric differenciation when going outside target image.'
-                         ' zeros will null gradients outside target image.'
-                         ' border will only null gradients of the coordinate outside (x or y)')
+                    help='padding mode for image warping')
 # parser.add_argument('--with-gt', action='store_true', help='use ground truth for validation')
 parser.add_argument('--gt-file', metavar='DIR',
                     help='path to ground truth validation file')
@@ -174,32 +175,33 @@ def main():
         [custom_transforms.ArrayToTensor()])
 
     # mono_transform = None
-    mono_train_transform = None
-    mono_valid_transform = None
+    cam_train_transform = None
+    cam_valid_transform = None
     if args.with_vo:
+        T = custom_transforms_mono if args.cam_mode == 'mono' else custom_transforms_stereo
 
         imagenet_mean = utils.imagenet_mean
         imagenet_std = utils.imagenet_std
         img_size = (args.img_height, args.img_width)
         if args.dataset == 'robotcar':
             if args.with_preprocessed:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     # T.ToPILImage(),
                     # T.RandomHorizontalFlip(),
-                    # T.ColorJitter(brightness=0.1, contrast=0.1,
-                    #               saturation=0.1, hue=0.1),
-                    # T.RandomScaleCrop(),
+                    T.ColorJitter(brightness=0.1, contrast=0.1,
+                                  saturation=0.1, hue=0.1),
+                    T.RandomScaleCrop(),
                     T.ToTensor(),
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
                     # T.ToPILImage(),
                     T.ToTensor(),
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
             else:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     T.ToPILImage(),
                     T.CropBottom(),
                     T.Resize(img_size),
@@ -211,7 +213,7 @@ def main():
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
                     T.ToPILImage(),
                     T.CropBottom(),
                     T.Resize(img_size),
@@ -221,7 +223,7 @@ def main():
 
         elif args.dataset == 'radiate':
             if args.with_preprocessed:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     # T.RandomHorizontalFlip(),
                     T.ColorJitter(brightness=0.1, contrast=0.1,
                                   saturation=0.1, hue=0.1),
@@ -230,12 +232,12 @@ def main():
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
                     T.ToTensor(),
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
             else:
-                mono_train_transform = T.Compose([
+                cam_train_transform = T.Compose([
                     # T.ToPILImage(),
                     T.Resize(img_size),
                     # T.RandomHorizontalFlip(),
@@ -246,7 +248,7 @@ def main():
                     # T.Normalize(imagenet_mean, imagenet_std)
                 ])
 
-                mono_valid_transform = T.Compose([
+                cam_valid_transform = T.Compose([
                     # T.ToPILImage(),
                     T.Resize(img_size),
                     T.ToTensor(),
@@ -266,9 +268,10 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         lo_params=lo_params,
-        load_mono=args.with_vo,
-        mono_transform=mono_train_transform,
-        mono_preprocessed=args.with_preprocessed
+        load_camera=args.with_vo,
+        cam_mode=args.cam_mode,
+        cam_transform=cam_train_transform,
+        cam_preprocessed=args.with_preprocessed
     )
 
     val_set = SequenceFolder(
@@ -280,9 +283,10 @@ def main():
         skip_frames=args.skip_frames,
         dataset=args.dataset,
         lo_params=lo_params,
-        load_mono=args.with_vo,
-        mono_transform=mono_valid_transform,
-        mono_preprocessed=args.with_preprocessed
+        load_camera=args.with_vo,
+        cam_mode=args.cam_mode,
+        cam_transform=cam_valid_transform,
+        cam_preprocessed=args.with_preprocessed
     )
 
     print('{} samples found in {} train scenes'.format(
@@ -450,20 +454,22 @@ def main():
         mask_ckpt_dict = None
         if args.with_masknet:
             mask_ckpt_dict = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'state_dict': mask_net.module.state_dict()
             }
+            utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
+                                       ['lidar_masknet'])
         if args.with_vo:
             vo_pose_ckpt_dict = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'state_dict': camera_pose_net.module.state_dict()
             }
             disp_ckpt_dict = {
-                'epoch': epoch + 1,
+                'epoch': epoch,
                 'state_dict': disp_net.module.state_dict()
             }
             fuse_ckpt_dict = {
-                'n_iter': epoch + 1,
+                'n_iter': epoch,
                 'state_dict': fuse_net.module.state_dict()
             }
             # utils.save_checkpoint_mono(
@@ -473,11 +479,11 @@ def main():
                                            'mono_fusenet'],
                                        epoch=epoch)
         ro_pose_ckpt_dict = {
-            'epoch': epoch + 1,
+            'epoch': epoch,
             'state_dict': lidar_pose_net.module.state_dict()
         }
         optim_dict = {
-            'epoch': epoch + 1,
+            'epoch': epoch,
             'state_dict': optimizer.state_dict()
         }
         utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
@@ -545,18 +551,24 @@ def train(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
+            rightTleft = input[5]
             vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
+            rightTleft = rightTleft.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
             # vo_poses_inv: [2,3,B,6]
             tgt_depth, ref_depths = compute_depth(
                 disp_net, vo_tgt_img, vo_ref_imgs)
-            vo_poses, vo_poses_inv = compute_pose_with_inv(
-                camera_pose_net, vo_tgt_img, vo_ref_imgs)
+            if args.cam_mode == 'mono':
+                vo_poses, vo_poses_inv = compute_pose_with_inv(
+                    camera_pose_net, vo_tgt_img, vo_ref_imgs)
+            else:
+                vo_poses, vo_poses_inv = compute_pose_with_inv_stereo(
+                    camera_pose_net, vo_tgt_img, vo_ref_imgs, rightTleft)
 
             # r = (ro_poses[..., 2] + vo_poses[..., 3])/2
             # vo_poses[..., 3] = r
@@ -584,6 +596,11 @@ def train(
             # TODO: Calculate attention maps
             # attention_map, cam_conf = attention_net(
             #     camera_pose_features, lidar_pose_features)
+
+            # Drop the right2left stereo pose for radar reconstruction.
+            if args.cam_mode == 'stereo':
+                vo_poses = vo_poses[1:]
+                vo_poses_inv = vo_poses_inv[1:]
 
             # Scale and project camera pose to lidar frame
             vo2lidar_poses = fuse_net(vo_poses)
@@ -1084,6 +1101,18 @@ def disp_to_depth(disp):
     # depth = depth/depth_scale
     depth = depth.clamp(min=1e-3)
     return depth
+
+
+def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
+    # global depth_scale
+    poses = [rightTleft]
+    poses_inv = [-(rightTleft.clone())]
+    for ref_img in ref_imgs[1:]:
+        poses.append(pose_net(tgt_img, ref_img))
+        poses_inv.append(pose_net(ref_img, tgt_img))
+
+    return torch.stack(poses), torch.stack(poses_inv)
+    # return poses, poses_inv
 
 
 def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):

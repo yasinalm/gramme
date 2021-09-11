@@ -18,45 +18,63 @@ class SequenceFolder(data.Dataset):
     def __init__(self, root, dataset, lo_params,
                  seed=None, train=True, sequence_length=3,
                  transform=None, skip_frames=1,
-                 load_mono=False, mono_preprocessed=False, mono_transform=None
+                 load_camera=False, cam_mode='mono',
+                 cam_preprocessed=False, cam_transform=None, sequence=None,
                  ):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
         self.dataset = dataset
-        self.load_mono = load_mono
-        self.preprocessed = mono_preprocessed
+        self.load_camera = load_camera
+        self.cam_mode = cam_mode
+        self.preprocessed = cam_preprocessed
 
-        scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
-        self.scenes = [self.root/folder.strip()
-                       for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+        if sequence is not None:
+            self.scenes = [self.root/sequence]
+        else:
+            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            self.scenes = [self.root/folder.strip()
+                           for folder in open(scene_list_path) if not folder.strip().startswith("#")]
+
         self.cart_pixels = lo_params['cart_pixels']
         # self.cart_pixels = 512
         self.max_range = 80.0  # if dataset == 'radiate' else 50.0
         # self.cart_resolution = self.max_range/self.cart_pixels
 
-        if self.load_mono:
-            # self.mono_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
+        if self.load_camera:
+            # self.stereo_left_folder = 'zed_left' if dataset == 'radiate' else 'stereo/left'
             # if dataset == 'robotcar':
-            #     self.cam_model = CameraModel()
+            #     self.cam_model_left = CameraModel()
 
             if dataset == 'radiate':
                 if self.preprocessed:
-                    self.mono_folder = 'stereo_undistorted/left'
+                    self.stereo_left_folder = 'stereo_undistorted/left'
+                    self.stereo_right_folder = 'stereo_undistorted/right'
                 else:
-                    self.mono_folder = 'zed_left'
+                    self.stereo_left_folder = 'zed_left'
+                    self.stereo_right_folder = 'zed_right'
             elif dataset == 'robotcar':
                 if self.preprocessed:
-                    self.mono_folder = 'stereo_undistorted/left'
+                    self.stereo_left_folder = 'stereo_undistorted/left'
+                    self.stereo_right_folder = 'stereo_undistorted/right'
                 else:
-                    self.mono_folder = 'stereo/left'
-                    self.cam_model = CameraModel()
+                    self.stereo_left_folder = 'stereo/left'
+                    self.stereo_right_folder = 'stereo/right'
+                    self.cam_model_left = CameraModel()
+                    self.cam_model_right = CameraModel('stereo_wide_right')
+            elif dataset == 'cadcd':
+                if self.preprocessed:
+                    self.stereo_left_folder = 'preprocessed/image_07/data'
+                    self.stereo_right_folder = 'preprocessed/image_01/data'
+                else:
+                    self.stereo_left_folder = 'raw/image_07/data'
+                    self.stereo_right_folder = 'raw/image_01/data'
             else:
                 raise NotImplementedError(
                     'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
 
         self.transform = transform
-        self.mono_transform = mono_transform
+        self.cam_transform = cam_transform
         self.train = train
         self.k = skip_frames
         if dataset == 'radiate':
@@ -91,13 +109,14 @@ class SequenceFolder(data.Dataset):
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(
                 self.dataset, preprocessed=self.preprocessed)
+            rightTleft = utils.get_rightTleft(self.dataset)
 
             imgs = sorted(list((scene/self.lidar_folder).glob(self.lidar_ext)))
 
             if len(imgs) < sequence_length:
                 continue
 
-            if self.load_mono:
+            if self.load_camera:
                 # We need to collect the corresponding monocular frames within the same dataset class.
                 # If we use separate classes for radar and mono, the order gets messy due to shuffling.
 
@@ -108,12 +127,15 @@ class SequenceFolder(data.Dataset):
                 #     f_mt = temp_root/scene.name/'stereo.timestamps'
                 #     if not f_mt.is_file():
                 #         continue
-                #     imgs_mono = sorted(
-                #         list((temp_root/scene.name/self.mono_folder).glob(f_type)))
+                #     left_imgs = sorted(
+                #         list((temp_root/scene.name/self.stereo_left_folder).glob(f_type)))
                 # elif self.dataset == 'radiate':
-                imgs_mono = sorted(
-                    list((scene/self.mono_folder).glob('*.png')))
-                if len(imgs) < sequence_length:
+                left_imgs = sorted(
+                    list((scene/self.stereo_left_folder).glob('*.png')))
+                if self.cam_mode == 'stereo':
+                    right_imgs = sorted(
+                        list((scene/self.stereo_right_folder).glob('*.png')))
+                if len(left_imgs) < sequence_length:
                     continue
 
                 f_rt = scene/self.lidar_timestamps
@@ -134,11 +156,11 @@ class SequenceFolder(data.Dataset):
                     raise NotImplementedError(
                         'Currently, RADIATE and RobotCar datasets supported for VO')
                 # Some scenes contain timestamps more than images. Drop the extra timestamps.
-                mts = mts[:len(imgs_mono)]
+                mts = mts[:len(left_imgs)]
 
                 lidar_idxs = list(
                     range(demi_length * self.k, len(imgs)-demi_length * self.k))
-                mono_matches_all = self.find_mono_samples(
+                cam_matches_all = self.find_cam_samples(
                     lidar_idxs, rts, mts)
 
             for cnt, i in enumerate(range(demi_length * self.k, len(imgs)-demi_length * self.k)):
@@ -146,26 +168,31 @@ class SequenceFolder(data.Dataset):
                 for j in self.shifts:
                     sample['ref_imgs'].append(imgs[i+j])
 
-                if self.load_mono:
-                    # self.find_mono_samples(i, rts, mts)
+                if self.load_camera:
+                    # self.find_cam_samples(i, rts, mts)
                     # try:
-                    mono_matches = mono_matches_all[cnt]
+                    cam_matches = cam_matches_all[cnt]
                     # except IndexError:
-                    #     print(len(mono_matches_all))
+                    #     print(len(cam_matches_all))
                     #     print(i)
                     #     raise IndexError('Patladi!')
-                    if mono_matches:
+                    if cam_matches:
                         # Add all the monocular frames between the matched source and target frames.
-                        sample['vo_tgt_img'] = imgs_mono[mono_matches[0]]
+                        sample['intrinsics'] = intrinsics
+                        sample['rightTleft'] = rightTleft
+                        sample['vo_tgt_img'] = left_imgs[cam_matches[0]]
+                        sample['vo_ref_imgs'] = []
 
                         # vo_ref_imgs = [
-                        # [imgs_mono[src-1],...,imgs_mono[tgt]],
-                        # [imgs_mono[tgt],...,imgs_mono[src+1]
+                        # [left_imgs[src-1],...,left_imgs[tgt]],
+                        # [left_imgs[tgt],...,left_imgs[src+1]
                         # ]
+                        if self.train and self.cam_mode == 'stereo':
+                            sample['vo_ref_imgs'].append(
+                                right_imgs[cam_matches[0]])
                         sample['vo_ref_imgs'] = [
-                            # [imgs_mono[ref] for ref in refs] for refs in mono_matches[1:]]
-                            imgs_mono[ref] for ref in mono_matches[1:]]
-                        sample['intrinsics'] = intrinsics
+                            # [left_imgs[ref] for ref in refs] for refs in cam_matches[1:]]
+                            left_imgs[ref] for ref in cam_matches[1:]]
                     else:
                         continue
 
@@ -295,12 +322,12 @@ class SequenceFolder(data.Dataset):
         # data = self.ptc2img(data)
         return data
 
-    def load_mono_img_as_float(self, path):
+    def load_camera_img_as_float(self, path):
         img = Image.open(path)
         # img = img.resize((640, 384))
         if self.dataset == 'robotcar':
             img = demosaic(img, 'gbrg')
-            img = self.cam_model.undistort(img)
+            img = self.cam_model_left.undistort(img)
         img = np.array(img).astype(np.uint8)
         # img = img.astype(np.float32) / 255.
         return img
@@ -319,35 +346,53 @@ class SequenceFolder(data.Dataset):
             tgt_img = self.transform(tgt_img)  # imgs[0]
             ref_imgs = [self.transform(img) for img in ref_imgs]  # imgs[1:]
 
-        if self.load_mono:
+        if self.load_camera:
             if 'vo_tgt_img' in sample:
-                if self.preprocessed or self.dataset == 'radiate':
+                if self.preprocessed or self.dataset == 'radiate' or self.dataset == 'cadcd':
                     # TODO: On-the-fly rectification support for RADIATE dataset
-                    self.load_img = self.load_undistorted_mono_img_as_float
+                    # self.load_img = self.load_undistorted_mono_img_as_float
+                    vo_tgt_img = self.load_undistorted_mono_img_as_float(
+                        sample['vo_tgt_img'])
+                    vo_ref_imgs = [self.load_undistorted_mono_img_as_float(
+                        ref_img) for ref_img in sample['vo_ref_imgs']]
                 else:
-                    self.load_img = self.load_mono_img_as_float
-                vo_tgt_img = self.load_img(sample['vo_tgt_img'])
-                vo_ref_imgs = [self.load_img(
-                    ref_img) for ref_img in sample['vo_ref_imgs']]
-                if self.mono_transform:
-                    imgs, intrinsics = self.mono_transform(
-                        [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
+                    # self.load_img = self.load_camera_img_as_float
+                    vo_tgt_img = self.load_camera_img_as_float(
+                        sample['vo_tgt_img'], self.cam_model_left)
+                    vo_ref_imgs = [self.load_camera_img_as_float(
+                        sample['vo_ref_imgs'][0], self.cam_model_right)]
+                    for ref_img in sample['vo_ref_imgs'][1:]:
+                        vo_ref_imgs.append(self.load_camera_img_as_float(
+                            ref_img, self.cam_model_left))
+
+                if self.cam_transform:
+                    if self.cam_mode == 'mono':
+                        imgs, intrinsics = self.cam_transform(
+                            [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
+                    else:
+                        imgs, intrinsics, extrinsics = self.cam_transform(
+                            [vo_tgt_img] + vo_ref_imgs, np.copy(
+                                sample['intrinsics']), np.copy(sample['rightTleft']))
                     vo_tgt_img = imgs[0]
                     vo_ref_imgs = imgs[1:]
-                    # vo_tgt_img = self.mono_transform(vo_tgt_img)
-                    # vo_ref_imgs = [
-                    #     self.mono_transform(ref_img) for ref_img in vo_ref_imgs]
+                else:
+                    intrinsics = np.copy(sample['intrinsics'])
+                    extrinsics = np.copy(sample['rightTleft'])
             else:
                 vo_tgt_img = []
                 vo_ref_imgs = []
-            return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
+
+            if self.train and self.cam_mode == 'stereo':
+                return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics, extrinsics
+            else:
+                return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
         else:
             return tgt_img, ref_imgs
 
     def __len__(self):
         return len(self.samples)
 
-    def find_mono_samples(self, t_idxs: List[int], rts: List[List[float]], mts: List[List[float]]) -> List[List[int]]:
+    def find_cam_samples(self, t_idxs: List[int], rts: List[List[float]], mts: List[List[float]]) -> List[List[int]]:
         """Returns indexes of monocular frames in the form of
         [[tgt, [src-1,...,tgt], [tgt,...,src+1]],
             [tgt, [src-1,...,tgt], [tgt,...,src+1]],...]
