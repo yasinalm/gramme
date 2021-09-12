@@ -245,6 +245,9 @@ class SequenceFolder(data.Dataset):
                 ranges, intensities, angles)
             ptcld[3, :] = self.reflectance2colour(ptcld)
 
+            # Mirrorring on x-axis to match camera
+            ptcld[1, :] = -ptcld[1, :]
+
             # Filter points at close range
             # ptcld = ptcld[:, np.logical_and(
             #     np.abs(ptcld[0]) > 4.0, np.abs(ptcld[1]) > 4.0)]

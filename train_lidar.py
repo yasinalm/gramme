@@ -551,12 +551,13 @@ def train(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
-            rightTleft = input[5]
+            if args.cam_mode == 'stereo':
+                rightTleft = input[5]
+                rightTleft = rightTleft.to(device)
             vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
-            rightTleft = rightTleft.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
@@ -630,7 +631,7 @@ def train(
         ssim_loss = w4*ssim_loss
         lidar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
-        loss = lidar_loss + 30*vo_loss + vo2lidar_loss
+        loss = lidar_loss + 50*vo_loss + vo2lidar_loss
 
         # record loss and EPE
         losses_it = [
@@ -706,11 +707,21 @@ def train(
                     'train/lidar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
                 train_writer.add_image(
-                    'train/mono/tgt_input', utils.tensor2array(vo_tgt_img[0]), n_iter)
-                train_writer.add_image(
-                    'train/mono/ref_input', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
-                train_writer.add_image(
-                    'train/mono/warped_ref', utils.tensor2array(mono_ref_imgs_warped[0][0]), n_iter)
+                    'train/mono/tgt_input_left', utils.tensor2array(vo_tgt_img[0]), n_iter)
+                if args.cam_mode == 'mono':
+                    train_writer.add_image(
+                        'train/mono/ref_input_left', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
+                    train_writer.add_image(
+                        'train/mono/ref_warped_left', utils.tensor2array(mono_ref_imgs_warped[0][0]), n_iter)
+                elif args.cam_mode == 'stereo':
+                    train_writer.add_image(
+                        'train/mono/ref_input_left', utils.tensor2array(vo_ref_imgs[1][0]), n_iter)
+                    train_writer.add_image(
+                        'train/mono/ref_warped_left', utils.tensor2array(mono_ref_imgs_warped[1][0]), n_iter)
+                    train_writer.add_image(
+                        'train/mono/ref_input_right', utils.tensor2array(vo_ref_imgs[0][0]), n_iter)
+                    train_writer.add_image(
+                        'train/mono/ref_warped_right', utils.tensor2array(mono_ref_imgs_warped[0][0]), n_iter)
                 train_writer.add_image(
                     'train/mono/tgt_disp', utils.tensor2array(1/tgt_depth[0][0], colormap='viridis'), n_iter)
                 train_writer.add_image(
@@ -1094,9 +1105,9 @@ def disp_to_depth(disp):
     # depth = 1 / scaled_disp
     # disp = disp.clamp(min=1e-2)
 
-    id_disp = torch.rand(disp.shape).to(device)*1e-12
-    disp = disp + id_disp
-    disp = disp.clamp(min=1e-3)
+    # id_disp = torch.rand(disp.shape).to(device)*1e-12
+    # disp = disp + id_disp
+    # disp = disp.clamp(min=1e-3)
     depth = 1./disp
     # depth = depth/depth_scale
     depth = depth.clamp(min=1e-3)

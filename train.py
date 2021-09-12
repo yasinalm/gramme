@@ -579,12 +579,13 @@ def train(
             vo_tgt_img = input[2]  # [B,3,H,W]
             vo_ref_imgs = input[3]  # [2,3,B,3,H,W] First two dims are list
             intrinsics = input[4]
-            rightTleft = input[5]
+            if args.cam_mode == 'stereo':
+                rightTleft = input[5]
+                rightTleft = rightTleft.to(device)
             vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
             intrinsics = intrinsics.to(device)
-            rightTleft = rightTleft.to(device)
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
