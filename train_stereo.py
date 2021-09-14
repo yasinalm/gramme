@@ -402,7 +402,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         tgt_img = torch.nan_to_num(tgt_img.to(device), posinf=1, neginf=0)
         ref_imgs = [torch.nan_to_num(
             img.to(device), posinf=1, neginf=0) for img in ref_imgs]
-        intrinsics = intrinsics.to(device)
+        intrinsics = [i.to(device)for i in intrinsics]
         rightTleft = rightTleft.to(device)
 
         # The code below might be useful for debugging anomalies in the input.

@@ -77,7 +77,7 @@ def camera_matrix(pinholes, eps=1e-6):
     return k
 
 
-def get_intrinsics_matrix(dataset, preprocessed):
+def get_intrinsics_matrix(dataset, preprocessed, cam='left'):
     """ Return the intrinsic matrix of a given dataset. If the dataset is preprocessed, returns the adjusted matrix.
 
     Args:
@@ -92,6 +92,7 @@ def get_intrinsics_matrix(dataset, preprocessed):
     """
     intrinsics = np.eye(3, dtype=np.float32)+1e-6
     if dataset == 'robotcar':
+        # Left and right cameras have the same params
         fx, fy, cx, cy = 983.044006, 983.044006, 643.646973, 493.378998
         if preprocessed:
             scaled_h, scaled_w = 192, 320
@@ -104,10 +105,16 @@ def get_intrinsics_matrix(dataset, preprocessed):
             fy *= y_scaling
             cy *= y_scaling
     elif dataset == 'radiate':
-        fx = 3.379191448899105e+02
-        fy = 3.386957068549526e+02
-        cx = 3.417366010946575e+02
-        cy = 2.007359735313929e+02
+        if cam == 'left':
+            fx = 337.873451599077
+            fy = 338.530902554779
+            cx = 329.137695760749
+            cy = 186.166590759716
+        else:
+            fx = 3.379191448899105e+02
+            fy = 3.386957068549526e+02
+            cx = 3.417366010946575e+02
+            cy = 2.007359735313929e+02
         if preprocessed:
             scaled_h, scaled_w = 192, 320
             in_h, in_w = 376, 672

@@ -267,7 +267,7 @@ class MonoWarper(object):
     # photometric loss
     # geometry consistency loss
 
-    def compute_photo_and_geometry_loss(self, tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv):
+    def compute_photo_and_geometry_loss(self, tgt_img, ref_imgs, ref_intrinsics, tgt_depth, ref_depths, poses, poses_inv):
 
         photo_loss = 0
         geometry_loss = 0
@@ -275,7 +275,7 @@ class MonoWarper(object):
         ref_imgs_warped = []
 
         num_scales = min(len(tgt_depth), self.max_scales)
-        for ref_img, ref_depth, pose, pose_inv in zip(ref_imgs, ref_depths, poses, poses_inv):
+        for ref_img, ref_depth, pose, pose_inv, intrinsics in zip(ref_imgs, ref_depths, poses, poses_inv, ref_intrinsics):
             for s in range(num_scales):
 
                 # # downsample img

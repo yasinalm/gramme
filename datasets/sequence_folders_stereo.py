@@ -80,6 +80,8 @@ class SequenceFolder(data.Dataset):
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(
                 self.dataset, preprocessed=self.preprocessed)
+            intrinsics_right = utils.get_intrinsics_matrix(
+                self.dataset, preprocessed=self.preprocessed, cam='right')
             rightTleft = utils.get_rightTleft(self.dataset)
             #imgs = sorted(scene.files('*.png'))
             left_imgs = sorted(
@@ -90,13 +92,15 @@ class SequenceFolder(data.Dataset):
             len_imgs = min(len(left_imgs), len(right_imgs))
 
             for i in range(demi_length * self.k, len_imgs-demi_length * self.k):
-                sample = {'intrinsics': intrinsics,
+                sample = {'intrinsics': [],
                           'rightTleft': rightTleft,
                           'tgt': left_imgs[i], 'ref_imgs': []}
                 if self.train:
                     sample['ref_imgs'].append(right_imgs[i])
+                    sample['intrinsics'].append(intrinsics_right)
                 for j in shifts:
                     sample['ref_imgs'].append(left_imgs[i+j])
+                    sample['intrinsics'].append(intrinsics)
                 sequence_set.append(sample)
         if self.train:
             random.shuffle(sequence_set)
@@ -142,13 +146,13 @@ class SequenceFolder(data.Dataset):
 
         if self.transform is not None:
             imgs, intrinsics, extrinsics = self.transform(
-                [tgt_img] + ref_imgs, np.copy(sample['intrinsics']), np.copy(sample['rightTleft']))
+                [tgt_img] + ref_imgs, [np.copy(i) for i in sample['intrinsics']],  np.copy(sample['rightTleft']))
             tgt_img = imgs[0]
             ref_imgs = imgs[1:]
             # if any([np.isnan(np.array(img)).any() for img in imgs]):
             #     print("getitem: nan detected in input")
         else:
-            intrinsics = np.copy(sample['intrinsics'])
+            intrinsics = [np.copy(i) for i in sample['intrinsics']]
             extrinsics = np.copy(sample['rightTleft'])
 
         if self.train:

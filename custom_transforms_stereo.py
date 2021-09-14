@@ -22,7 +22,8 @@ class Compose(object):
 
     def __call__(self, images, intrinsics, extrinsics):
         for t in self.transforms:
-            images, intrinsics, extrinsics = t(images, intrinsics, extrinsics)
+            images, intrinsics, extrinsics = t(
+                images, intrinsics, extrinsics)
         return images, intrinsics, extrinsics
 
     def __repr__(self):
@@ -120,8 +121,9 @@ class RandomHorizontalFlip(torch.nn.Module):
         if torch.rand(1) < self.p:
             images = [F.hflip(img) for img in images]
             w, h = images[0].size
-            output_intrinsics = np.copy(intrinsics)
-            output_intrinsics[0, 2] = w - output_intrinsics[0, 2]
+            output_intrinsics = [np.copy(i) for i in intrinsics]
+            for i in output_intrinsics:
+                i[0, 2] = w - i[0, 2]
             extrinsics *= -1
             return images, output_intrinsics, extrinsics
         return images, intrinsics, extrinsics
@@ -145,14 +147,15 @@ class RandomScaleCrop(torch.nn.Module):
         Returns:
             PIL Image or Tensor: Randomly flipped image.
         """
-        output_intrinsics = np.copy(intrinsics)
+        output_intrinsics = [np.copy(i) for i in intrinsics]
 
         in_w, in_h = images[0].size
         x_scaling, y_scaling = np.random.uniform(1, 1.15, 2)
         scaled_h, scaled_w = int(in_h * y_scaling), int(in_w * x_scaling)
 
-        output_intrinsics[0] *= x_scaling
-        output_intrinsics[1] *= y_scaling
+        for i in output_intrinsics:
+            i[0] *= x_scaling
+            i[1] *= y_scaling
         scaled_images = [F.resize(img, (scaled_h, scaled_w)) for img in images]
 
         # PIL uses a coordinate system with (0, 0) in the upper left corner.
@@ -161,8 +164,9 @@ class RandomScaleCrop(torch.nn.Module):
         cropped_images = [F.crop(img, offset_y, offset_x, in_h, in_w)
                           for img in scaled_images]
 
-        output_intrinsics[0, 2] -= offset_x
-        output_intrinsics[1, 2] -= offset_y
+        for i in output_intrinsics:
+            i[0, 2] -= offset_x
+            i[1, 2] -= offset_y
 
         return cropped_images, output_intrinsics, extrinsics
 
@@ -219,7 +223,7 @@ class CropSides(torch.nn.Module):
         Returns:
             PIL Image or Tensor: Randomly flipped image.
         """
-        output_intrinsics = np.copy(intrinsics)
+        output_intrinsics = [np.copy(i) for i in intrinsics]
 
         in_w, in_h = images[0].size
 
@@ -230,8 +234,9 @@ class CropSides(torch.nn.Module):
         cropped_images = [F.crop(img, 0, offset_x, in_h, in_w-2*offset_x)
                           for img in images]
 
-        output_intrinsics[0, 2] -= offset_x
-        # output_intrinsics[1, 2] -= offset_y
+        for i in output_intrinsics:
+            i[0, 2] -= offset_x
+            # output_intrinsics[1, 2] -= offset_y
 
         return cropped_images, output_intrinsics, extrinsics
 
@@ -290,7 +295,7 @@ class Resize(torch.nn.Module):
         Returns:
             PIL Image or Tensor: Rescaled image.
         """
-        output_intrinsics = np.copy(intrinsics)
+        output_intrinsics = [np.copy(i) for i in intrinsics]
 
         in_w, in_h = images[0].size  # [800,1280]
 
@@ -298,8 +303,9 @@ class Resize(torch.nn.Module):
         x_scaling = float(self.size[1])/in_w
         y_scaling = float(self.size[0])/in_h
 
-        output_intrinsics[0] *= x_scaling
-        output_intrinsics[1] *= y_scaling
+        for i in output_intrinsics:
+            i[0] *= x_scaling
+            i[1] *= y_scaling
 
         images = [F.resize(img, self.size, self.interpolation)
                   for img in images]
