@@ -79,10 +79,11 @@ class SequenceFolder(data.Dataset):
             if len(imgs) < sequence_length:
                 continue
             for i in range(demi_length * self.k, len(imgs)-demi_length * self.k):
-                sample = {'intrinsics': intrinsics,
+                sample = {'intrinsics': [],
                           'tgt': imgs[i], 'ref_imgs': []}
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
+                    sample['intrinsics'].append(intrinsics)
                 sequence_set.append(sample)
         if self.train:
             random.shuffle(sequence_set)
@@ -117,11 +118,11 @@ class SequenceFolder(data.Dataset):
                         for ref_img in sample['ref_imgs']]
         if self.transform is not None:
             imgs, intrinsics = self.transform(
-                [tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
+                [tgt_img] + ref_imgs, [np.copy(i) for i in sample['intrinsics']])
             tgt_img = imgs[0]
             ref_imgs = imgs[1:]
         else:
-            intrinsics = np.copy(sample['intrinsics'])
+            intrinsics = [np.copy(i) for i in sample['intrinsics']]
         return tgt_img, ref_imgs, intrinsics
 
     def __len__(self):

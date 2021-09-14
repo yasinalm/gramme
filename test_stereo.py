@@ -157,7 +157,7 @@ def main():
         for i, (tgt_img, ref_imgs, intrinsics) in tqdm(enumerate(val_loader)):
             tgt_img = tgt_img.to(device)
             ref_imgs = [img.to(device) for img in ref_imgs]
-            intrinsics = intrinsics.to(device)
+            intrinsics = [i.to(device)for i in intrinsics]
 
             # start.record()
             poses, poses_inv = compute_pose_with_inv(

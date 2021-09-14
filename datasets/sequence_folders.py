@@ -106,6 +106,8 @@ class SequenceFolder(data.Dataset):
             # intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             intrinsics = utils.get_intrinsics_matrix(
                 self.dataset, preprocessed=self.preprocessed)
+            intrinsics_right = utils.get_intrinsics_matrix(
+                self.dataset, preprocessed=self.preprocessed, cam='right')
             rightTleft = utils.get_rightTleft(self.dataset)
             # f_type = '*.csv' if self.dataset == 'hand' else '*.png'
             f_type = '*.png'
@@ -183,7 +185,7 @@ class SequenceFolder(data.Dataset):
                     #     raise IndexError('Patladi!')
                     if cam_matches:
                         # Add all the monocular frames between the matched source and target frames.
-                        sample['intrinsics'] = intrinsics
+                        sample['intrinsics'] = []
                         sample['rightTleft'] = rightTleft
                         sample['vo_tgt_img'] = left_imgs[cam_matches[0]]
                         sample['vo_ref_imgs'] = []
@@ -198,10 +200,13 @@ class SequenceFolder(data.Dataset):
                         if self.train and self.cam_mode == 'stereo':
                             sample['vo_ref_imgs'].append(
                                 right_imgs[cam_matches[0]])
+                            sample['intrinsics'].append(intrinsics_right)
                         sample['vo_ref_imgs'].extend([
                             # [left_imgs[ref] for ref in refs] for refs in cam_matches[1:]]
                             left_imgs[ref] for ref in cam_matches[1:]])
                         # sample['intrinsics'] = intrinsics
+                        for j in self.shifts:
+                            sample['intrinsics'].append(intrinsics)
                     else:
                         continue
 
@@ -362,15 +367,16 @@ class SequenceFolder(data.Dataset):
                 if self.cam_transform:
                     if self.cam_mode == 'mono':
                         imgs, intrinsics = self.cam_transform(
-                            [vo_tgt_img] + vo_ref_imgs, np.copy(sample['intrinsics']))
+                            [vo_tgt_img] + vo_ref_imgs, [np.copy(i) for i in sample['intrinsics']])
                     else:
                         imgs, intrinsics, extrinsics = self.cam_transform(
-                            [vo_tgt_img] + vo_ref_imgs, np.copy(
-                                sample['intrinsics']), np.copy(sample['rightTleft']))
+                            [vo_tgt_img] + vo_ref_imgs,
+                            [np.copy(i) for i in sample['intrinsics']],
+                            np.copy(sample['rightTleft']))
                     vo_tgt_img = imgs[0]
                     vo_ref_imgs = imgs[1:]
                 else:
-                    intrinsics = np.copy(sample['intrinsics'])
+                    intrinsics = [np.copy(i) for i in sample['intrinsics']]
                     extrinsics = np.copy(sample['rightTleft'])
             else:
                 vo_tgt_img = []

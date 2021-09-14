@@ -585,7 +585,7 @@ def train(
             vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
-            intrinsics = intrinsics.to(device)
+            intrinsics = [i.to(device)for i in intrinsics]
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]
@@ -877,7 +877,7 @@ def validate(
             vo_tgt_img = torch.nan_to_num(vo_tgt_img.to(device))
             vo_ref_imgs = [torch.nan_to_num(
                 ref_img.to(device)) for ref_img in vo_ref_imgs]
-            intrinsics = intrinsics.to(device)
+            intrinsics = [i.to(device)for i in intrinsics]
             # tgt_depth: [4,B,1,H,W]
             # ref_depths: [2,3,4,B,1,H,W]
             # vo_poses: [2,3,B,6]

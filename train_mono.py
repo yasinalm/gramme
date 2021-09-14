@@ -393,7 +393,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
         tgt_img = torch.nan_to_num(tgt_img.to(device), posinf=1, neginf=0)
         ref_imgs = [torch.nan_to_num(
             img.to(device), posinf=1, neginf=0) for img in ref_imgs]
-        intrinsics = intrinsics.to(device)
+        intrinsics = [i.to(device)for i in intrinsics]
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
@@ -512,7 +512,7 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
     for i, (tgt_img, ref_imgs, intrinsics) in enumerate(val_loader):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
-        intrinsics = intrinsics.to(device)
+        intrinsics = [i.to(device)for i in intrinsics]
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)

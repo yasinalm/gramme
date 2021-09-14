@@ -554,7 +554,7 @@ def validate(args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, v
     for i, (tgt_img, ref_imgs, intrinsics) in enumerate(val_loader):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
-        intrinsics = intrinsics.to(device)
+        intrinsics = [i.to(device)for i in intrinsics]
 
         tgt_img = torch.nan_to_num(tgt_img.to(device), posinf=1, neginf=0)
         ref_imgs = [torch.nan_to_num(
