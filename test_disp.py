@@ -24,6 +24,8 @@ parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--with-testfile', type=int, default=0,
                     help='use the test.txt file containing test sequences')
+parser.add_argument("--nsamples", default=2000, type=int,
+                    help="Number of samples to subsample from each scene.")
 parser.add_argument('--with-timing', type=int, default=0,
                     help='use the timing benchmark to evaluate the runtime speed')
 parser.add_argument("--pretrained-disp", required=True,
@@ -124,7 +126,7 @@ def main():
         results_depth_dir.mkdir(parents=True)
 
         test_set = ImageFolder(
-            path=scene, transform=valid_transform)
+            path=scene, transform=valid_transform, nsamples=args.nsamples)
         nframes = len(test_set)
         print('{} samples found in {} '.format(
             nframes, scene_name))
@@ -135,7 +137,7 @@ def main():
                                                   pin_memory=True)
 
         avg_time = 0
-        for i, tgt_img in tqdm(enumerate(test_loader)):
+        for i, (tgt_img, f_names) in tqdm(enumerate(test_loader)):
             tgt_img = tgt_img.to(device)
 
             if args.with_timing:
@@ -153,14 +155,15 @@ def main():
             # tv.utils.save_image(
             #     tgt_depth[0], results_depth_dir/'{0:03d}.png'.format(i))
 
-            for j, depth in enumerate(tgt_depth[0]):
+            for j, (depth, f_name) in enumerate(zip(tgt_depth[0], f_names)):
                 colour_depth = utils.tensor2array(
                     depth, max_value=None, colormap='inferno')
                 colour_depth = colour_depth.transpose(1, 2, 0)*255
                 colour_depth = colour_depth.astype(np.uint8)
                 im = Image.fromarray(colour_depth)
-                im.save(results_depth_dir /
-                        '{0:03d}.png'.format(i*args.batch_size+j))
+                # im.save(results_depth_dir /
+                #         '{0:03d}.png'.format(i*args.batch_size+j))
+                im.save(results_depth_dir / f_name)
 
         if args.with_timing:
             avg_time /= nframes
