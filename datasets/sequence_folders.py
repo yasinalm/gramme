@@ -358,11 +358,15 @@ class SequenceFolder(data.Dataset):
                     # self.load_img = self.load_camera_img_as_float
                     vo_tgt_img = self.load_camera_img_as_float(
                         sample['vo_tgt_img'], self.cam_model_left)
-                    vo_ref_imgs = [self.load_camera_img_as_float(
-                        sample['vo_ref_imgs'][0], self.cam_model_right)]
-                    for ref_img in sample['vo_ref_imgs'][1:]:
-                        vo_ref_imgs.append(self.load_camera_img_as_float(
-                            ref_img, self.cam_model_left))
+                    if self.cam_mode == 'mono':
+                        vo_ref_imgs = [self.load_camera_img_as_float(
+                            ref_img, self.cam_model_left) for ref_img in sample['vo_ref_imgs']]
+                    else:
+                        vo_ref_imgs = [self.load_camera_img_as_float(
+                            sample['vo_ref_imgs'][0], self.cam_model_right)]
+                        for ref_img in sample['vo_ref_imgs'][1:]:
+                            vo_ref_imgs.append(self.load_camera_img_as_float(
+                                ref_img, self.cam_model_left))
 
                 if self.cam_transform:
                     if self.cam_mode == 'mono':

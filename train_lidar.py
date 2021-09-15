@@ -347,8 +347,13 @@ def main():
     if args.with_vo:
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
-        camera_pose_net = models.PoseResNetMono(
-            args.resnet_layers, args.with_pretrain).to(device)
+        if args.cam_mode == 'mono':
+            camera_pose_net = models.PoseResNetMono(
+                args.resnet_layers, args.with_pretrain).to(device)
+        else:
+            camera_pose_net = models.PoseResNetStereo(
+                args.resnet_layers, args.with_pretrain).to(device)
+
         fuse_net = models.PoseFusionNet().to(device)
         attention_net = models.AttentionNet().to(device)
 
@@ -631,7 +636,8 @@ def train(
         ssim_loss = w4*ssim_loss
         lidar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
-        loss = lidar_loss + 50*vo_loss + vo2lidar_loss
+        vo_loss = 50*vo_loss
+        loss = lidar_loss + vo_loss + vo2lidar_loss
 
         # record loss and EPE
         losses_it = [
@@ -1105,9 +1111,9 @@ def disp_to_depth(disp):
     # depth = 1 / scaled_disp
     # disp = disp.clamp(min=1e-2)
 
-    # id_disp = torch.rand(disp.shape).to(device)*1e-12
-    # disp = disp + id_disp
-    # disp = disp.clamp(min=1e-3)
+    id_disp = torch.rand(disp.shape).to(device)*1e-12
+    disp = disp + id_disp
+    disp = disp.clamp(min=1e-3)
     depth = 1./disp
     # depth = depth/depth_scale
     depth = depth.clamp(min=1e-3)
