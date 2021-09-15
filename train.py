@@ -141,9 +141,11 @@ device = torch.device(
     "cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
+depth_scale = 1.0  # 200 robotcar, 1 radiate
+
 
 def main():
-    global best_error, n_iter, device
+    global depth_scale, best_error, n_iter, device
     args = parser.parse_args()
 
     timestamp = datetime.datetime.now().strftime("%m-%d-%H-%M")
@@ -208,6 +210,9 @@ def main():
         imagenet_std = utils.imagenet_std
         img_size = (args.img_height, args.img_width)
         if args.dataset == 'robotcar':
+            if args.cam_mode == 'stereo':
+                depth_scale = 200.0
+
             if args.with_preprocessed:
                 cam_train_transform = T.Compose([
                     # T.ToPILImage(),
@@ -246,6 +251,9 @@ def main():
                 ])
 
         elif args.dataset == 'radiate':
+            if args.cam_mode == 'stereo':
+                depth_scale = 10.0
+
             if args.with_preprocessed:
                 cam_train_transform = T.Compose([
                     # T.RandomHorizontalFlip(),
@@ -723,9 +731,12 @@ def train(
             tags_trans = ['trans_pred-x', 'trans_pred-y', 'trans_pred-z']
 
             # Write radar pose histograms to Tensorboard
-            for i, tag in enumerate(tags_rot+tags_trans):
+            for i, tag in enumerate(tags_rot):
                 train_writer.add_histogram(
                     'train/radar/'+tag, ro_poses[..., i], n_iter)
+            for i, tag in enumerate(tags_trans):
+                train_writer.add_histogram(
+                    'train/radar/'+tag, depth_scale * ro_poses[..., i+3], n_iter)
 
             # Write VO and VO2Radar pose histograms to Tensorboard
             if args.with_vo:
@@ -893,9 +904,9 @@ def validate(
                 camera_pose_net, vo_tgt_img, vo_ref_imgs)
 
             all_poses_mono.append(
-                torch.cat((vo_poses[..., 3:], vo_poses[..., :3]), -1))
+                torch.cat((vo_poses[..., 3:], depth_scale*vo_poses[..., :3]), -1))
             all_inv_poses_mono.append(
-                torch.cat((vo_poses_inv[..., 3:], vo_poses_inv[..., :3]), -1))
+                torch.cat((vo_poses_inv[..., 3:], depth_scale*vo_poses_inv[..., :3]), -1))
 
             # t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             # vo_poses[..., [1, 2]] = t
@@ -1141,7 +1152,7 @@ def compute_depth(disp_net, tgt_img, ref_imgs):
 
 
 def disp_to_depth(disp):
-    # global depth_scale
+    global depth_scale
     """Convert network's sigmoid output into depth prediction
     The formula for this conversion is given in the 'additional considerations'
     section of the paper.
@@ -1159,7 +1170,7 @@ def disp_to_depth(disp):
     disp = disp + id_disp
     disp = disp.clamp(min=1e-3)
     depth = 1./disp
-    # depth = depth/depth_scale
+    depth = depth/depth_scale
     depth = depth.clamp(min=1e-3)
     return depth
 
@@ -1175,9 +1186,9 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 
 
 def compute_pose_with_inv_stereo(pose_net, tgt_img, ref_imgs, rightTleft):
-    # global depth_scale
-    poses = [rightTleft]
-    poses_inv = [-(rightTleft.clone())]
+    global depth_scale
+    poses = [rightTleft/depth_scale]
+    poses_inv = [-(rightTleft.clone())/depth_scale]
     for ref_img in ref_imgs[1:]:
         poses.append(pose_net(tgt_img, ref_img))
         poses_inv.append(pose_net(ref_img, tgt_img))
