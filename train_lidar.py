@@ -613,12 +613,21 @@ def train(
 
             # Drop the right2left stereo pose for radar reconstruction.
             if args.cam_mode == 'stereo':
-                vo_poses = vo_poses[1:]
-                vo_poses_inv = vo_poses_inv[1:]
+                vo_poses_mono = torch.cat((
+                    depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
+                vo_poses_inv_mono = torch.cat((
+                    depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
+                # Recover the absolute pose scale
+                # vo_poses_mono[..., :3] = depth_scale * vo_poses[..., :3]
+                # vo_poses_inv_mono[..., :3] = depth_scale * \
+                #     vo_poses_inv[..., :3]
+            else:
+                vo_poses_mono = vo_poses
+                vo_poses_inv_mono = vo_poses_inv
 
             # Scale and project camera pose to lidar frame
-            vo2lidar_poses = fuse_net(vo_poses)
-            vo2lidar_poses_inv = fuse_net(vo_poses_inv)
+            vo2lidar_poses = fuse_net(vo_poses_mono)
+            vo2lidar_poses_inv = fuse_net(vo_poses_inv_mono)
             # L1 regularization on VO pose
             # vo2lidar_poses = (ro_poses + vo2lidar_poses)/2
             # vo2lidar_poses_inv = (ro_poses_inv + vo2lidar_poses_inv)/2
@@ -699,9 +708,6 @@ def train(
             for i, tag in enumerate(tags_rot):
                 train_writer.add_histogram(
                     'train/lidar/'+tag, ro_poses[..., i], n_iter)
-            for i, tag in enumerate(tags_trans):
-                train_writer.add_histogram(
-                    'train/lidar/'+tag, depth_scale * ro_poses[..., i+3], n_iter)
 
             if args.with_vo:
                 for i, tag in enumerate(tags_trans+tags_rot):

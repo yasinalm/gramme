@@ -647,12 +647,21 @@ def train(
 
             # Drop the right2left stereo pose for radar reconstruction.
             if args.cam_mode == 'stereo':
-                vo_poses = vo_poses[1:]
-                vo_poses_inv = vo_poses_inv[1:]
+                vo_poses_mono = torch.cat((
+                    depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
+                vo_poses_inv_mono = torch.cat((
+                    depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
+                # Recover the absolute pose scale
+                # vo_poses_mono[..., :3] = depth_scale * vo_poses[..., :3]
+                # vo_poses_inv_mono[..., :3] = depth_scale * \
+                #     vo_poses_inv[..., :3]
+            else:
+                vo_poses_mono = vo_poses
+                vo_poses_inv_mono = vo_poses_inv
 
             # Scale and project camera pose to radar frame
-            vo2radar_poses = fuse_net(vo_poses)
-            vo2radar_poses_inv = fuse_net(vo_poses_inv)
+            vo2radar_poses = fuse_net(vo_poses_mono)
+            vo2radar_poses_inv = fuse_net(vo_poses_inv_mono)
             # L1 regularization on VO pose
             # vo2radar_poses = (ro_poses + vo2radar_poses)/2
             # vo2radar_poses_inv = (ro_poses_inv + vo2radar_poses_inv)/2
@@ -678,7 +687,8 @@ def train(
         ssim_loss = w4*ssim_loss
         radar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
-        loss = radar_loss + 30*vo_loss + vo2radar_loss
+        vo_loss = 30*vo_loss
+        loss = radar_loss + vo_loss + vo2radar_loss
 
         # record loss and EPE
         losses_it = [
@@ -731,12 +741,9 @@ def train(
             tags_trans = ['trans_pred-x', 'trans_pred-y', 'trans_pred-z']
 
             # Write radar pose histograms to Tensorboard
-            for i, tag in enumerate(tags_rot):
+            for i, tag in enumerate(tags_rot+tags_trans):
                 train_writer.add_histogram(
-                    'train/radar/'+tag, ro_poses[..., i], n_iter)
-            for i, tag in enumerate(tags_trans):
-                train_writer.add_histogram(
-                    'train/radar/'+tag, depth_scale * ro_poses[..., i+3], n_iter)
+                    'train/lidar/'+tag, ro_poses[..., i], n_iter)
 
             # Write VO and VO2Radar pose histograms to Tensorboard
             if args.with_vo:
