@@ -705,14 +705,14 @@ def train(
             tags_rot = ['rot_pred-x', 'rot_pred-y', 'rot_pred-z']
             tags_trans = ['trans_pred-x', 'trans_pred-y', 'trans_pred-z']
 
-            for i, tag in enumerate(tags_rot):
+            for i, tag in enumerate(tags_rot+tags_trans):
                 train_writer.add_histogram(
                     'train/lidar/'+tag, ro_poses[..., i], n_iter)
 
             if args.with_vo:
                 for i, tag in enumerate(tags_trans+tags_rot):
                     train_writer.add_histogram(
-                        'train/mono/'+tag, vo_poses[..., i], n_iter)
+                        'train/mono/'+tag, vo_poses_mono[..., i], n_iter)
 
                 for i, tag in enumerate(tags_rot+tags_trans):
                     train_writer.add_histogram(
@@ -879,10 +879,17 @@ def validate(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 camera_pose_net, vo_tgt_img, vo_ref_imgs)
 
+            # Recover the absolute pose scale
+            vo_poses_mono = torch.cat((
+                depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
+            vo_poses_inv_mono = torch.cat((
+                depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
+
+            # Collect camera poses in radar format ([rx,ry,rz,tx,ty,tz])
             all_poses_mono.append(
-                torch.cat((vo_poses[..., 3:], depth_scale*vo_poses[..., :3]), -1))
+                torch.cat((vo_poses_mono[..., 3:], vo_poses_mono[..., :3]), -1))
             all_inv_poses_mono.append(
-                torch.cat((vo_poses_inv[..., 3:], depth_scale*vo_poses_inv[..., :3]), -1))
+                torch.cat((vo_poses_inv_mono[..., 3:], vo_poses_inv_mono[..., :3]), -1))
 
             # t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             # vo_poses[..., [1, 2]] = t
@@ -902,8 +909,8 @@ def validate(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            vo2lidar_poses = fuse_net(vo_poses)
-            vo2lidar_poses_inv = fuse_net(vo_poses_inv)
+            vo2lidar_poses = fuse_net(vo_poses_mono)
+            vo2lidar_poses_inv = fuse_net(vo_poses_inv_mono)
 
             # Change VO pose order to RO
             # all_poses_mono.append(

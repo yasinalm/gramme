@@ -421,8 +421,8 @@ def main():
                 weights['state_dict'], strict=False)
         if args.pretrained_fusenet:
             print("=> using pre-trained weights for PoseFusionNet")
-            weights = torch.load(args.pretrained_vo_pose)
-            camera_pose_net.load_state_dict(
+            weights = torch.load(args.pretrained_fusenet)
+            fuse_net.load_state_dict(
                 weights['state_dict'], strict=False)
 
         disp_net = torch.nn.DataParallel(disp_net)
@@ -647,14 +647,11 @@ def train(
 
             # Drop the right2left stereo pose for radar reconstruction.
             if args.cam_mode == 'stereo':
+                # Recover the absolute pose scale
                 vo_poses_mono = torch.cat((
                     depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
                 vo_poses_inv_mono = torch.cat((
                     depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
-                # Recover the absolute pose scale
-                # vo_poses_mono[..., :3] = depth_scale * vo_poses[..., :3]
-                # vo_poses_inv_mono[..., :3] = depth_scale * \
-                #     vo_poses_inv[..., :3]
             else:
                 vo_poses_mono = vo_poses
                 vo_poses_inv_mono = vo_poses_inv
@@ -749,7 +746,7 @@ def train(
             if args.with_vo:
                 for i, tag in enumerate(tags_trans+tags_rot):
                     train_writer.add_histogram(
-                        'train/mono/'+tag, vo_poses[..., i], n_iter)
+                        'train/mono/'+tag, vo_poses_mono[..., i], n_iter)
 
                 for i, tag in enumerate(tags_rot+tags_trans):
                     train_writer.add_histogram(
@@ -910,10 +907,17 @@ def validate(
             vo_poses, vo_poses_inv = compute_pose_with_inv(
                 camera_pose_net, vo_tgt_img, vo_ref_imgs)
 
+            # Recover the absolute pose scale
+            vo_poses_mono = torch.cat((
+                depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
+            vo_poses_inv_mono = torch.cat((
+                depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
+
+            # Collect camera poses in radar format ([rx,ry,rz,tx,ty,tz])
             all_poses_mono.append(
-                torch.cat((vo_poses[..., 3:], depth_scale*vo_poses[..., :3]), -1))
+                torch.cat((vo_poses_mono[..., 3:], vo_poses_mono[..., :3]), -1))
             all_inv_poses_mono.append(
-                torch.cat((vo_poses_inv[..., 3:], depth_scale*vo_poses_inv[..., :3]), -1))
+                torch.cat((vo_poses_inv_mono[..., 3:], vo_poses_inv_mono[..., :3]), -1))
 
             # t = (ro_poses[..., [3, 4]] + vo_poses[..., [1, 2]])/2
             # vo_poses[..., [1, 2]] = t
@@ -933,8 +937,8 @@ def validate(
             vo_geometry_loss = 0.5*vo_geometry_loss
             vo_loss = vo_photo_loss + vo_smooth_loss + vo_geometry_loss + vo_ssim_loss
 
-            vo2radar_poses = fuse_net(vo_poses)
-            vo2radar_poses_inv = fuse_net(vo_poses_inv)
+            vo2radar_poses = fuse_net(vo_poses_mono)
+            vo2radar_poses_inv = fuse_net(vo_poses_inv_mono)
 
             # Change VO pose order to RO
             # all_poses_mono.append(
