@@ -909,9 +909,9 @@ def validate(
 
             # Recover the absolute pose scale
             vo_poses_mono = torch.cat((
-                depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
+                depth_scale * vo_poses[..., :3], vo_poses[..., 3:]), -1)
             vo_poses_inv_mono = torch.cat((
-                depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
+                depth_scale * vo_poses_inv[..., :3], vo_poses_inv[..., 3:]), -1)
 
             # Collect camera poses in radar format ([rx,ry,rz,tx,ty,tz])
             all_poses_mono.append(

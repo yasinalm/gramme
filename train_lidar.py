@@ -654,7 +654,7 @@ def train(
         lidar_loss = rec_loss + geometry_consistency_loss + fft_loss + ssim_loss
 
         vo_loss = 50*vo_loss
-        # vo2lidar_loss = 0.5*vo2lidar_loss
+        vo2lidar_loss = 0.5*vo2lidar_loss
         loss = lidar_loss + vo_loss + vo2lidar_loss
 
         # record loss and EPE
@@ -881,9 +881,9 @@ def validate(
 
             # Recover the absolute pose scale
             vo_poses_mono = torch.cat((
-                depth_scale * vo_poses[1:, ..., :3], vo_poses[1:, ..., 3:]), -1)
+                depth_scale * vo_poses[..., :3], vo_poses[..., 3:]), -1)
             vo_poses_inv_mono = torch.cat((
-                depth_scale * vo_poses_inv[1:, ..., :3], vo_poses_inv[1:, ..., 3:]), -1)
+                depth_scale * vo_poses_inv[..., :3], vo_poses_inv[..., 3:]), -1)
 
             # Collect camera poses in radar format ([rx,ry,rz,tx,ty,tz])
             all_poses_mono.append(
