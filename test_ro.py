@@ -153,12 +153,14 @@ def main():
             weights['state_dict'], strict=False)
 
         print("=> using pre-trained weights for PoseFusionNet")
-        weights = torch.load(args.pretrained_vo_pose)
-        camera_pose_net.load_state_dict(
+        weights = torch.load(args.pretrained_fusenet)
+        fuse_net.load_state_dict(
             weights['state_dict'], strict=False)
 
         camera_pose_net = torch.nn.DataParallel(camera_pose_net)
         fuse_net = torch.nn.DataParallel(fuse_net)
+        camera_pose_net.eval()
+        fuse_net.eval()
 
     if args.with_testfile:
         root = Path(args.data)

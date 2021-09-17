@@ -355,12 +355,12 @@ def main():
     if args.with_vo:
         disp_net = models.DispResNet(
             args.resnet_layers, args.with_pretrain).to(device)
-        if args.cam_mode == 'mono':
-            camera_pose_net = models.PoseResNetMono(
-                args.resnet_layers, args.with_pretrain).to(device)
-        else:
-            camera_pose_net = models.PoseResNetStereo(
-                args.resnet_layers, args.with_pretrain).to(device)
+        # if args.cam_mode == 'mono':
+        camera_pose_net = models.PoseResNetMono(
+            args.resnet_layers, args.with_pretrain).to(device)
+        # else:
+        #     camera_pose_net = models.PoseResNetStereo(
+        #         args.resnet_layers, args.with_pretrain).to(device)
 
         fuse_net = models.PoseFusionNet().to(device)
         attention_net = models.AttentionNet().to(device)
