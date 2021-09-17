@@ -22,13 +22,22 @@ class EvalOdom():
         vo_eval.eval(gt_pose, pred_pose, result_pose_txt_dir)
     """
 
-    def __init__(self, isPartial=False):
+    def __init__(self, isPartial=False, fps=5):
+        """Instantiate an odometry evaluation class.
+
+        Args:
+            isPartial (bool, optional): Robotcar has partial sequences which have shorter trajectory length. 
+                The errors are calculated wrt. distances. Defaults to False.
+            fps (int, optional): FPS of the ground-truth. Radar GT is 5 FPS. Defaults to 5.
+        """
+
         # partial sequences in the robotcar dataset are around 3km and the regular sequences are 9km
         if isPartial:
             self.lengths = [500, 1000, 1500, 2000, 2500, 3000]
         else:
             self.lengths = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]
         self.num_lengths = len(self.lengths)
+        self.step_size = fps  # FPS
 
     def trajectory_distances(self, poses):
         """Compute distance for each pose w.r.t frame-0
@@ -107,7 +116,6 @@ class EvalOdom():
         """
         err = []
         dist = self.trajectory_distances(poses_gt)
-        self.step_size = 4  # FPS
 
         for first_frame in range(0, len(poses_gt), self.step_size):
             for i in range(self.num_lengths):
@@ -210,6 +218,8 @@ class EvalOdom():
                 pos_xz.append([pose[0, 3],  pose[1, 3]])
             pos_xz = np.asarray(pos_xz)
             plt.plot(pos_xz[:, 0],  pos_xz[:, 1], label=key)
+            traj_txt = result_dir/(plt_prefix+key+'_trajectory.txt')
+            np.savetxt(traj_txt, pos_xz, delimiter=',')
 
         plt.legend(prop={'size': fontsize_})
         plt.xticks(fontsize=fontsize_)
