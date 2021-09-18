@@ -178,11 +178,11 @@ def calculate_ate(pred, gt, estimate_scale: bool = False):
     gt_xyz = gt[:, :3, 3]
     pred_xyz = pred[:, :3, 3]
 
-    if pred_xyz.shape != gt_xyz.shape:
-        idx = torch.randperm(gt_xyz.shape[0], device=gt_xyz.device)
-        idx = idx[:pred_xyz.shape[0]]
-        idx, _ = torch.sort(idx, dim=0)
-        gt_xyz = gt_xyz[idx, :]
+    # if pred_xyz.shape != gt_xyz.shape:
+    #     idx = torch.randperm(gt_xyz.shape[0], device=gt_xyz.device)
+    #     idx = idx[:pred_xyz.shape[0]]
+    #     idx, _ = torch.sort(idx, dim=0)
+    #     gt_xyz = gt_xyz[idx, :]
 
     # None for batching, batch=1
     gt_xyz = gt_xyz[None]

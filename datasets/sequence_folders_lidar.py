@@ -193,9 +193,9 @@ class SequenceFolder(data.Dataset):
                             sample['vo_ref_imgs'].append(
                                 right_imgs[cam_matches[0]])
                             sample['intrinsics'].append(intrinsics_right)
-                        sample['vo_ref_imgs'] = [
+                        sample['vo_ref_imgs'].extend([
                             # [left_imgs[ref] for ref in refs] for refs in cam_matches[1:]]
-                            left_imgs[ref] for ref in cam_matches[1:]]
+                            left_imgs[ref] for ref in cam_matches[1:]])
                         for j in self.shifts:
                             sample['intrinsics'].append(intrinsics)
                     else:
