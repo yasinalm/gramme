@@ -126,7 +126,11 @@ def get_intrinsics_matrix(dataset, preprocessed, cam='left'):
             fy *= y_scaling
             cy *= y_scaling
     elif dataset == 'cadcd':
-        fx, cx, fy, cy = 653.956033188809, 653.221172545916, 655.540088617960, 508.732863993917
+        # fx, cx, fy, cy = 653.956033188809, 653.221172545916, 655.540088617960, 508.732863993917 # cam00
+        if cam == 'left':
+            fx, cx, fy, cy = 655.400620284058, 630.296420683747, 657.186232327181, 513.826153608948  # cam07
+        else:
+            fx, cx, fy, cy = 659.538950747990, 640.585315682482, 660.928189799613, 490.646003044410  # cam01
         if preprocessed:
             scaled_h, scaled_w = 192, 320
             in_h, in_w = 774, 1280

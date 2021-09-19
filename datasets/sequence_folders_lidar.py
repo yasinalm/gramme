@@ -82,7 +82,7 @@ class SequenceFolder(data.Dataset):
             self.lidar_ext = '*.csv'
             self.lidar_timestamps = 'velo_lidar.txt'
             self.stereo_timestamps = 'zed_left.txt'
-        else:
+        elif dataset == 'robotcar':
             self.stereo_timestamps = 'stereo.timestamps'
             if '2014' in root:
                 self.lidar_folder = 'ldmrs'  # Robotcar dataset
@@ -93,6 +93,15 @@ class SequenceFolder(data.Dataset):
                 self.lidar_folder = 'velodyne_left'  # Robotcar radar dataset
                 self.lidar_ext = '*.png'
                 self.lidar_timestamps = 'velodyne_left.timestamps'
+        elif dataset == 'cadcd':
+            self.lidar_folder = 'raw/lidar_points_corrected/data'
+            self.lidar_ext = '*.bin'
+            # TODO: CADCD timestamps are not in UNIX format.
+            self.lidar_timestamps = 'raw/lidar_points_corrected/timestamps.txt'
+            self.stereo_timestamps = 'raw/image_07/timestamps.txt'
+        else:
+            raise NotImplementedError(
+                'The chosen dataset is not implemented yet! Given: {}'.format(dataset))
         # self.lidar_ext = '*.csv' if dataset == 'radiate' else '*.png'
         self.ground_thr = -1.8 if dataset == 'radiate' else 1.0
         self.crawl_folders(sequence_length)
