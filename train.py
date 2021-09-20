@@ -164,6 +164,20 @@ def main():
     if args.log_output:
         val_writer = SummaryWriter(args.save_path/'valid')
 
+    print("=> setting default radar parameters for known datasets")
+    if args.dataset == 'radiate':
+        args.range_res = 0.175
+    elif args.dataset == 'robotcar':
+        args.range_res = 0.0432
+    ro_params = {
+        'cart_resolution': args.cart_res,
+        'cart_pixels': args.cart_pixels,
+        'rangeResolutionsInMeter': args.range_res,
+        'angleResolutionInRad': args.angle_res,
+        'radar_format': args.radar_format
+    }
+    print(ro_params)
+
     # Data loading code
     # if args.dataset == 'hand':
     #     mean, std = 119.4501, 6.5258 # Calculated over all dataset
@@ -288,13 +302,6 @@ def main():
                 ])
 
     print("=> fetching scenes in '{}'".format(args.data))
-    ro_params = {
-        'cart_resolution': args.cart_res,
-        'cart_pixels': args.cart_pixels,
-        'rangeResolutionsInMeter': args.range_res,
-        'angleResolutionInRad': args.angle_res,
-        'radar_format': args.radar_format
-    }
     train_set = SequenceFolder(
         args.data,
         transform=train_transform,
