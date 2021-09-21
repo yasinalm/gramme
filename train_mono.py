@@ -48,6 +48,8 @@ parser.add_argument('--weight-decay', '--wd', default=0,
                     type=float, metavar='W', help='weight decay')
 parser.add_argument('--print-freq', default=10, type=int,
                     metavar='N', help='print frequency')
+parser.add_argument('--ckpt-freq', default=1, type=int,
+                    metavar='N', help='checkpoint saving frequency in terms of epochs')
 parser.add_argument('--seed', default=0, type=int,
                     help='seed for random functions, and network initialization')
 parser.add_argument('--log-summary', default='progress_log_summary.csv',
@@ -221,6 +223,7 @@ def main():
             train_transform = T.Compose([
                 # T.ToPILImage(),
                 T.CropBottom(250),
+                T.CropSides(),
                 T.Resize(img_size),
                 T.RandomHorizontalFlip(),
                 T.ColorJitter(brightness=0.1, contrast=0.1,
@@ -233,6 +236,7 @@ def main():
             valid_transform = T.Compose([
                 # T.ToPILImage(),
                 T.CropBottom(250),
+                T.CropSides(),
                 T.Resize(img_size),
                 T.ToTensor(),
                 # T.Normalize(imagenet_mean, imagenet_std)
@@ -349,21 +353,22 @@ def main():
             args, val_loader, disp_net, pose_net, epoch, logger, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        disp_dict = {
-            'epoch': epoch,
-            'state_dict': disp_net.module.state_dict()
-        }
-        pose_dict = {
-            'epoch': epoch,
-            'state_dict': pose_net.module.state_dict()
-        }
-        optim_dict = {
-            'epoch': epoch,
-            'state_dict': optimizer.state_dict()
-        }
-        utils.save_checkpoint_list(args.save_path, [disp_dict, pose_dict, optim_dict],
-                                   ['mono_dispnet', 'mono_posenet', 'mono_optim'],
-                                   epoch=epoch)
+        if epoch % args.ckpt_freq == 0:
+            disp_dict = {
+                'epoch': epoch,
+                'state_dict': disp_net.module.state_dict()
+            }
+            pose_dict = {
+                'epoch': epoch,
+                'state_dict': pose_net.module.state_dict()
+            }
+            optim_dict = {
+                'epoch': epoch,
+                'state_dict': optimizer.state_dict()
+            }
+            utils.save_checkpoint_list(args.save_path, [disp_dict, pose_dict, optim_dict],
+                                       ['mono_dispnet', 'mono_posenet', 'mono_optim'],
+                                       epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')

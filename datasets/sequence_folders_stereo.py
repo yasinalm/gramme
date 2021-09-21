@@ -59,8 +59,8 @@ class SequenceFolder(data.Dataset):
                 self.cam_model_right = CameraModel('stereo_wide_right')
         elif dataset == 'cadcd':
             if self.preprocessed:
-                self.stereo_left_folder = 'preprocessed/image_07/data'
-                self.stereo_right_folder = 'preprocessed/image_01/data'
+                self.stereo_left_folder = 'raw/image_07/cam_preprocessed'
+                self.stereo_right_folder = 'raw/image_01/cam_preprocessed'
             else:
                 self.stereo_left_folder = 'raw/image_07/data'
                 self.stereo_right_folder = 'raw/image_01/data'

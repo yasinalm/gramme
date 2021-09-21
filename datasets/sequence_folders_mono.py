@@ -53,7 +53,7 @@ class SequenceFolder(data.Dataset):
                 self.cam_model = CameraModel()
         elif dataset == 'cadcd':
             if self.preprocessed:
-                self.mono_folder = 'preprocessed/image_07/data'
+                self.mono_folder = 'raw/image_07/cam_preprocessed'
             else:
                 self.mono_folder = 'raw/image_07/data'
         else:

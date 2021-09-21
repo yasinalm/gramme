@@ -56,6 +56,8 @@ parser.add_argument('--weight-decay', '--wd', default=0,
                     type=float, metavar='W', help='weight decay')
 parser.add_argument('--print-freq', default=10, type=int,
                     metavar='N', help='print frequency')
+parser.add_argument('--ckpt-freq', default=1, type=int,
+                    metavar='N', help='checkpoint saving frequency in terms of epochs')
 parser.add_argument('--seed', default=0, type=int,
                     help='seed for random functions, and network initialization')
 parser.add_argument('--log-summary', default='progress_log_summary.csv',
@@ -499,43 +501,44 @@ def main():
             epoch, logger, warper, mono_warper, val_writer)
         logger.valid_writer.write(' * Avg Loss : {:.3f}'.format(val_loss))
 
-        if args.with_masknet:
-            mask_ckpt_dict = {
+        if epoch % args.ckpt_freq == 0:
+            if args.with_masknet:
+                mask_ckpt_dict = {
+                    'epoch': epoch,
+                    'state_dict': mask_net.module.state_dict()
+                }
+                utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
+                                        ['radar_masknet'])
+            if args.with_vo:
+                vo_pose_ckpt_dict = {
+                    'epoch': epoch,
+                    'state_dict': camera_pose_net.module.state_dict()
+                }
+                disp_ckpt_dict = {
+                    'epoch': epoch,
+                    'state_dict': disp_net.module.state_dict()
+                }
+                fuse_ckpt_dict = {
+                    'epoch': epoch,
+                    'state_dict': fuse_net.module.state_dict()
+                }
+                # utils.save_checkpoint_mono(
+                #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
+                utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
+                                        ['mono_dispnet', 'mono_posenet',
+                                            'mono_fusenet'],
+                                        epoch=epoch)
+            ro_pose_ckpt_dict = {
                 'epoch': epoch,
-                'state_dict': mask_net.module.state_dict()
+                'state_dict': radar_pose_net.module.state_dict()
             }
-            utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
-                                       ['radar_masknet'])
-        if args.with_vo:
-            vo_pose_ckpt_dict = {
+            optim_dict = {
                 'epoch': epoch,
-                'state_dict': camera_pose_net.module.state_dict()
+                'state_dict': optimizer.state_dict()
             }
-            disp_ckpt_dict = {
-                'epoch': epoch,
-                'state_dict': disp_net.module.state_dict()
-            }
-            fuse_ckpt_dict = {
-                'epoch': epoch,
-                'state_dict': fuse_net.module.state_dict()
-            }
-            # utils.save_checkpoint_mono(
-            #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
-            utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
-                                       ['mono_dispnet', 'mono_posenet',
-                                           'mono_fusenet'],
-                                       epoch=epoch)
-        ro_pose_ckpt_dict = {
-            'epoch': epoch,
-            'state_dict': radar_pose_net.module.state_dict()
-        }
-        optim_dict = {
-            'epoch': epoch,
-            'state_dict': optimizer.state_dict()
-        }
-        utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
-                                   ['radar_posenet', 'radar_optim'],
-                                   epoch=epoch)
+            utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
+                                    ['radar_posenet', 'radar_optim'],
+                                    epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
