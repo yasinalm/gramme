@@ -132,8 +132,14 @@ def get_intrinsics_matrix(dataset, preprocessed, cam='left'):
         else:
             fx, cx, fy, cy = 659.538950747990, 640.585315682482, 660.928189799613, 490.646003044410  # cam01
         if preprocessed:
+            # Cropping
+            offset_x = 140
+            cx -= offset_x
+            offset_y = 250  # has no effect on intrinsics
+
+            # Resizing
             scaled_h, scaled_w = 192, 320
-            in_h, in_w = 774, 1280
+            in_h, in_w = 774, 1000
             x_scaling = float(scaled_w)/in_w
             y_scaling = float(scaled_h)/in_h
 
