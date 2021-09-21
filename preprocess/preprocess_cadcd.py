@@ -25,8 +25,14 @@ in_w = 1280
 
 def preprocess(path):
     save_name = save_dir/path.name
-    if save_name.is_file():
-        return
+    # if save_name.is_file():
+    #     return
+
+    # try:
+    #     img_saved = Image.open(save_name)
+    #     img_saved.verify()
+    # except Exception:
+    #     # print(path)
     img = Image.open(path)
     img_prep = img.crop((left, upper, right, lower))
     # Resize
@@ -59,7 +65,7 @@ if __name__ == '__main__':
             save_dir = scene/'raw'/cam/save_folder
             save_dir.mkdir(exist_ok=True)
             # print(save_dir)
-            pool_handler(imgs)
-            # for path in tqdm(imgs):
-            #     # path = imgs[0]
-            #     preprocess(path)
+            # pool_handler(imgs)
+            for path in tqdm(imgs):
+                # path = imgs[0]
+                preprocess(path)
