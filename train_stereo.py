@@ -81,7 +81,7 @@ parser.add_argument('--with-auto-mask', type=int,  default=1,
 parser.add_argument('--with-pretrain', type=int,  default=1,
                     help='with or without imagenet pretrain for resnet')
 parser.add_argument('--dataset', type=str, choices=[
-                    'hand', 'robotcar', 'radiate', 'cadcd'], default='hand', help='the dataset to train')
+                    'hand', 'robotcar', 'radiate', 'cadcd'], default='robotcar', help='the dataset to train')
 parser.add_argument('--with-preprocessed', type=int, default=1,
                     help='use the preprocessed undistorted images')
 parser.add_argument('--pretrained-disp', dest='pretrained_disp',
@@ -209,7 +209,7 @@ def main():
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
     elif args.dataset == 'cadcd':
-        depth_scale = 1.0
+        depth_scale = 200.0
         if args.with_preprocessed:
             train_transform = T.Compose([
                 # T.ToPILImage(),
@@ -300,7 +300,8 @@ def main():
     print("=> creating model")
     disp_net = models.DispResNet(
         args.resnet_layers, args.with_pretrain).to(device)
-    pose_net = models.PoseResNetStereo(18, args.with_pretrain).to(device)
+    pose_net = models.PoseResNetStereo(
+        args.resnet_layers, args.with_pretrain).to(device)
 
     # load parameters
     if args.pretrained_disp:
