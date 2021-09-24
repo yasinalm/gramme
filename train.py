@@ -508,7 +508,7 @@ def main():
                     'state_dict': mask_net.module.state_dict()
                 }
                 utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
-                                        ['radar_masknet'])
+                                           ['radar_masknet'])
             if args.with_vo:
                 vo_pose_ckpt_dict = {
                     'epoch': epoch,
@@ -525,9 +525,9 @@ def main():
                 # utils.save_checkpoint_mono(
                 #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict)
                 utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
-                                        ['mono_dispnet', 'mono_posenet',
+                                           ['mono_dispnet', 'mono_posenet',
                                             'mono_fusenet'],
-                                        epoch=epoch)
+                                           epoch=epoch)
             ro_pose_ckpt_dict = {
                 'epoch': epoch,
                 'state_dict': radar_pose_net.module.state_dict()
@@ -537,8 +537,8 @@ def main():
                 'state_dict': optimizer.state_dict()
             }
             utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
-                                    ['radar_posenet', 'radar_optim'],
-                                    epoch=epoch)
+                                       ['radar_posenet', 'radar_optim'],
+                                       epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')

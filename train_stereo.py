@@ -209,7 +209,7 @@ def main():
                 # T.Normalize(imagenet_mean, imagenet_std)
             ])
     elif args.dataset == 'cadcd':
-        depth_scale = 200.0
+        depth_scale = 20.0
         if args.with_preprocessed:
             train_transform = T.Compose([
                 # T.ToPILImage(),
@@ -446,7 +446,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, logger, train_write
             w3*geometry_loss  # + ssim_loss
 
         if log_losses:
-            poses = torch.cat(poses[0:2])  # Choose only previous source frames
+            # poses = torch.cat(poses[0:2])  # Choose only previous source frames
+            poses = torch.cat(poses)
             train_writer.add_histogram(
                 'train/mono/rot_pred-x', poses[..., 3], n_iter)
             train_writer.add_histogram(
