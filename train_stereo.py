@@ -16,7 +16,6 @@ import custom_transforms_stereo as T
 import utils
 from radar_eval.eval_utils import getTraj
 from datasets.sequence_folders_stereo import SequenceFolder
-#from datasets.pair_folders import PairFolder
 from inverse_warp_vo2 import MonoWarper
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
@@ -254,7 +253,8 @@ def main():
         dataset=args.dataset,
         transform=train_transform,
         seed=args.seed,
-        train=True,
+        # train=True,
+        mode='train',
         sequence_length=args.sequence_length,
         preprocessed=args.with_preprocessed
     )
@@ -264,7 +264,8 @@ def main():
         dataset=args.dataset,
         transform=valid_transform,
         seed=args.seed,
-        train=False,
+        mode='val',
+        # train=False,
         sequence_length=args.sequence_length,
         preprocessed=args.with_preprocessed
     )

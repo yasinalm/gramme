@@ -23,9 +23,9 @@ class SequenceFolder(data.Dataset):
         transform functions must take in a list a images and a numpy array (usually intrinsics matrix)
     """
 
-    def __init__(self, root, dataset='robotcar', seed=None, train=True,
+    def __init__(self, root, dataset='robotcar', seed=None, mode='train',
                  sequence_length=3, transform=None, skip_frames=1, preprocessed=False,
-                 sequence=None):
+                 sequence=None, nsamples=0):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -33,12 +33,14 @@ class SequenceFolder(data.Dataset):
         if sequence is not None:
             self.scenes = [self.root/sequence]
         else:
-            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            scene_list_path = self.root/'train.txt' if mode=='train' else self.root/'val.txt'
             self.scenes = [self.root/folder.strip()
                            for folder in open(scene_list_path) if not folder.strip().startswith("#")]
         # self.scenes = self.scenes[:len(self.scenes)//10]
+        self.nsamples =nsamples
         self.transform = transform
-        self.train = train
+        # self.train = train
+        self.mode = mode
         self.k = skip_frames
         self.preprocessed = preprocessed
         if dataset == 'radiate':
@@ -95,16 +97,21 @@ class SequenceFolder(data.Dataset):
                 sample = {'intrinsics': [],
                           'rightTleft': rightTleft,
                           'tgt': left_imgs[i], 'ref_imgs': []}
-                if self.train:
+                if self.mode=='train':
                     sample['ref_imgs'].append(right_imgs[i])
                     sample['intrinsics'].append(intrinsics_right)
                 for j in shifts:
                     sample['ref_imgs'].append(left_imgs[i+j])
                     sample['intrinsics'].append(intrinsics)
                 sequence_set.append(sample)
-        if self.train:
+        if self.mode=='train':
             random.shuffle(sequence_set)
         self.samples = sequence_set
+
+        # Subsample dataset
+        if self.nsamples > 0 and self.nsamples < len(self.samples):
+            skip = len(self.samples)//self.nsamples
+            self.samples = self.samples[0:skip*self.nsamples:skip]
 
     def load_as_float(self, path, cam_model):
         # img = imread(path).astype(np.float32)
@@ -155,10 +162,12 @@ class SequenceFolder(data.Dataset):
             intrinsics = [np.copy(i) for i in sample['intrinsics']]
             extrinsics = np.copy(sample['rightTleft'])
 
-        if self.train:
+        if self.mode=='train':
             return tgt_img, ref_imgs, intrinsics, extrinsics
-        else:
+        elif self.mode=='val':
             return tgt_img, ref_imgs, intrinsics
+        elif self.mode=='test':
+            return tgt_img, ref_imgs, intrinsics, sample['tgt'].name
 
     def __len__(self):
         return len(self.samples)

@@ -65,7 +65,7 @@ def main():
     print("=> creating model")
     # disp_net = models.DispResNet(
     #     args.resnet_layers, False).to(device)
-    pose_net = models.PoseResNetStereo(18, False).to(device)
+    pose_net = models.PoseResNetStereo(args.resnet_layers, False).to(device)
 
     # load parameters
     # print("=> using pre-trained weights for DispResNet")
@@ -132,7 +132,8 @@ def main():
             args.data,
             transform=valid_transform,
             seed=args.seed,
-            train=False,
+            mode='val',
+            # train=False,
             sequence_length=args.sequence_length,
             sequence=sequence,
             skip_frames=args.skip_frames,
@@ -157,7 +158,7 @@ def main():
         for i, (tgt_img, ref_imgs, intrinsics) in tqdm(enumerate(val_loader)):
             tgt_img = tgt_img.to(device)
             ref_imgs = [img.to(device) for img in ref_imgs]
-            intrinsics = [i.to(device)for i in intrinsics]
+            intrinsics = [i.to(device) for i in intrinsics]
 
             # start.record()
             poses, poses_inv = compute_pose_with_inv(
