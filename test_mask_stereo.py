@@ -196,12 +196,12 @@ def main():
                 t_start = time.time()
 
             tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-            poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+            poses, poses_inv = compute_pose_with_inv(
+                pose_net, tgt_img, ref_imgs)
 
             (photo_loss, smooth_loss, geometry_loss, ssim_loss,
-            ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
+             ref_imgs_warped, valid_mask) = mono_warper.compute_photo_and_geometry_loss(
                 tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths, poses, poses_inv)
-
 
             if args.with_timing:
                 torch.cuda.synchronize()
@@ -272,6 +272,7 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses_inv.append(pose_net(ref_img, tgt_img))
 
     return poses, poses_inv
+
 
 if __name__ == '__main__':
     with torch.cuda.amp.autocast(enabled=False):

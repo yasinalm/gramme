@@ -273,7 +273,8 @@ def main():
         args.data,
         transform=train_transform,
         seed=args.seed,
-        train=True,
+        # train=True,
+        mode='train',
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
@@ -288,7 +289,8 @@ def main():
         args.data,
         transform=val_transform,
         seed=args.seed,
-        train=False,
+        # train=False,
+        mode='val',
         sequence_length=args.sequence_length,
         skip_frames=args.skip_frames,
         dataset=args.dataset,
@@ -473,7 +475,7 @@ def main():
                     'state_dict': mask_net.module.state_dict()
                 }
                 utils.save_checkpoint_list(args.save_path, [mask_ckpt_dict],
-                                        ['lidar_masknet'])
+                                           ['lidar_masknet'])
             if args.with_vo:
                 vo_pose_ckpt_dict = {
                     'epoch': epoch,
@@ -490,9 +492,9 @@ def main():
                 # utils.save_checkpoint_mono(
                 #     args.save_path, disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict, epoch=epoch)
                 utils.save_checkpoint_list(args.save_path, [disp_ckpt_dict, vo_pose_ckpt_dict, fuse_ckpt_dict],
-                                        ['mono_dispnet', 'mono_posenet',
+                                           ['mono_dispnet', 'mono_posenet',
                                             'mono_fusenet'],
-                                        epoch=epoch)
+                                           epoch=epoch)
             ro_pose_ckpt_dict = {
                 'epoch': epoch,
                 'state_dict': lidar_pose_net.module.state_dict()
@@ -502,8 +504,8 @@ def main():
                 'state_dict': optimizer.state_dict()
             }
             utils.save_checkpoint_list(args.save_path, [ro_pose_ckpt_dict, optim_dict],
-                                    ['lidar_posenet', 'lidar_optim'],
-                                    epoch=epoch)
+                                       ['lidar_posenet', 'lidar_optim'],
+                                       epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -726,9 +728,9 @@ def train(
                 'train/lidar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
             train_writer.add_image(
                 'train/lidar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), n_iter)
+            train_writer.add_image(
+                'train/lidar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_masknet:
-                train_writer.add_image(
-                    'train/lidar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), n_iter)
                 train_writer.add_image(
                     'train/lidar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), n_iter)
             if args.with_vo:
@@ -931,9 +933,9 @@ def validate(
                 'val/lidar/ref_input', utils.tensor2array(ref_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
             val_writer.add_image(
                 'val/lidar/warped_ref', utils.tensor2array(projected_imgs[0][0], max_value=1.0, colormap='bone'), epoch)
+            val_writer.add_image(
+                'val/lidar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), epoch)
             if args.with_masknet:
-                val_writer.add_image(
-                    'val/lidar/warped_mask', utils.tensor2array(projected_masks[0][0], max_value=1.0, colormap='bone'), epoch)
                 val_writer.add_image(
                     'val/lidar/tgt_mask', utils.tensor2array(tgt_mask[0], max_value=1.0, colormap='bone'), epoch)
             if args.with_vo:

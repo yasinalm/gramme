@@ -250,6 +250,8 @@ class Warper(object):
         reconstruction_loss = mean_on_mask(diff_img, valid_mask)
         if tgt_mask is None:
             geometry_consistency_loss = torch.Tensor([0]).to(device)
+            # if masknet is not used, return the calculated mask
+            projected_mask = valid_mask
         else:
             geometry_consistency_loss = mean_on_mask(diff_mask, valid_mask)
             geometry_consistency_loss += mean_on_mask(diff_img, tgt_mask)

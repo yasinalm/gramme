@@ -16,11 +16,11 @@ class SequenceFolder(data.Dataset):
     """
 
     def __init__(self, root, dataset, lo_params,
-                 seed=None, train=True, sequence_length=3,
+                 seed=None, mode='train', sequence_length=3,
                  transform=None, skip_frames=1,
                  load_camera=False, cam_mode='mono',
                  cam_preprocessed=False, cam_transform=None, sequence=None,
-                 ):
+                 nsamples=0):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -32,7 +32,7 @@ class SequenceFolder(data.Dataset):
         if sequence is not None:
             self.scenes = [self.root/sequence]
         else:
-            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            scene_list_path = self.root/'train.txt' if mode == 'train' else self.root/'val.txt'
             self.scenes = [self.root/folder.strip()
                            for folder in open(scene_list_path) if not folder.strip().startswith("#")]
 
@@ -75,7 +75,9 @@ class SequenceFolder(data.Dataset):
 
         self.transform = transform
         self.cam_transform = cam_transform
-        self.train = train
+        # self.train = train
+        self.nsamples = nsamples
+        self.mode = mode
         self.k = skip_frames
         if dataset == 'radiate':
             self.lidar_folder = 'velo_lidar'
@@ -198,7 +200,7 @@ class SequenceFolder(data.Dataset):
                         # [left_imgs[src-1],...,left_imgs[tgt]],
                         # [left_imgs[tgt],...,left_imgs[src+1]
                         # ]
-                        if self.train and self.cam_mode == 'stereo':
+                        if self.mode == 'train' and self.cam_mode == 'stereo':
                             sample['vo_ref_imgs'].append(
                                 right_imgs[cam_matches[0]])
                             sample['intrinsics'].append(intrinsics_right)
@@ -211,9 +213,14 @@ class SequenceFolder(data.Dataset):
                         continue
 
                 sequence_set.append(sample)
-        if self.train:
+        if self.mode == 'train':
             random.shuffle(sequence_set)
         self.samples = sequence_set
+
+        # Subsample dataset
+        if self.nsamples > 0 and self.nsamples < len(self.samples):
+            skip = len(self.samples)//self.nsamples
+            self.samples = self.samples[0:skip*self.nsamples:skip]
 
     # def load_bin(self, path):
     #     data = np.fromfile(path, dtype=np.float32)
@@ -404,12 +411,15 @@ class SequenceFolder(data.Dataset):
                 vo_tgt_img = []
                 vo_ref_imgs = []
 
-            if self.train and self.cam_mode == 'stereo':
+            if self.mode == 'train' and self.cam_mode == 'stereo':
                 return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics, extrinsics
             else:
                 return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
         else:
-            return tgt_img, ref_imgs
+            if self.mode == 'test':
+                return tgt_img, ref_imgs, sample['tgt'].stem
+            else:
+                return tgt_img, ref_imgs
 
     def __len__(self):
         return len(self.samples)
