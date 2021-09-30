@@ -13,7 +13,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from torchvision import transforms
 import custom_transforms
-from datasets.sequence_folders_lidar import SequenceFolder
+from datasets.sequence_folders import SequenceFolder
 from inverse_warp_radar import Warper
 
 # Supress UserWarning from grid_sample
@@ -73,6 +73,12 @@ parser.add_argument('--results-dir', default='results', metavar='PATH',
                     help='directory where to save predicted depth maps and stats')
 parser.add_argument('--resnet-layers',  type=int, default=18,
                     choices=[18, 50], help='number of ResNet layers for depth estimation')
+parser.add_argument('--radar-format', type=str,
+                    choices=['cartesian', 'polar'], default='polar', help='Range-angle format')
+parser.add_argument('--range-res', type=float,
+                    help='Range resolution of FMCW radar in meters', metavar='W', default=0.0432)
+parser.add_argument('--angle-res', type=float,
+                    help='Angular azimuth resolution of FMCW radar in radians', metavar='W', default=0.015708)
 parser.add_argument('--cart-res', type=float,
                     help='Cartesian resolution of LIDAR in meters/pixel', metavar='W', default=0.25)
 parser.add_argument('--cart-pixels', type=int,
@@ -112,9 +118,19 @@ def main():
         scenes = [Path(args.data)]
 
     cam_valid_transform = None
-    lo_params = {
+    print("=> setting default radar parameters for known datasets")
+    if args.dataset == 'radiate':
+        args.range_res = 0.175
+    elif args.dataset == 'robotcar':
+        args.range_res = 0.0432
+    ro_params = {
+        'cart_resolution': args.cart_res,
         'cart_pixels': args.cart_pixels,
+        'rangeResolutionsInMeter': args.range_res,
+        'angleResolutionInRad': args.angle_res,
+        'radar_format': args.radar_format
     }
+    print(ro_params)
 
     # create warper
     print("=> creating loss object")
@@ -123,7 +139,7 @@ def main():
 
     # create model
     print("=> creating model")
-    lidar_pose_net = models.PoseResNet(
+    radar_pose_net = models.PoseResNet(
         args.dataset, args.resnet_layers, False).to(device)
     mask_net = None
     if args.with_masknet:
@@ -139,7 +155,7 @@ def main():
     # load parameters
     print("=> using pre-trained weights for PoseNet")
     weights = torch.load(args.pretrained_pose)
-    lidar_pose_net.load_state_dict(weights['state_dict'], strict=False)
+    radar_pose_net.load_state_dict(weights['state_dict'], strict=False)
 
     # load parameters
     if args.with_masknet:
@@ -147,10 +163,10 @@ def main():
         weights = torch.load(args.pretrained_mask)
         mask_net.load_state_dict(weights['state_dict'], strict=False)
 
-    lidar_pose_net = torch.nn.DataParallel(lidar_pose_net)
+    radar_pose_net = torch.nn.DataParallel(radar_pose_net)
 
     # switch to evaluate mode
-    lidar_pose_net.eval()
+    radar_pose_net.eval()
     # switch to train mode
     if args.with_masknet:
         mask_net = torch.nn.DataParallel(mask_net)
@@ -166,13 +182,11 @@ def main():
             args.data,
             transform=val_transform,
             seed=args.seed,
-            # train=False,
             mode='test',
             sequence_length=args.sequence_length,
-            sequence=scene_name,
             skip_frames=args.skip_frames,
             dataset=args.dataset,
-            lo_params=lo_params,
+            ro_params=ro_params,
             load_camera=args.with_vo,
             cam_mode=args.cam_mode,
             cam_transform=cam_valid_transform,
@@ -204,7 +218,7 @@ def main():
             if args.with_masknet:
                 tgt_mask, ref_masks = compute_mask(mask_net, tgt_img, ref_imgs)
             ro_poses, ro_poses_inv = compute_pose_with_inv(
-                lidar_pose_net, tgt_img, ref_imgs)
+                radar_pose_net, tgt_img, ref_imgs)
 
             (rec_loss, geometry_consistency_loss, fft_loss, ssim_loss,
              projected_imgs, projected_masks) = warper.compute_db_loss(

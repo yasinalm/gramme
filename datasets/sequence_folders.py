@@ -24,14 +24,15 @@ class SequenceFolder(data.Dataset):
     """
 
     def __init__(
-            self, root, skip_frames, sequence_length, train, dataset,
+            self, root, skip_frames, sequence_length, mode, dataset,
             ro_params=None, load_camera=False, cam_mode='mono',
             seed=None, transform=None, cam_transform=None, sequence=None,
-            cam_preprocessed=False):
+            cam_preprocessed=False, nsamples=0):
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
-        self.train = train
+        self.mode = mode
+        self.nsamples = nsamples
         self.load_camera = load_camera
         self.cam_mode = cam_mode
         self.preprocessed = cam_preprocessed
@@ -53,7 +54,7 @@ class SequenceFolder(data.Dataset):
         if sequence is not None:
             self.scenes = [self.root/sequence]
         else:
-            scene_list_path = self.root/'train.txt' if train else self.root/'val.txt'
+            scene_list_path = self.root/'train.txt' if mode == 'train' else self.root/'val.txt'
             self.scenes = [self.root/folder.strip() for folder in open(scene_list_path)
                            if not folder.strip().startswith("#")]
 
@@ -190,7 +191,7 @@ class SequenceFolder(data.Dataset):
                         # [left_imgs[src-1],...,left_imgs[tgt]],
                         # [left_imgs[tgt],...,left_imgs[src+1]
                         # ]
-                        if self.train and self.cam_mode == 'stereo':
+                        if self.mode == 'train' and self.cam_mode == 'stereo':
                             sample['vo_ref_imgs'].append(
                                 right_imgs[cam_matches[0]])
                             sample['intrinsics'].append(intrinsics_right)
@@ -206,9 +207,14 @@ class SequenceFolder(data.Dataset):
                 sequence_set.append(sample)
 
         # Shuffle training dataset
-        if self.train:
+        if self.mode == 'train':
             random.shuffle(sequence_set)
         self.samples = sequence_set
+
+        # Subsample dataset
+        if self.nsamples > 0 and self.nsamples < len(self.samples):
+            skip = len(self.samples)//self.nsamples
+            self.samples = self.samples[0:skip*self.nsamples:skip]
 
     def load_radar_img_as_float(self, path):
         # Robotcar dataset has header of length 11 columns
@@ -379,12 +385,15 @@ class SequenceFolder(data.Dataset):
                 vo_tgt_img = []
                 vo_ref_imgs = []
 
-            if self.train and self.cam_mode == 'stereo':
+            if self.mode == 'train' and self.cam_mode == 'stereo':
                 return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics, extrinsics
             else:
                 return tgt_img, ref_imgs, vo_tgt_img, vo_ref_imgs, intrinsics
         else:
-            return tgt_img, ref_imgs
+            if self.mode == 'test':
+                return tgt_img, ref_imgs, sample['tgt'].stem
+            else:
+                return tgt_img, ref_imgs
 
     def __len__(self):
         return len(self.samples)
