@@ -235,15 +235,28 @@ def main():
             # tv.utils.save_image(
             #     tgt_depth[0], results_depth_dir/'{0:03d}.png'.format(i))
 
-            for j, (mask, f_name) in enumerate(zip(projected_masks[0], f_names)):
+            for j, (tgt, mask, f_name) in enumerate(zip(tgt_img, projected_masks[0], f_names)):
                 colour_mask = utils.tensor2array(
                     mask, max_value=1.0, colormap='bone')
                 colour_mask = colour_mask.transpose(1, 2, 0)*255
                 colour_mask = colour_mask.astype(np.uint8)
-                im = Image.fromarray(colour_mask)
+                im_mask = Image.fromarray(colour_mask)
+
+                colour_tgt = utils.tensor2array(
+                    tgt, max_value=1.0, colormap='bone')
+                colour_tgt = colour_tgt.transpose(1, 2, 0)*255
+                colour_tgt = colour_tgt.astype(np.uint8)
+                im_tgt = Image.fromarray(colour_tgt)
+
+                # Create new image
+                # Paste tgt and mask
+                dst = Image.new('RGB', (2*args.cart_pixels+10,
+                                args.cart_pixels), color='white')
+                dst.paste(im_tgt, (0, 0))
+                dst.paste(im_mask, ((args.cart_pixels+10), 0))
                 # im.save(results_mask_dir /
                 #         '{0:03d}.png'.format(i*args.batch_size+j))
-                im.save(results_mask_dir / (f_name+'.png'))
+                dst.save(results_mask_dir / (f_name+'.png'))
 
         if args.with_timing:
             avg_time /= nframes

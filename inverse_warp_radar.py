@@ -253,8 +253,10 @@ class Warper(object):
             # if masknet is not used, return the calculated mask
             projected_mask = valid_mask
         else:
-            geometry_consistency_loss = mean_on_mask(diff_mask, valid_mask)
-            geometry_consistency_loss += mean_on_mask(diff_img, tgt_mask)
+            # geometry_consistency_loss = mean_on_mask(diff_mask, valid_mask)
+            # geometry_consistency_loss += mean_on_mask(diff_img, tgt_mask)
+            geometry_consistency_loss = 0.2 * \
+                nn.BCELoss()(projected_mask, torch.ones(projected_mask.shape).to(device))
 
         # fft_loss = fft_rec_loss2(tgt_img, ref_img_warped, valid_mask)
         fft_loss = torch.Tensor([0]).to(device)  # şimdilik disable
