@@ -1,10 +1,8 @@
 # Towards All-Weather Autonomous Driving
 
-<img src="imgs/overview.jpeg" width="800px"/>
-
 ### [Paper](https://arxiv.org/abs/) | [Pretrained Models](https://www.dropbox.com/sh/)
 
-In this work, we propose deep learnin based MMSFM that is generalizable to diverse settings such as day, night, rain, fog, and snow. MMSFM is a geometry-Aware, multi-modal, modular, interpretable, and self-supervised ego-motion estimation system.
+In this work, we propose deep learning-based MMSFM generalizable to diverse settings such as day, night, rain, fog, and snow. MMSFM is a geometry-Aware, multi-modal, modular, interpretable, and self-supervised ego-motion estimation system.
 
 MMSFM involves the following architectures:
 
@@ -43,7 +41,7 @@ cd mmsfm
 ### Prerequisites
 
 <!-- We recommend using a [conda environment](https://conda.io/docs/user-guide/tasks/manage-environments.html) to avoid dependency conflicts. -->
-We recommend to create a virtual environment with Python 3.8 `conda create -n mmsfm python=3.8 anaconda`.
+We recommend creating a virtual environment with Python 3.8 `conda create -n mmsfm python=3.8 anaconda`.
 Using a fresh [Anaconda](https://www.anaconda.com/download/) distribution, you can install the dependencies with:
 ```shell
 conda install pytorch=1.8.2 torchvision=0.9.1 cudatoolkit=10.2 -c pytorch
@@ -75,12 +73,12 @@ MMSFM currently supports the following datasets and the sensors. To easily make 
   - Navtech CTS350-X radar
   - Advanced Navigation Spatial Dual GPS/IMU
 
-To test our provided pretrained models, you can download the small-size sample sequences.
+To test our provided pre-trained models, you can download the small-size sample sequences.
 
-In addition, you can easily adopt MMSFM to custom datasets by extending the data loader classes located in the `./datasets/` folder.
+In addition, you can quickly adopt MMSFM to custom datasets by extending the data loader classes located in the `./datasets/` folder.
 
 ### Preprocessing
-Although MMSFM supports on-the-fly processing of the input files, we recommend an offline processing of the input datasets using the provided scripts. The scripts will process the datasets and save the processed files to disk. The preprocessing includes colour-demosaicing of the Bayer images and rectification. We also optionally crop the bottom part of the Robotcar images occluded by the bonnet. You can use the following script for preprocessing:
+Although MMSFM supports on-the-fly processing of the input files, we recommend offline processing of the input datasets using the provided scripts. The scripts will process the datasets and save the processed files to disk. The preprocessing includes colour-demosaicing of the Bayer images and rectification. We also optionally crop the bottom part of the Robotcar images occluded by the bonnet. You can use the following script for preprocessing:
 
 For the Robotcar dataset:
 ```shell
@@ -383,7 +381,7 @@ python test_mono.py /path/to/dataset/ --dataset dataset_name --pretrained-disp /
 
 ### GPU Usage
 
-The code supports training on multiple GPUs by extending `DataParallel` class of PyTorch. We observerd anomalies during the training with recently introduced Ampere GPU architecture related to floating point precision. We disable auto-casting feature on NVIDIA RTX 3090 GPUs. You can specify the environment variable `CUDA_VISIBLE_DEVICES` to select the GPU:
+The code supports training on multiple GPUs by extending `DataParallel` class of PyTorch. We observed anomalies during the training with recently introduced Ampere GPU architecture related to floating-point precision. Therefore, we disable the auto-casting feature on NVIDIA RTX 3090 GPUs. You can specify the environment variable `CUDA_VISIBLE_DEVICES` to select the GPU:
 ```shell
 CUDA_VISIBLE_DEVICES=2 python train.py ... # Use GPU#2
 CUDA_VISIBLE_DEVICES=1,2 python train.py ... # Use GPU#1 and GPU#2
@@ -391,7 +389,7 @@ CUDA_VISIBLE_DEVICES=1,2 python train.py ... # Use GPU#1 and GPU#2
 
 ## Reference
 
-If you find our work useful in your research or if you use parts of this code please consider citing our paper:
+If you find our work useful in your research or if you use parts of this code, please consider citing our paper:
 
 ```
 @misc{yasin2021towards,
