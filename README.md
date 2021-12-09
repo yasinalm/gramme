@@ -77,6 +77,8 @@ MMSFM currently supports the following datasets and the sensors. To easily make 
 
 To test our provided pretrained models, you can download the small-size sample sequences.
 
+In addition, you can easily adopt MMSFM to custom datasets by extending the data loader classes located in the `./datasets/` folder.
+
 ### Preprocessing
 Although MMSFM supports on-the-fly processing of the input files, we recommend an offline processing of the input datasets using the provided scripts. The scripts will process the datasets and save the processed files to disk. The preprocessing includes colour-demosaicing of the Bayer images and rectification. We also optionally crop the bottom part of the Robotcar images occluded by the bonnet. You can use the following script for preprocessing:
 
@@ -378,3 +380,30 @@ python test_ro.py /path/to/dataset/ --dataset dataset_name --pretrained-disp /pa
 python test_stereo.py /path/to/dataset/ --dataset dataset_name --pretrained-disp /path/to/pretrained_model --results-dir /path/to/save/results # for stereo odometry
 python test_mono.py /path/to/dataset/ --dataset dataset_name --pretrained-disp /path/to/pretrained_model --results-dir /path/to/save/results # for monocular odometry
 ```
+
+### GPU Usage
+
+The code supports training on multiple GPUs by extending `DataParallel` class of PyTorch. We observerd anomalies during the training with recently introduced Ampere GPU architecture related to floating point precision. We disable auto-casting feature on NVIDIA RTX 3090 GPUs. You can specify the environment variable `CUDA_VISIBLE_DEVICES` to select the GPU:
+```shell
+CUDA_VISIBLE_DEVICES=2 python train.py ... # Use GPU#2
+CUDA_VISIBLE_DEVICES=1,2 python train.py ... # Use GPU#1 and GPU#2
+```
+
+## Reference
+
+If you find our work useful in your research or if you use parts of this code please consider citing our paper:
+
+```
+@misc{yasin2021towards,
+      title={Towards All-Weather Autonomous Driving}, 
+      author={Yasin Almalioglu and Mehmet Turan and Niki Trigoni and Andrew Markham},
+      year={2021},
+      eprint={},
+      archivePrefix={arXiv},
+      primaryClass={}
+}
+```
+
+### Acknowledgments
+We thank the authors of the datasets used in the experiments for sharing the datasets and the SDKs.
+
