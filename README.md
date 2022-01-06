@@ -1,10 +1,13 @@
 # Towards All-Weather Autonomous Driving
 
 ### [Paper](https://arxiv.org/abs/) | [Pretrained Models](https://www.dropbox.com/sh/)
+<br>
+<img src='imgs/logo-gramme.jpg' align="right" width=200>
+<br>
 
-In this work, we propose deep learning-based MMSFM generalizable to diverse settings such as day, night, rain, fog, and snow. MMSFM is a geometry-Aware, multi-modal, modular, interpretable, and self-supervised ego-motion estimation system.
+In this work, we propose deep learning-based GRAMME generalizable to diverse settings such as day, night, rain, fog, and snow. GRAMME is a geometry-Aware, multi-modal, modular, interpretable, and self-supervised ego-motion estimation system.
 
-MMSFM involves the following architectures:
+GRAMME involves the following architectures:
 
 - Self-supervised monocular depth and ego-motion
 - Self-supervised stereo depth and ego-motion
@@ -13,7 +16,7 @@ MMSFM involves the following architectures:
 - Self-supervised depth and ego-motion from camera and lidar
 - Self-supervised depth and ego-motion from camera and radar
 
-Overview of the MMSFM conceptual framework and architecture:
+Overview of the GRAMME conceptual framework and architecture:
 <br>
 <img src='imgs/FIG-01.png' align="right" width=960>
 <br>
@@ -34,14 +37,14 @@ The experiments are conducted on an Ubuntu 20.04 LTS computer with Intel Xeon CP
 
 - Clone this repo:
 ```bash
-git clone https://github.com/yasinalm/mmsfm
-cd mmsfm
+git clone https://github.com/yasinalm/gramme
+cd gramme
 ```
 
 ### Prerequisites
 
 <!-- We recommend using a [conda environment](https://conda.io/docs/user-guide/tasks/manage-environments.html) to avoid dependency conflicts. -->
-We recommend creating a virtual environment with Python 3.8 `conda create -n mmsfm python=3.8 anaconda`.
+We recommend creating a virtual environment with Python 3.8 `conda create -n gramme python=3.8 anaconda`.
 Using a fresh [Anaconda](https://www.anaconda.com/download/) distribution, you can install the dependencies with:
 ```shell
 conda install pytorch=1.8.2 torchvision=0.9.1 cudatoolkit=10.2 -c pytorch
@@ -55,7 +58,7 @@ conda install --file requirements.txt
 ```
 
 ## Datasets
-MMSFM currently supports the following datasets and the sensors. To easily make use of our preprocessing codes, keep the directory structure the same as the original datasets.  Please follow their licencing regulations for the datasets.
+GRAMME currently supports the following datasets and the sensors. To easily make use of our preprocessing codes, keep the directory structure the same as the original datasets.  Please follow their licencing regulations for the datasets.
 - [Oxford Robotcar](https://robotcar-dataset.robots.ox.ac.uk/) dataset 
   - Bumblebee XB3 stereo camera (main data source for the experiments in the paper)
   - Grasshopper2 monocular camera
@@ -75,10 +78,10 @@ MMSFM currently supports the following datasets and the sensors. To easily make 
 
 To test our provided pre-trained models, you can download the small-size sample sequences.
 
-In addition, you can quickly adopt MMSFM to custom datasets by extending the data loader classes located in the `./datasets/` folder.
+In addition, you can quickly adopt GRAMME to custom datasets by extending the data loader classes located in the `./datasets/` folder.
 
 ### Preprocessing
-Although MMSFM supports on-the-fly processing of the input files, we recommend offline processing of the input datasets using the provided scripts. The scripts will process the datasets and save the processed files to disk. The preprocessing includes colour-demosaicing of the Bayer images and rectification. We also optionally crop the bottom part of the Robotcar images occluded by the bonnet. You can use the following script for preprocessing:
+Although GRAMME supports on-the-fly processing of the input files, we recommend offline processing of the input datasets using the provided scripts. The scripts will process the datasets and save the processed files to disk. The preprocessing includes colour-demosaicing of the Bayer images and rectification. We also optionally crop the bottom part of the Robotcar images occluded by the bonnet. You can use the following script for preprocessing:
 
 For the Robotcar dataset:
 ```shell
