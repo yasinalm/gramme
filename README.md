@@ -1,6 +1,6 @@
 # Towards All-Weather Autonomous Driving
 
-### [Paper](https://arxiv.org/abs/) | [Pretrained Models](https://drive.google.com/drive/folders/1o1skoCknnlBe-OkVlCEEi3kQPKdBIAS-?usp=sharing)
+### [Paper](https://arxiv.org/abs/) | [Pretrained Models](#head_pretrained)
 <br>
 <img src='imgs/logo-gramme.jpg' align="right" width=200>
 <br>
@@ -369,6 +369,33 @@ The details of the commands can be found using:
 python train_stereo.py -h # for stereo camera
 python train_mono.py -h # for monocular camera
 ```
+
+### <a name="head_pretrained"></a> Pretrained models
+We provide pretrained GRAMME models for different datasets and modalities listed below. You can use the inference scripts explained above.
+- [Oxford Robotcar](https://robotcar-dataset.robots.ox.ac.uk/) dataset 
+  - [Monocular camera](https://drive.google.com/drive/folders/1u6yv2BxZ1Yg6sJ1kub7wi7qBU058TTcc?usp=sharing)
+  - [Stereo camera](https://drive.google.com/drive/folders/15_qJiqHagEQ_jlVn8ui8hGGO9on_ScVX?usp=sharing)
+  - [Lidar](https://drive.google.com/drive/folders/1FJif75NrezPI6GPJxn3uJ6vzyIE5GvK7?usp=sharing)
+  - [Lidar and monocular camera fusion](https://drive.google.com/drive/folders/1y7QAlhZMzi0qiFAqx8j6mzUpMwPZ-ul6?usp=sharing)
+  - [Lidar and stereo camera fusion](https://drive.google.com/drive/folders/1RXT2pNzUc7qUi6mbkEkslWP9z8fKcnnr?usp=sharing)
+- [Oxford Radar Robotcar](https://oxford-robotics-institute.github.io/radar-robotcar-dataset/) dataset
+  - [Monocular camera](https://drive.google.com/drive/folders/1Luj1XaoPEaSXBhhVJU-y85G24S4uLNOK?usp=sharing)
+  - [Stereo camera](https://drive.google.com/drive/folders/1rhUYlyz1BisRTadudby-OoKm7mk-jhSf?usp=sharing)
+  - [Lidar](https://drive.google.com/drive/folders/1Ra_bOe1MQ7Sv7n4QR8FENgudjZ0i4RO8?usp=sharing)
+  - [Lidar and monocular camera fusion](https://drive.google.com/drive/folders/1Od-EkueBhAr6L1p4P8RU-TLwZN5a1I43?usp=sharing)
+  - [Lidar and stereo camera fusion](https://drive.google.com/drive/folders/11VSWWs_fjfVhS8E72w1nfkzy-YKAMyhT?usp=sharing)
+  - [Radar](https://drive.google.com/drive/folders/1XMoqUJxfETmHvSV69Wg0D_AB825ZZJg0?usp=sharing)
+  - [Radar and monocular camera fusion](https://drive.google.com/drive/folders/1A_4my2u5nRm1Yr5c2RCMQV6HxYhclYka?usp=sharing)
+  - [Radar and stereo camera fusion](https://drive.google.com/drive/folders/1ErBS8MjTeyQfEhmFuorJ8xYPV74m5455?usp=sharing)
+- [RADIATE](http://pro.hw.ac.uk/radiate/) dataset.
+  - [Monocular camera](https://drive.google.com/drive/folders/1ICF1tub5GdmavV7JJByW73cHHdFkYTMw?usp=sharing)
+  - [Stereo camera](https://drive.google.com/drive/folders/1cHUg6TFyKJQYEe89T8L389df3URDV3Jt?usp=sharing)
+  - [Lidar](https://drive.google.com/drive/folders/1q_sB2VR8iSRV1mnCKbSNAYEuEPcdDlyx?usp=sharing)
+  - [Lidar and monocular camera fusion](https://drive.google.com/drive/folders/1iwEJBqBU-BTxvvFk71z8bPInySNE5szS?usp=sharing)
+  - [Lidar and stereo camera fusion](https://drive.google.com/drive/folders/1hghJGI1jVk-8z-sw5iEUB6EcUWNelNlJ?usp=sharing)
+  - [Radar](https://drive.google.com/drive/folders/1uLp9S9kAC8mKLsAtjrXMvBamKkF0C8ut?usp=sharing)
+  - [Radar and monocular camera fusion](https://drive.google.com/drive/folders/1vmUyRAqxw6s-L0hDfn5QMCCeJRS1_iEx?usp=sharing)
+  - [Radar and stereo camera fusion](https://drive.google.com/drive/folders/1AbmQ8-CjQatGU_0dpbsdJBmIo97VelwD?usp=sharing)
 
 ### Inference and Test
 You can use the following command to generate the depth maps:
