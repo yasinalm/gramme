@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/328816091.svg)](https://zenodo.org/badge/latestdoi/328816091)
+
 # Towards All-Weather Autonomous Driving
 
 ### [Paper](https://arxiv.org/abs/) | [Pretrained Models](#head_pretrained)
