@@ -1,4 +1,5 @@
 [![DOI](https://zenodo.org/badge/328816091.svg)](https://zenodo.org/badge/latestdoi/328816091)
+![GitHub](https://img.shields.io/github/license/yasinalm/gramme)
 
 # Towards All-Weather Autonomous Driving
 
