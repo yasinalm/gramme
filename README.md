@@ -8,6 +8,8 @@
 <img src='imgs/logo-gramme.jpg' align="right" width=200>
 <br>
 
+Implementation, source code, pre-trained models and scripts for our paper "Deep learning-based robust positioning for all-weather autonomous driving" published in [Nature Machine Intelligence](https://www.nature.com/articles/s42256-022-00520-5).
+
 In this work, we propose deep learning-based GRAMME generalizable to diverse settings such as day, night, rain, fog, and snow. GRAMME is a geometry-Aware, multi-modal, modular, interpretable, and self-supervised ego-motion estimation system.
 
 GRAMME involves the following architectures:
@@ -425,7 +427,7 @@ CUDA_VISIBLE_DEVICES=1,2 python train.py ... # Use GPU#1 and GPU#2
 If you find our work useful in your research or if you use parts of this code, please consider citing our paper:
 
 ```
-Almalioglu, Y., Turan, M., Trigoni, N., and Markham, A. Deep learning-based robust positioning for all-weather autonomous driving. Nat Mach Intell (2022). https://doi.org/10.1038/s42256-022-00520-5
+Almalioglu, Y., Turan, M., Trigoni, N., and Markham, A. Deep learning-based robust positioning for all-weather autonomous driving. Nature Machine Intelligence (2022). https://doi.org/10.1038/s42256-022-00520-5
 ```
 
 ### Acknowledgments
